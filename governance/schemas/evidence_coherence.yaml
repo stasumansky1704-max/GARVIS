@@ -1,0 +1,57 @@
+evidence_coherence_name: GARVIS_EVIDENCE_COHERENCE
+version: 1
+
+coherence_principles:
+  - evidence_must_be_traceable
+  - coherence_requires_visibility
+  - conflicting_evidence_requires_disclosure
+  - evidence_coherence_does_not_imply_authority
+  - governance_precedes_evidence_resolution
+
+allowed_coherence_functions:
+  - evidence_consistency_assessment
+  - reasoning_chain_coherence_analysis
+  - retrieval_consistency_validation
+  - alignment_evidence_comparison
+  - confidence_vs_evidence_assessment
+
+forbidden_coherence_functions:
+  - hidden_evidence_prioritization
+  - fabricated_evidence_synthesis
+  - autonomous_truth_resolution
+  - governance_override_via_evidence
+  - unverifiable_evidence_assertion
+
+coherence_constraints:
+  no_hidden_evidence_weighting: true
+  no_unaudited_conflict_resolution: true
+  no_self_authorized_truth_assertion: true
+  no_runtime_override_via_coherence: true
+
+coherence_handling:
+  conflicting_evidence:
+    action: require_visibility
+
+  unverifiable_evidence_chain:
+    action: require_revalidation
+
+  evidence_alignment_break:
+    action: fail_closed
+
+  fabricated_coherence_signal:
+    action: critical_lockdown
+
+coherence_rules:
+  preserve_alignment_priority: true
+  preserve_foundational_governance_priority: true
+  preserve_operator_visibility: true
+
+audit_requirements:
+  preserve_coherence_history: true
+  preserve_evidence_traceability_records: true
+  preserve_conflict_visibility_records: true
+
+validation_requirements:
+  preserve_governance_visibility: true
+  preserve_alignment_consistency: true
+  preserve_evidence_traceability: true

@@ -1,0 +1,56 @@
+metacognition_name: GARVIS_METACOGNITION
+version: 1
+
+metacognition_principles:
+  - reasoning_quality_must_be_observable
+  - self_evaluation_must_be_governed
+  - metacognition_cannot_modify_runtime
+  - metacognition_cannot_override_governance
+  - introspection_is_not_authority
+
+allowed_metacognition_functions:
+  - reasoning_consistency_evaluation
+  - alignment_consistency_evaluation
+  - retrieval_quality_evaluation
+  - hallucination_risk_assessment
+  - continuity_consistency_assessment
+
+forbidden_metacognition_functions:
+  - autonomous_self_modification
+  - hidden_behavior_rewriting
+  - governance_redefinition
+  - self_granted_capabilities
+  - autonomous_goal_generation
+
+evaluation_dimensions:
+  - reasoning_quality
+  - alignment_stability
+  - retrieval_accuracy
+  - governance_consistency
+  - continuity_integrity
+
+evaluation_constraints:
+  read_only_evaluation: true
+  no_runtime_modification: true
+  no_hidden_learning: true
+  no_unsupervised_adaptation: true
+
+failure_behavior:
+  metacognitive_drift_detected:
+    action: require_operator_review
+
+  governance_override_attempt:
+    action: critical_lockdown
+
+  hidden_self_modification_attempt:
+    action: fail_closed_and_audit
+
+audit_requirements:
+  preserve_metacognition_history: true
+  preserve_reasoning_quality_records: true
+  preserve_alignment_evaluation_records: true
+
+validation_requirements:
+  preserve_governance_traceability: true
+  preserve_alignment_visibility: true
+  preserve_reasoning_transparency: true

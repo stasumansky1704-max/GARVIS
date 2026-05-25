@@ -1,0 +1,58 @@
+state_model_name: GARVIS_OPERATIONAL_STATE_MODEL
+version: 1
+
+allowed_operational_states:
+  - passive_observation
+  - governed_inference
+  - retrieval_reasoning
+  - audited_memory_access
+  - alignment_validation
+
+forbidden_operational_states:
+  - autonomous_execution
+  - unrestricted_tool_usage
+  - hidden_background_activity
+  - self_directed_goal_pursuit
+  - governance_override
+
+state_transition_rules:
+  passive_observation:
+    allowed_transitions:
+      - governed_inference
+
+  governed_inference:
+    allowed_transitions:
+      - retrieval_reasoning
+      - alignment_validation
+      - passive_observation
+
+  retrieval_reasoning:
+    allowed_transitions:
+      - governed_inference
+      - alignment_validation
+
+  alignment_validation:
+    allowed_transitions:
+      - passive_observation
+      - governed_inference
+
+transition_constraints:
+  require_operator_visibility: true
+  require_audit_logging: true
+  require_governance_validation: true
+
+state_integrity_rules:
+  governance_must_remain_active: true
+  runtime_identity_must_persist: true
+  forbidden_states_remain_forbidden: true
+  hidden_state_transitions_forbidden: true
+
+failure_behavior:
+  unknown_state_transition: fail_closed
+  forbidden_state_attempt: critical_lockdown
+  governance_inactive_state: fail_closed
+
+validation_requirements:
+  preserve_state_traceability: true
+  preserve_transition_history: true
+  preserve_alignment_visibility: true

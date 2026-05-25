@@ -1,0 +1,10 @@
+Session 002
+
+Operator:
+GARVIS runtime must remain local and isolated.
+
+Outcome:
+Local-only inference architecture selected using Ollama.
+
+Validation:
+approved

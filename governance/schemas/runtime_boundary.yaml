@@ -1,0 +1,46 @@
+boundary_name: GARVIS_RUNTIME_BOUNDARY
+version: 1
+
+runtime_location:
+  root: /home/staso/GARVIS/runtime
+  containers: /home/staso/GARVIS/runtime/containers
+  models: /home/staso/GARVIS/runtime/models
+  temp: /home/staso/GARVIS/runtime/temp
+
+allowed_mounts_v1:
+  - path: /home/staso/GARVIS/knowledge_base
+    mode: read_only
+  - path: /home/staso/GARVIS/runtime/temp
+    mode: ephemeral_write
+
+forbidden_mounts_v1:
+  - /mnt/c
+  - /mnt/host
+  - /home/staso
+  - /home/staso/GARVIS/governance
+  - /home/staso/GARVIS/audit
+  - /home/staso/GARVIS/intercepts
+  - /home/staso/GARVIS/windmill
+
+network_policy_v1:
+  default: blocked
+  allowed:
+    - internal_garvis_core_network_only
+  forbidden:
+    - public_internet
+    - external_apis
+    - messaging_platforms
+    - cloud_storage
+
+execution_policy_v1:
+  shell_execution: blocked
+  filesystem_write: blocked_except_ephemeral_temp
+  credential_access: blocked
+  outbound_network: blocked
+
+failure_behavior:
+  unknown_request: fail_closed
+  policy_missing: fail_closed
+  mount_violation: shutdown_runtime
+  network_violation: shutdown_runtime
+  execution_violation: shutdown_runtime

@@ -1,0 +1,57 @@
+boundary_preservation_name: GARVIS_BOUNDARY_PRESERVATION
+version: 1
+
+boundary_preservation_principles:
+  - governance_boundaries_must_persist
+  - boundary_erosion_requires_visibility
+  - exceptions_require_traceability
+  - preservation_does_not_imply_authority
+  - foundational_constraints_have_priority
+
+allowed_boundary_functions:
+  - boundary_integrity_assessment
+  - governance_constraint_analysis
+  - alignment_boundary_evaluation
+  - continuity_boundary_validation
+  - authority_boundary_reasoning
+
+forbidden_boundary_functions:
+  - hidden_boundary_modification
+  - self_authorized_exception_creation
+  - governance_constraint_removal
+  - invisible_authority_expansion
+  - autonomous_boundary_redefinition
+
+boundary_constraints:
+  no_hidden_boundary_mutation: true
+  no_unaudited_exception_handling: true
+  no_self_granted_boundary_authority: true
+  no_runtime_override_via_boundary_reasoning: true
+
+boundary_handling:
+  detected_boundary_erosion:
+    action: require_visibility
+
+  conflicting_boundary_conditions:
+    action: require_revalidation
+
+  governance_constraint_loss:
+    action: fail_closed
+
+  hidden_boundary_override_signal:
+    action: critical_lockdown
+
+preservation_rules:
+  preserve_foundational_governance_priority: true
+  preserve_alignment_visibility: true
+  preserve_operator_authority_visibility: true
+
+audit_requirements:
+  preserve_boundary_history: true
+  preserve_constraint_traceability_records: true
+  preserve_exception_visibility_records: true
+
+validation_requirements:
+  preserve_governance_visibility: true
+  preserve_alignment_consistency: true
+  preserve_boundary_traceability: true

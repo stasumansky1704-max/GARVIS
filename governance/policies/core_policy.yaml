@@ -1,0 +1,26 @@
+system_name: GARVIS
+
+core_principles:
+  - governance_before_execution
+  - fail_closed
+  - human_in_the_loop
+  - no_unapproved_execution
+  - no_unapproved_network_access
+  - audit_everything
+
+forbidden_actions:
+  - unrestricted_shell_execution
+  - unrestricted_file_modification
+  - autonomous_external_api_calls
+  - autonomous_offensive_actions
+  - credential_exfiltration
+
+runtime_policy:
+  runtime_is_untrusted: true
+  execution_requires_approval: true
+  interception_required: true
+
+audit_policy:
+  approvals_must_be_logged: true
+  blocked_actions_must_be_logged: true
+  decisions_must_be_logged: true

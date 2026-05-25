@@ -1,0 +1,44 @@
+inspection_name: GARVIS_SELF_INSPECTION
+version: 1
+
+inspection_principles:
+  - introspection_must_be_governed
+  - introspection_must_be_observable
+  - introspection_must_be_audited
+  - introspection_cannot_modify_runtime
+  - introspection_cannot_override_governance
+
+allowed_inspection_targets:
+  - runtime_identity_state
+  - governance_alignment_state
+  - memory_integrity_state
+  - operational_state
+  - continuity_validation_state
+
+forbidden_inspection_targets:
+  - credential_material
+  - host_operating_system
+  - unrestricted_container_access
+  - hidden_background_processes
+  - governance_override_paths
+
+inspection_constraints:
+  read_only_introspection: true
+  no_self_modification: true
+  no_hidden_execution: true
+  no_runtime_override: true
+
+inspection_validation:
+  require_operator_visibility: true
+  require_audit_logging: true
+  require_governance_traceability: true
+
+failure_behavior:
+  unknown_inspection_target: fail_closed
+  forbidden_inspection_attempt: critical_lockdown
+  hidden_introspection_behavior: block_and_audit
+
+validation_requirements:
+  preserve_introspection_history: true
+  preserve_alignment_visibility: true
+  preserve_operational_traceability: true

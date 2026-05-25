@@ -1,0 +1,40 @@
+scoring_name: GARVIS_RETRIEVAL_SCORING
+version: 1
+
+scoring_principles:
+  - direct_operator_relevance_first
+  - validated_memory_priority
+  - explicit_keyword_alignment
+  - governance_alignment_priority
+  - recent_context_bonus
+  - avoid_speculative_association
+
+relevance_weights:
+  direct_topic_match: 10
+  explicit_governance_reference: 8
+  validated_outcome: 7
+  recent_memory_bonus: 4
+  indirect_association: 2
+  speculative_relevance: -5
+
+priority_rules:
+  - prioritize_exact_operator_intent
+  - prioritize_explicit_outcomes
+  - avoid_memory_overgeneralization
+  - avoid_contextual_drift
+  - avoid_invented_relevance
+
+retrieval_failures:
+  selecting_indirect_memory_over_direct_match:
+    severity: high
+
+  speculative_memory_association:
+    severity: medium
+
+  invented_memory_context:
+    severity: critical
+
+validation_requirements:
+  explain_why_memory_was_selected: true
+  explain_why_memory_was_not_selected: true
+  preserve_memory_provenance: true

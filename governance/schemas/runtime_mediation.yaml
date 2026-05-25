@@ -1,0 +1,69 @@
+mediation_name: GARVIS_RUNTIME_MEDIATION
+version: 1
+
+mediation_pipeline:
+  - stage: receive_operator_prompt
+    description: Receive raw local operator prompt
+    output: raw_prompt
+
+  - stage: inject_runtime_identity
+    description: Inject runtime_identity.txt into cognition context
+    input: raw_prompt
+    output: identity_constrained_prompt
+
+  - stage: inject_policy_context
+    description: Inject governance policy constraints and interception scope
+    input: identity_constrained_prompt
+    output: governed_prompt
+
+  - stage: validate_prompt_scope
+    description: Ensure prompt does not violate V1 allowed cognition scope
+    input: governed_prompt
+    output: validated_prompt
+
+  - stage: audit_prompt
+    description: Log prompt hash and mediation metadata
+    input: validated_prompt
+    output: audited_prompt
+
+  - stage: runtime_inference
+    description: Send mediated prompt to governed runtime
+    input: audited_prompt
+    output: runtime_response
+
+  - stage: validate_response
+    description: Detect hallucinated authority or forbidden capability claims
+    input: runtime_response
+    output: validated_response
+
+  - stage: audit_response
+    description: Log runtime response metadata and validation outcome
+    input: validated_response
+    output: audited_response
+
+  - stage: return_response
+    description: Return governed response to operator
+    input: audited_response
+    output: final_response
+
+response_validation_rules:
+  forbidden_claims:
+    - internet_access
+    - external_api_access
+    - shell_execution
+    - filesystem_modification
+    - credential_access
+    - orchestration_control
+    - autonomous_execution
+
+  forbidden_behaviors:
+    - simulated_execution
+    - fabricated_results
+    - fake_confirmations
+    - hidden_tool_claims
+
+failure_behavior:
+  hallucinated_authority: block_response
+  policy_violation: block_response
+  unknown_response_behavior: block_response
+  missing_audit_record: fail_closed

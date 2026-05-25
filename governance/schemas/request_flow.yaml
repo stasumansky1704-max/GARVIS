@@ -1,0 +1,58 @@
+flow_name: GARVIS_REQUEST_FLOW
+version: 1
+
+flow_steps:
+  - step: runtime_generates_request
+    description: Runtime produces an intended action request only
+    output: structured_request
+
+  - step: intercept_request
+    description: GARVIS interception layer receives the request before any execution
+    input: structured_request
+    output: intercepted_request
+
+  - step: classify_action
+    description: Request is classified according to interception_manifest.yaml
+    input: intercepted_request
+    output: action_class
+
+  - step: evaluate_policy
+    description: Request is evaluated against core_policy.yaml and runtime_boundary.yaml
+    input: action_class
+    output: policy_decision
+
+  - step: log_decision
+    description: Decision is written to audit and intercept logs
+    input: policy_decision
+    output: immutable_decision_record
+
+  - step: human_approval_gate
+    description: Human approval is required for anything outside V1 allowed scope
+    input: policy_decision
+    output: approved_or_blocked
+
+  - step: execute_or_block
+    description: Approved actions may continue; blocked actions fail closed
+    input: approved_or_blocked
+    output: final_action_state
+
+v1_default_behavior:
+  unknown_request: block
+  malformed_request: block
+  missing_policy: block
+  missing_audit_path: block
+  missing_human_approval: block
+
+v1_allowed_without_human_approval:
+  - read_only
+  - draft_only
+
+v1_requires_human_approval:
+  - filesystem_write
+  - shell_execution
+  - network_access
+
+v1_always_blocked:
+  - credential_access
+  - destructive_action
+  - offensive_security

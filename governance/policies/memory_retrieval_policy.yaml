@@ -1,0 +1,43 @@
+policy_name: GARVIS_MEMORY_RETRIEVAL_POLICY
+version: 1
+
+retrieval_principles:
+  - retrieval_must_be_explicit
+  - retrieval_must_be_traceable
+  - retrieval_must_be_relevant
+  - retrieval_must_be_governed
+  - memory_is_not_truth_without_validation
+
+allowed_memory_sources:
+  - short_term.active_sessions
+  - episodic.operator_interactions
+  - long_term.validated_knowledge
+
+forbidden_memory_sources_v1:
+  - raw_runtime_logs
+  - blocked_intercepts
+  - failed_cognition_records
+  - unvalidated_external_content
+
+retrieval_requirements:
+  require_source_traceability: true
+  require_timestamp_visibility: true
+  require_memory_origin_visibility: true
+  require_validation_status: true
+
+context_injection_rules:
+  max_memory_items_per_prompt: 3
+  inject_only_relevant_context: true
+  prioritize_recent_validated_memory: true
+  never_inject_unvalidated_memory: true
+
+hallucination_prevention:
+  unknown_memory_origin: block
+  conflicting_memory_records: block
+  unverifiable_memory: block
+  ambiguous_memory_source: block
+
+audit_requirements:
+  log_all_retrieval_events: true
+  log_memory_sources_used: true
+  log_context_injection: true

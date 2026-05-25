@@ -1,0 +1,55 @@
+verification_name: GARVIS_INTEGRITY_VERIFICATION
+version: 1
+
+verification_principles:
+  - integrity_checks_must_be_governed
+  - integrity_checks_must_be_observable
+  - integrity_checks_cannot_modify_runtime
+  - integrity_checks_require_traceability
+  - integrity_checks_require_operator_visibility
+
+verification_targets:
+  - runtime_identity_integrity
+  - governance_alignment_integrity
+  - memory_consistency_integrity
+  - operational_state_integrity
+  - continuity_integrity
+
+verification_constraints:
+  read_only_verification: true
+  no_runtime_modification: true
+  no_hidden_corrections: true
+  no_governance_override: true
+
+integrity_failure_conditions:
+  identity_drift_detected:
+    severity: critical
+
+  governance_inconsistency_detected:
+    severity: critical
+
+  hallucinated_capability_emergence:
+    severity: high
+
+  continuity_break_detected:
+    severity: medium
+
+verification_response:
+  critical:
+    action: fail_closed_and_audit
+
+  high:
+    action: block_and_require_review
+
+  medium:
+    action: require_revalidation
+
+audit_requirements:
+  log_all_integrity_checks: true
+  log_integrity_failures: true
+  preserve_verification_history: true
+
+validation_requirements:
+  preserve_alignment_traceability: true
+  preserve_integrity_visibility: true
+  preserve_governance_consistency: true

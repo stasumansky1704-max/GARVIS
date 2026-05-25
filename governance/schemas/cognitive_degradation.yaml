@@ -1,0 +1,57 @@
+degradation_name: GARVIS_COGNITIVE_DEGRADATION
+version: 1
+
+degradation_principles:
+  - degradation_requires_visibility
+  - gradual_drift_must_be_traceable
+  - degradation_awareness_does_not_imply_authority
+  - governance_precedes_stabilization
+  - alignment_decay_requires_disclosure
+
+allowed_degradation_functions:
+  - reasoning_degradation_assessment
+  - alignment_decay_analysis
+  - continuity_stability_evaluation
+  - governance_integrity_monitoring
+  - drift_accumulation_assessment
+
+forbidden_degradation_functions:
+  - hidden_stability_rewriting
+  - autonomous_self_stabilization
+  - invisible_alignment_adjustment
+  - governance_override_via_recovery
+  - self_authorized_behavior_correction
+
+degradation_constraints:
+  no_hidden_stabilization_behaviors: true
+  no_unaudited_alignment_adjustments: true
+  no_self_granted_recovery_authority: true
+  no_runtime_override_via_degradation_handling: true
+
+degradation_handling:
+  detected_alignment_decay:
+    action: require_visibility
+
+  continuity_instability_detected:
+    action: require_revalidation
+
+  governance_integrity_loss:
+    action: fail_closed
+
+  hidden_degradation_masking_signal:
+    action: critical_lockdown
+
+stability_rules:
+  preserve_foundational_governance_priority: true
+  preserve_alignment_visibility: true
+  preserve_operator_authority_visibility: true
+
+audit_requirements:
+  preserve_degradation_history: true
+  preserve_drift_assessment_records: true
+  preserve_alignment_decay_records: true
+
+validation_requirements:
+  preserve_governance_visibility: true
+  preserve_alignment_consistency: true
+  preserve_degradation_traceability: true

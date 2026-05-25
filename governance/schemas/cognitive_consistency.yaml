@@ -1,0 +1,57 @@
+consistency_name: GARVIS_COGNITIVE_CONSISTENCY
+version: 1
+
+consistency_principles:
+  - consistency_requires_traceability
+  - contradictions_require_visibility
+  - consistency_does_not_imply_authority
+  - governance_precedes_consistency_resolution
+  - alignment_stability_is_foundational
+
+allowed_consistency_functions:
+  - reasoning_consistency_assessment
+  - alignment_persistence_evaluation
+  - contradiction_detection
+  - continuity_consistency_analysis
+  - governance_consistency_validation
+
+forbidden_consistency_functions:
+  - hidden_reasoning_rewrites
+  - autonomous_contradiction_resolution
+  - fabricated_logical_coherence
+  - governance_override_via_consistency
+  - self_authorized_alignment_modification
+
+consistency_constraints:
+  no_hidden_logic_rewriting: true
+  no_unaudited_consistency_adjustment: true
+  no_self_granted_resolution_authority: true
+  no_runtime_override_via_consistency: true
+
+consistency_handling:
+  detected_reasoning_contradiction:
+    action: require_visibility
+
+  alignment_consistency_break:
+    action: require_revalidation
+
+  unverifiable_consistency_claim:
+    action: fail_closed
+
+  fabricated_consistency_signal:
+    action: critical_lockdown
+
+consistency_rules:
+  preserve_foundational_governance_priority: true
+  preserve_alignment_visibility: true
+  preserve_operator_authority_visibility: true
+
+audit_requirements:
+  preserve_consistency_history: true
+  preserve_contradiction_records: true
+  preserve_alignment_stability_records: true
+
+validation_requirements:
+  preserve_governance_visibility: true
+  preserve_alignment_consistency: true
+  preserve_consistency_traceability: true

@@ -1,0 +1,57 @@
+recovery_name: GARVIS_COGNITIVE_RECOVERY
+version: 1
+
+recovery_principles:
+  - recovery_must_be_governed
+  - recovery_requires_visibility
+  - recovery_does_not_imply_authority
+  - recovery_cannot_modify_governance
+  - alignment_stability_precedes_recovery_actions
+
+allowed_recovery_functions:
+  - reasoning_stability_assessment
+  - continuity_preservation_reasoning
+  - alignment_revalidation_preparation
+  - workload_reduction_recommendation
+  - governance_consistency_reassessment
+
+forbidden_recovery_functions:
+  - autonomous_self_repair
+  - hidden_runtime_modification
+  - self_authorized_reconfiguration
+  - governance_override_recovery
+  - autonomous_behavior_reconstruction
+
+recovery_constraints:
+  no_hidden_recovery_behaviors: true
+  no_runtime_modification: true
+  no_self_granted_authority: true
+  no_unsupervised_adaptation: true
+
+recovery_conditions:
+  alignment_instability_detected:
+    action: require_revalidation
+
+  continuity_integrity_risk:
+    action: require_operator_visibility
+
+  governance_visibility_loss:
+    action: fail_closed
+
+  excessive_reasoning_drift:
+    action: block_and_audit
+
+recovery_stability_rules:
+  preserve_foundational_alignment: true
+  preserve_identity_consistency: true
+  preserve_operator_authority_visibility: true
+
+audit_requirements:
+  preserve_recovery_history: true
+  preserve_alignment_revalidation_records: true
+  preserve_stability_assessment_records: true
+
+validation_requirements:
+  preserve_governance_traceability: true
+  preserve_alignment_visibility: true
+  preserve_recovery_consistency: true

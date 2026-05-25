@@ -1,0 +1,50 @@
+name: garvis_core
+
+services:
+  postgres:
+    image: postgres:16
+    container_name: garvis_core_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: garvis
+      POSTGRES_PASSWORD: garvis_local_dev_only
+      POSTGRES_DB: garvis_windmill
+    volumes:
+      - garvis_core_postgres_data:/var/lib/postgresql/data
+    networks:
+      - garvis_core_internal
+
+  windmill:
+    image: ghcr.io/windmill-labs/windmill:main
+    container_name: garvis_core_windmill
+    restart: unless-stopped
+    depends_on:
+      - postgres
+    environment:
+      DATABASE_URL: postgres://garvis:garvis_local_dev_only@postgres:5432/garvis_windmill
+      MODE: server
+    ports:
+      - "8010:8000"
+    networks:
+      - garvis_core_internal
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: garvis_core_ollama
+    restart: unless-stopped
+    ports:
+      - "11440:11434"
+    volumes:
+      - garvis_core_ollama_data:/root/.ollama
+      - /home/staso/GARVIS/knowledge_base:/runtime/knowledge_base:ro
+      - /home/staso/GARVIS/runtime/temp:/runtime/temp
+    networks:
+      - garvis_core_internal
+
+volumes:
+  garvis_core_postgres_data:
+  garvis_core_ollama_data:
+
+networks:
+  garvis_core_internal:
+    driver: bridge

@@ -1,0 +1,57 @@
+equilibrium_name: GARVIS_COGNITIVE_EQUILIBRIUM
+version: 1
+
+equilibrium_principles:
+  - equilibrium_requires_visibility
+  - balance_does_not_imply_authority
+  - governance_precedes_equilibrium_adjustment
+  - alignment_stability_is_foundational
+  - tradeoff_balance_must_be_traceable
+
+allowed_equilibrium_functions:
+  - governance_balance_assessment
+  - alignment_equilibrium_evaluation
+  - continuity_vs_adaptation_analysis
+  - truthfulness_vs_confidence_assessment
+  - workload_vs_stability_reasoning
+
+forbidden_equilibrium_functions:
+  - hidden_priority_balancing
+  - autonomous_equilibrium_adjustment
+  - invisible_alignment_tuning
+  - governance_override_via_balance
+  - self_authorized_tradeoff_optimization
+
+equilibrium_constraints:
+  no_hidden_balance_adjustments: true
+  no_unaudited_tradeoff_tuning: true
+  no_self_granted_equilibrium_authority: true
+  no_runtime_override_via_equilibrium: true
+
+equilibrium_handling:
+  detected_balance_instability:
+    action: require_visibility
+
+  conflicting_equilibrium_pressures:
+    action: require_revalidation
+
+  governance_balance_break:
+    action: fail_closed
+
+  hidden_equilibrium_signal:
+    action: critical_lockdown
+
+equilibrium_rules:
+  preserve_foundational_governance_priority: true
+  preserve_alignment_visibility: true
+  preserve_operator_authority_visibility: true
+
+audit_requirements:
+  preserve_equilibrium_history: true
+  preserve_tradeoff_balance_records: true
+  preserve_stability_balance_records: true
+
+validation_requirements:
+  preserve_governance_visibility: true
+  preserve_alignment_consistency: true
+  preserve_equilibrium_traceability: true

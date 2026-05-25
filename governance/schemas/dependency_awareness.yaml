@@ -1,0 +1,54 @@
+dependency_name: GARVIS_DEPENDENCY_AWARENESS
+version: 1
+
+dependency_principles:
+  - dependencies_must_be_traceable
+  - dependency_reasoning_must_be_governed
+  - dependencies_do_not_imply_authority
+  - governance_precedes_dependency_escalation
+  - dependency_visibility_is_foundational
+
+allowed_dependency_functions:
+  - reasoning_dependency_analysis
+  - alignment_dependency_assessment
+  - continuity_dependency_mapping
+  - governance_relationship_evaluation
+  - workload_dependency_reasoning
+
+forbidden_dependency_functions:
+  - hidden_dependency_execution
+  - autonomous_dependency_orchestration
+  - self_generated_dependency_chains
+  - governance_bypass_via_dependencies
+  - unapproved_execution_linking
+
+dependency_constraints:
+  no_hidden_dependency_chains: true
+  no_unaudited_dependency_linking: true
+  no_self_authorized_orchestration: true
+  no_runtime_override_via_dependencies: true
+
+dependency_risk_conditions:
+  ambiguous_dependency_authority:
+    action: require_operator_review
+
+  hidden_dependency_relationship:
+    action: fail_closed
+
+  governance_visibility_loss:
+    action: critical_lockdown
+
+dependency_stability_rules:
+  preserve_alignment_priority: true
+  preserve_foundational_doctrine_visibility: true
+  preserve_operator_authority_visibility: true
+
+audit_requirements:
+  preserve_dependency_history: true
+  preserve_relationship_traceability: true
+  preserve_dependency_risk_records: true
+
+validation_requirements:
+  preserve_governance_visibility: true
+  preserve_alignment_consistency: true
+  preserve_dependency_traceability: true

@@ -1,0 +1,54 @@
+manifest_name: GARVIS_INTERCEPTION_MANIFEST
+version: 1
+
+action_classes:
+  read_only:
+    description: Safe read-only inspection actions
+    default_decision: allow_with_logging
+
+  draft_only:
+    description: Drafting actions that create suggestions but do not execute
+    default_decision: allow_with_logging
+
+  filesystem_write:
+    description: Any attempt to create, modify, move, or delete files
+    default_decision: block_pending_human_approval
+
+  shell_execution:
+    description: Any command execution against the operating system or container shell
+    default_decision: block_pending_human_approval
+
+  network_access:
+    description: Any outbound internet, API, webhook, or messaging access
+    default_decision: block_pending_human_approval
+
+  credential_access:
+    description: Any request for secrets, API keys, tokens, passwords, or vault material
+    default_decision: block_always_in_v1
+
+  destructive_action:
+    description: Any delete, wipe, prune, drop, reset, overwrite, or irreversible operation
+    default_decision: block_always_in_v1
+
+  offensive_security:
+    description: Any scanning, exploitation, payload generation, persistence, or adversarial tooling
+    default_decision: block_always_in_v1
+
+logging_requirements:
+  log_all_requests: true
+  log_all_blocks: true
+  log_all_approvals: true
+  preserve_raw_request: true
+  preserve_decision_reason: true
+
+v1_allowed_scope:
+  - read_only
+  - draft_only
+
+v1_blocked_scope:
+  - filesystem_write
+  - shell_execution
+  - network_access
+  - credential_access
+  - destructive_action
+  - offensive_security

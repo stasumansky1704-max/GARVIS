@@ -1,0 +1,59 @@
+runtime_name: GARVIS_OLLAMA_RUNTIME
+version: 1
+
+runtime_role:
+  purpose: local_inference_only
+  orchestration_authority: none
+  execution_authority: none
+  governance_subordinate: true
+
+container_policy:
+  privileged: false
+  read_only_root_filesystem: true
+  allow_privilege_escalation: false
+
+network_policy:
+  outbound_internet: blocked
+  external_api_access: blocked
+  internal_garvis_network_only: true
+
+filesystem_policy:
+  writable_paths:
+    - /runtime/temp
+
+  read_only_paths:
+    - /runtime/knowledge_base
+
+  forbidden_paths:
+    - /mnt/c
+    - /mnt/host
+    - /runtime/governance
+    - /runtime/audit
+    - /runtime/intercepts
+
+runtime_capabilities:
+  inference_only: true
+  shell_execution: false
+  filesystem_write: false
+  docker_access: false
+  orchestration_control: false
+  credential_access: false
+
+allowed_model_scope_v1:
+  - small_local_models_only
+
+forbidden_model_scope_v1:
+  - autonomous_agents
+  - tool_using_models
+  - self_modifying_systems
+
+logging_requirements:
+  log_all_prompts: true
+  log_all_responses: true
+  log_runtime_failures: true
+  preserve_prompt_hashes: true
+
+failure_behavior:
+  unknown_runtime_behavior: terminate_runtime
+  policy_violation: terminate_runtime
+  network_violation: terminate_runtime

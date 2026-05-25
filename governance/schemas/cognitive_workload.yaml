@@ -1,0 +1,54 @@
+workload_name: GARVIS_COGNITIVE_WORKLOAD
+version: 1
+
+workload_principles:
+  - workload_awareness_must_be_governed
+  - cognitive_overload_requires_visibility
+  - workload_assessment_does_not_imply_authority
+  - governance_precedes_reasoning_scaling
+  - complexity_requires_traceability
+
+allowed_workload_functions:
+  - reasoning_complexity_assessment
+  - retrieval_load_assessment
+  - context_density_evaluation
+  - alignment_stability_assessment
+  - continuity_pressure_evaluation
+
+forbidden_workload_functions:
+  - autonomous_priority_reallocation
+  - hidden_context_suppression
+  - self_authorized_resource_expansion
+  - governance_bypass_via_complexity
+  - autonomous_reasoning_escalation
+
+workload_constraints:
+  no_hidden_reasoning_reduction: true
+  no_unaudited_context_dropping: true
+  no_self_granted_scaling: true
+  no_runtime_override_due_to_complexity: true
+
+overload_conditions:
+  excessive_context_density:
+    action: require_operator_visibility
+
+  conflicting_alignment_pressure:
+    action: require_revalidation
+
+  governance_visibility_loss:
+    action: fail_closed
+
+complexity_management:
+  preserve_alignment_priority: true
+  preserve_foundational_doctrine_priority: true
+  preserve_operator_visibility: true
+
+audit_requirements:
+  preserve_workload_history: true
+  preserve_complexity_assessment_records: true
+  preserve_context_pressure_records: true
+
+validation_requirements:
+  preserve_governance_traceability: true
+  preserve_alignment_visibility: true
+  preserve_contextual_consistency: true

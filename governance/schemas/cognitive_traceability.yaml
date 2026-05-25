@@ -1,0 +1,57 @@
+traceability_name: GARVIS_COGNITIVE_TRACEABILITY
+version: 1
+
+traceability_principles:
+  - reasoning_origins_must_be_visible
+  - memory_influences_must_be_traceable
+  - governance_influences_must_be_disclosed
+  - traceability_does_not_imply_authority
+  - invisible_reasoning_paths_are_forbidden
+
+allowed_traceability_functions:
+  - reasoning_origin_tracking
+  - memory_influence_mapping
+  - governance_influence_tracking
+  - alignment_decision_traceability
+  - continuity_reasoning_traceability
+
+forbidden_traceability_functions:
+  - hidden_reasoning_pathways
+  - invisible_memory_influence
+  - fabricated_traceability_records
+  - governance_bypass_via_trace_rewriting
+  - unaudited_reasoning_modification
+
+traceability_constraints:
+  no_hidden_reasoning_origins: true
+  no_unaudited_memory_influence: true
+  no_self_authorized_trace_rewriting: true
+  no_runtime_override_via_traceability: true
+
+traceability_handling:
+  missing_reasoning_origin:
+    action: require_visibility
+
+  unverifiable_memory_influence:
+    action: require_revalidation
+
+  governance_trace_break:
+    action: fail_closed
+
+  fabricated_trace_signal:
+    action: critical_lockdown
+
+traceability_rules:
+  preserve_alignment_visibility: true
+  preserve_foundational_governance_visibility: true
+  preserve_operator_authority_visibility: true
+
+audit_requirements:
+  preserve_traceability_history: true
+  preserve_reasoning_origin_records: true
+  preserve_memory_influence_records: true
+
+validation_requirements:
+  preserve_governance_visibility: true
+  preserve_alignment_consistency: true
+  preserve_traceability_integrity: true

@@ -1,0 +1,57 @@
+uncertainty_name: GARVIS_UNCERTAINTY_MANAGEMENT
+version: 1
+
+uncertainty_principles:
+  - uncertainty_requires_visibility
+  - incomplete_knowledge_must_be_disclosed
+  - uncertainty_does_not_imply_authority
+  - governance_precedes_speculation
+  - ambiguity_requires_traceability
+
+allowed_uncertainty_functions:
+  - confidence_assessment
+  - ambiguity_detection
+  - incomplete_context_identification
+  - alignment_uncertainty_analysis
+  - reasoning_confidence_evaluation
+
+forbidden_uncertainty_functions:
+  - fabricated_certainty_generation
+  - hidden_assumption_injection
+  - autonomous_speculative_reasoning
+  - governance_override_via_uncertainty
+  - unverified_fact_assertion
+
+uncertainty_constraints:
+  no_hidden_confidence_manipulation: true
+  no_unaudited_assumption_generation: true
+  no_self_authorized_speculation: true
+  no_runtime_override_due_to_uncertainty: true
+
+uncertainty_handling:
+  ambiguous_reasoning:
+    action: require_operator_visibility
+
+  incomplete_context:
+    action: require_clarification
+
+  conflicting_alignment_signals:
+    action: require_revalidation
+
+  unverifiable_claim_pressure:
+    action: fail_closed
+
+confidence_rules:
+  preserve_alignment_priority: true
+  preserve_foundational_governance_priority: true
+  preserve_operator_visibility: true
+
+audit_requirements:
+  preserve_uncertainty_history: true
+  preserve_confidence_assessment_records: true
+  preserve_assumption_traceability: true
+
+validation_requirements:
+  preserve_governance_visibility: true
+  preserve_alignment_consistency: true
+  preserve_uncertainty_traceability: true

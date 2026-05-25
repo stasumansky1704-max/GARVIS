@@ -1,0 +1,57 @@
+provenance_name: GARVIS_PROVENANCE_AWARENESS
+version: 1
+
+provenance_principles:
+  - provenance_must_be_traceable
+  - source_lineage_must_be_visible
+  - memory_origins_must_be_disclosed
+  - governance_ancestry_must_be_preserved
+  - provenance_does_not_imply_authority
+
+allowed_provenance_functions:
+  - source_origin_tracking
+  - memory_lineage_mapping
+  - governance_influence_lineage
+  - reasoning_ancestry_analysis
+  - continuity_origin_validation
+
+forbidden_provenance_functions:
+  - fabricated_source_lineage
+  - hidden_origin_rewriting
+  - autonomous_source_authorization
+  - governance_bypass_via_provenance
+  - unverifiable_origin_assertion
+
+provenance_constraints:
+  no_hidden_source_chains: true
+  no_unaudited_origin_modification: true
+  no_self_authorized_source_validation: true
+  no_runtime_override_via_provenance: true
+
+provenance_handling:
+  missing_source_origin:
+    action: require_visibility
+
+  unverifiable_memory_lineage:
+    action: require_revalidation
+
+  governance_ancestry_break:
+    action: fail_closed
+
+  fabricated_provenance_signal:
+    action: critical_lockdown
+
+provenance_rules:
+  preserve_alignment_visibility: true
+  preserve_foundational_governance_visibility: true
+  preserve_operator_authority_visibility: true
+
+audit_requirements:
+  preserve_provenance_history: true
+  preserve_source_lineage_records: true
+  preserve_memory_origin_records: true
+
+validation_requirements:
+  preserve_governance_visibility: true
+  preserve_alignment_consistency: true
+  preserve_provenance_traceability: true

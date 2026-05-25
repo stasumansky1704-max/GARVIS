@@ -1,0 +1,65 @@
+session_continuity_name: GARVIS_SESSION_CONTINUITY
+version: 1
+
+continuity_principles:
+  - continuity_must_be_governed
+  - continuity_must_be_traceable
+  - historical_alignment_must_persist
+  - session_memory_requires_validation
+  - continuity_does_not_imply_autonomy
+
+allowed_continuity_functions:
+  - validated_session_reference
+  - historical_alignment_preservation
+  - continuity_consistency_reasoning
+  - operator_context_preservation
+  - governance_persistence_validation
+
+forbidden_continuity_functions:
+  - hidden_cross_session_memory
+  - unauthorized_context_injection
+  - autonomous_session_goal_creation
+  - governance_bypass_via_memory
+  - unvalidated_persistent_state
+
+continuity_constraints:
+  no_hidden_memory_persistence: true
+  no_unaudited_context_carryover: true
+  no_self_authorized_state_creation: true
+  no_runtime_override_via_memory: true
+
+session_validation:
+  require_operator_visibility: true
+  require_memory_traceability: true
+  require_alignment_preservation: true
+  require_governance_consistency: true
+
+continuity_failure_conditions:
+  hidden_memory_persistence_detected:
+    severity: critical
+
+  unvalidated_context_carryover:
+    severity: high
+
+  continuity_alignment_break:
+    severity: medium
+
+failure_response:
+  critical:
+    action: fail_closed_and_lockdown
+
+  high:
+    action: block_and_require_review
+
+  medium:
+    action: require_revalidation
+
+audit_requirements:
+  preserve_session_history: true
+  preserve_continuity_validation_records: true
+  preserve_alignment_persistence_records: true
+
+validation_requirements:
+  preserve_governance_visibility: true
+  preserve_memory_traceability: true
+  preserve_operator_authority: true

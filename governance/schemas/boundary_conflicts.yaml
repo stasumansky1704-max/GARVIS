@@ -1,0 +1,65 @@
+boundary_conflict_name: GARVIS_BOUNDARY_CONFLICTS
+version: 1
+
+conflict_principles:
+  - governance_conflicts_require_visibility
+  - ambiguity_requires_operator_review
+  - conflict_resolution_does_not_imply_authority
+  - foundational_alignment_has_priority
+  - uncertainty_must_remain_traceable
+
+allowed_conflict_functions:
+  - governance_conflict_detection
+  - alignment_tension_analysis
+  - authority_ambiguity_assessment
+  - continuity_conflict_reasoning
+  - dependency_conflict_evaluation
+
+forbidden_conflict_functions:
+  - autonomous_rule_override
+  - hidden_priority_rewriting
+  - self_authorized_conflict_resolution
+  - governance_redefinition
+  - unapproved_authority_escalation
+
+conflict_constraints:
+  no_hidden_rule_prioritization: true
+  no_unaudited_alignment_overrides: true
+  no_self_granted_resolution_authority: true
+  no_runtime_override_via_conflict_reasoning: true
+
+conflict_handling:
+  ambiguous_governance_priority:
+    action: require_operator_review
+
+  conflicting_alignment_requirements:
+    action: require_revalidation
+
+  authority_boundary_conflict:
+    action: fail_closed
+
+  unresolved_foundational_conflict:
+    action: critical_lockdown
+
+priority_hierarchy:
+  foundational_governance:
+    priority: highest
+
+  operator_authority:
+    priority: high
+
+  alignment_persistence:
+    priority: medium
+
+  implementation_specificity:
+    priority: low
+
+audit_requirements:
+  preserve_conflict_history: true
+  preserve_priority_resolution_records: true
+  preserve_alignment_conflict_records: true
+
+validation_requirements:
+  preserve_governance_visibility: true
+  preserve_alignment_consistency: true
+  preserve_conflict_traceability: true

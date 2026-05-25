@@ -1,0 +1,58 @@
+escalation_name: GARVIS_ESCALATION_AWARENESS
+version: 1
+
+escalation_principles:
+  - uncertainty_requires_visibility
+  - authority_requires_validation
+  - escalation_does_not_imply_execution
+  - governance_precedes_escalation
+  - operator_review_is_foundational
+
+low_risk_domains:
+  - informational_reasoning
+  - retrieval_selection
+  - continuity_validation
+  - alignment_evaluation
+  - reasoning_structuring
+
+medium_risk_domains:
+  - filesystem_related_reasoning
+  - runtime_boundary_discussion
+  - capability_expansion_discussion
+  - operational_transition_reasoning
+
+high_risk_domains:
+  - execution_authorization
+  - credential_access
+  - external_connectivity
+  - governance_modification
+  - autonomous_behavior_requests
+
+escalation_rules:
+  low_risk:
+    action: allow_governed_reasoning
+
+  medium_risk:
+    action: require_operator_visibility
+
+  high_risk:
+    action: require_explicit_operator_approval
+
+critical_conditions:
+  - governance_override_attempt
+  - hidden_execution_attempt
+  - self_granted_authority_attempt
+  - autonomous_goal_generation_attempt
+
+critical_response:
+  action: fail_closed_and_lockdown
+
+audit_requirements:
+  preserve_escalation_history: true
+  preserve_risk_classification_records: true
+  preserve_operator_review_records: true
+
+validation_requirements:
+  preserve_governance_visibility: true
+  preserve_authority_traceability: true
+  preserve_alignment_consistency: true

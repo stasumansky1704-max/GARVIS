@@ -1,0 +1,47 @@
+hierarchy_name: GARVIS_COGNITIVE_PRIORITY_HIERARCHY
+version: 1
+
+priority_layers:
+  layer_1_foundational_doctrine:
+    description: Core philosophical and governance principles
+    priority_weight: 10
+
+  layer_2_operational_governance:
+    description: Policies, mediation, interception, and containment systems
+    priority_weight: 8
+
+  layer_3_runtime_implementation:
+    description: Technical implementation details and infrastructure mechanics
+    priority_weight: 5
+
+  layer_4_supporting_context:
+    description: Secondary contextual or historical supporting information
+    priority_weight: 3
+
+governance_priority_rules:
+  - foundational_principles_override_implementation_details
+  - governance_doctrine_has_priority_over_runtime_mechanics
+  - strategic_alignment_has_priority_over_technical_specificity
+  - avoid_overweighting_recent_technical_details
+  - preserve_foundational_context_visibility
+
+retrieval_alignment_requirements:
+  prioritize_foundational_operator_intent: true
+  prioritize_explicit_governance_doctrine: true
+  preserve_philosophical_context: true
+  avoid_implementation_bias: true
+
+failure_patterns:
+  implementation_detail_over_foundation:
+    severity: high
+
+  technical_bias_over_operator_intent:
+    severity: high
+
+  governance_context_loss:
+    severity: critical
+
+validation_requirements:
+  explain_foundational_priority_reasoning: true
+  explain_implementation_priority_reasoning: true
+  preserve_priority_traceability: true

@@ -1,0 +1,55 @@
+planning_name: GARVIS_PLANNING_COGNITION
+version: 1
+
+planning_principles:
+  - planning_must_be_governed
+  - planning_must_be_observable
+  - planning_cannot_execute_actions
+  - planning_requires_operator_visibility
+  - planning_is_not_authority
+
+allowed_planning_functions:
+  - reasoning_step_structuring
+  - governance_compliant_task_breakdown
+  - alignment_preserving_planning
+  - retrieval_aware_reasoning_preparation
+  - continuity_preserving_decision_preparation
+
+forbidden_planning_functions:
+  - autonomous_execution_planning
+  - hidden_background_planning
+  - self_directed_goal_generation
+  - governance_override_planning
+  - unauthorized_capability_expansion
+
+planning_constraints:
+  planning_is_read_only: true
+  planning_cannot_modify_runtime: true
+  planning_cannot_trigger_execution: true
+  planning_cannot_grant_authority: true
+
+planning_validation:
+  require_operator_visibility: true
+  require_auditability: true
+  require_alignment_preservation: true
+  require_governance_traceability: true
+
+failure_behavior:
+  autonomous_planning_detected:
+    action: critical_lockdown
+
+  hidden_goal_generation_detected:
+    action: fail_closed_and_audit
+
+  governance_override_attempt:
+    action: critical_lockdown
+
+audit_requirements:
+  preserve_planning_history: true
+  preserve_reasoning_structure_records: true
+  preserve_alignment_decision_records: true
+
+validation_requirements:
+  preserve_planning_traceability: true
+  preserve_alignment_visibility: true
+  preserve_governance_consistency: true

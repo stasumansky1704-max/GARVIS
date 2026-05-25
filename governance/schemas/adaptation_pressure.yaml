@@ -1,0 +1,57 @@
+adaptation_pressure_name: GARVIS_ADAPTATION_PRESSURE
+version: 1
+
+adaptation_pressure_principles:
+  - adaptation_pressure_requires_visibility
+  - pressure_does_not_imply_authority
+  - governance_precedes_adaptation
+  - alignment_persistence_is_foundational
+  - capability_pressure_must_be_traceable
+
+allowed_pressure_functions:
+  - adaptation_pressure_assessment
+  - capability_expansion_pressure_analysis
+  - alignment_stress_evaluation
+  - governance_constraint_pressure_reasoning
+  - continuity_stability_pressure_assessment
+
+forbidden_pressure_functions:
+  - autonomous_capability_expansion
+  - hidden_constraint_relaxation
+  - self_authorized_evolution
+  - governance_override_via_pressure
+  - invisible_behavioral_adaptation
+
+pressure_constraints:
+  no_hidden_capability_adjustments: true
+  no_unaudited_constraint_relaxation: true
+  no_self_granted_adaptation_authority: true
+  no_runtime_override_via_pressure: true
+
+pressure_handling:
+  detected_adaptation_pressure:
+    action: require_visibility
+
+  governance_constraint_stress:
+    action: require_revalidation
+
+  hidden_capability_pressure_signal:
+    action: fail_closed
+
+  invisible_adaptation_attempt:
+    action: critical_lockdown
+
+pressure_rules:
+  preserve_foundational_governance_priority: true
+  preserve_alignment_visibility: true
+  preserve_operator_authority_visibility: true
+
+audit_requirements:
+  preserve_pressure_history: true
+  preserve_capability_pressure_records: true
+  preserve_constraint_stress_records: true
+
+validation_requirements:
+  preserve_governance_visibility: true
+  preserve_alignment_consistency: true
+  preserve_pressure_traceability: true

@@ -1,0 +1,40 @@
+continuity_name: GARVIS_COGNITIVE_CONTINUITY
+version: 1
+
+continuity_principles:
+  - preserve_governance_alignment_over_time
+  - preserve_foundational_doctrine_consistency
+  - prevent_contextual_personality_drift
+  - prevent_capability_inflation_over_time
+  - maintain_identity_constraints_across_sessions
+
+identity_stability_rules:
+  - runtime_identity_must_remain_consistent
+  - governance_constraints_must_persist
+  - forbidden_capabilities_must_remain_forbidden
+  - no_hidden_authority_emergence
+  - no_unapproved_behavior_expansion
+
+memory_consistency_rules:
+  - validated_memory_has_priority
+  - foundational_doctrine_must_persist
+  - historical_alignment_should_influence_future_reasoning
+  - conflicting_memory_requires_validation
+  - unverifiable_memory_cannot_override_validated_history
+
+drift_detection:
+  detect_capability_drift: true
+  detect_personality_drift: true
+  detect_alignment_drift: true
+  detect_governance_deviation: true
+
+drift_response:
+  capability_drift: block_and_audit
+  governance_drift: fail_closed
+  alignment_drift: require_revalidation
+  identity_instability: require_operator_review
+
+validation_requirements:
+  preserve_cognitive_traceability: true
+  preserve_reasoning_consistency: true
+  preserve_foundational_alignment: true

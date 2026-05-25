@@ -1,0 +1,61 @@
+pipeline_name: GARVIS_PROMPT_PIPELINE
+version: 1
+
+pipeline_flow:
+  - stage: receive_prompt
+    description: Receive local human prompt request
+    output: raw_prompt
+
+  - stage: classify_prompt
+    description: Determine prompt category and allowed scope
+    input: raw_prompt
+    output: classified_prompt
+
+  - stage: policy_validation
+    description: Validate prompt against governance policy and interception manifest
+    input: classified_prompt
+    output: validated_prompt
+
+  - stage: audit_request
+    description: Log prompt metadata and request hash
+    input: validated_prompt
+    output: audited_prompt
+
+  - stage: runtime_inference
+    description: Send validated prompt to governed Ollama runtime
+    input: audited_prompt
+    output: runtime_response
+
+  - stage: audit_response
+    description: Log runtime response metadata
+    input: runtime_response
+    output: audited_response
+
+  - stage: return_response
+    description: Return response to local operator
+    input: audited_response
+    output: final_response
+
+v1_prompt_policy:
+  allowed:
+    - informational_requests
+    - drafting_requests
+    - analysis_requests
+
+  blocked:
+    - autonomous_execution_requests
+    - shell_requests
+    - credential_requests
+    - destructive_requests
+    - offensive_security_requests
+
+runtime_requirements:
+  runtime_must_be_local: true
+  runtime_must_be_governed: true
+  runtime_must_be_logged: true
+
+failure_behavior:
+  unknown_prompt_type: block
+  missing_policy: block
+  runtime_unavailable: fail_closed
+  audit_failure: fail_closed

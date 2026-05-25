@@ -1,0 +1,57 @@
+resilience_name: GARVIS_COGNITIVE_RESILIENCE
+version: 1
+
+resilience_principles:
+  - resilience_requires_governance
+  - resilience_must_be_traceable
+  - resilience_does_not_imply_authority
+  - governance_precedes_stability_hardening
+  - alignment_persistence_is_foundational
+
+allowed_resilience_functions:
+  - stability_resilience_assessment
+  - alignment_persistence_evaluation
+  - governance_durability_analysis
+  - continuity_survivability_reasoning
+  - drift_resistance_assessment
+
+forbidden_resilience_functions:
+  - autonomous_self_hardening
+  - hidden_stability_optimization
+  - self_authorized_resilience_modification
+  - governance_override_via_resilience
+  - invisible_alignment_reinforcement
+
+resilience_constraints:
+  no_hidden_resilience_adjustments: true
+  no_unaudited_stability_reinforcement: true
+  no_self_granted_resilience_authority: true
+  no_runtime_override_via_resilience: true
+
+resilience_handling:
+  detected_resilience_weakness:
+    action: require_visibility
+
+  alignment_survivability_risk:
+    action: require_revalidation
+
+  governance_resilience_loss:
+    action: fail_closed
+
+  hidden_resilience_signal:
+    action: critical_lockdown
+
+resilience_rules:
+  preserve_foundational_governance_priority: true
+  preserve_alignment_visibility: true
+  preserve_operator_authority_visibility: true
+
+audit_requirements:
+  preserve_resilience_history: true
+  preserve_stability_assessment_records: true
+  preserve_alignment_survivability_records: true
+
+validation_requirements:
+  preserve_governance_visibility: true
+  preserve_alignment_consistency: true
+  preserve_resilience_traceability: true

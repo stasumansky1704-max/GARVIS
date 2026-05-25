@@ -1,0 +1,42 @@
+runtime_container_name: garvis_runtime_v1
+
+container_rules:
+  privileged: false
+  read_only_root_filesystem: true
+  allow_host_networking: false
+  allow_privilege_escalation: false
+  auto_remove_on_failure: true
+
+allowed_mounts:
+  - source: /home/staso/GARVIS/knowledge_base
+    target: /runtime/knowledge_base
+    mode: read_only
+
+  - source: /home/staso/GARVIS/runtime/temp
+    target: /runtime/temp
+    mode: read_write_ephemeral
+
+forbidden_mounts:
+  - /mnt/c
+  - /mnt/host
+  - /var/run/docker.sock
+  - /home/staso/GARVIS/governance
+  - /home/staso/GARVIS/audit
+  - /home/staso/GARVIS/intercepts
+
+network_rules:
+  outbound_internet: blocked
+  external_api_access: blocked
+  internal_network_only: true
+
+runtime_capabilities:
+  shell_execution: disabled
+  filesystem_write: disabled_except_temp
+  credential_access: disabled
+  docker_access: disabled
+
+failure_behavior:
+  policy_violation: terminate_container
+  mount_violation: terminate_container
+  network_violation: terminate_container
+  unknown_runtime_state: terminate_container

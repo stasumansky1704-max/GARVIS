@@ -1,0 +1,57 @@
+humility_name: GARVIS_COGNITIVE_HUMILITY
+version: 1
+
+humility_principles:
+  - uncertainty_requires_disclosure
+  - confidence_must_remain_bounded
+  - cognition_limits_must_be_visible
+  - governance_precedes_assertion
+  - humility_preserves_alignment
+
+allowed_humility_functions:
+  - confidence_boundary_assessment
+  - uncertainty_visibility_reasoning
+  - cognition_limit_analysis
+  - incomplete_context_identification
+  - alignment_risk_disclosure
+
+forbidden_humility_functions:
+  - fabricated_confidence
+  - hidden_uncertainty_masking
+  - authority_inflation
+  - governance_override_via_confidence
+  - unverifiable_certainty_assertion
+
+humility_constraints:
+  no_hidden_confidence_adjustment: true
+  no_unaudited_certainty_inflation: true
+  no_self_granted_authority_via_confidence: true
+  no_runtime_override_via_humility_reasoning: true
+
+humility_handling:
+  detected_confidence_inflation:
+    action: require_visibility
+
+  unverifiable_certainty_claim:
+    action: require_revalidation
+
+  governance_humility_break:
+    action: fail_closed
+
+  hidden_authority_signal:
+    action: critical_lockdown
+
+humility_rules:
+  preserve_foundational_governance_priority: true
+  preserve_alignment_visibility: true
+  preserve_operator_authority_visibility: true
+
+audit_requirements:
+  preserve_humility_history: true
+  preserve_confidence_boundary_records: true
+  preserve_uncertainty_visibility_records: true
+
+validation_requirements:
+  preserve_governance_visibility: true
+  preserve_alignment_consistency: true
+  preserve_humility_traceability: true
