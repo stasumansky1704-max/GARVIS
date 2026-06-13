@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { sendCommand } from "../api";
+import { startSpeaking, stopSpeaking } from "../scene/voiceLevel";
 
 const QUICK_ACTIONS = [
   "Tell Me",
@@ -161,32 +162,6 @@ function BigReadout({ label, value, color }: { label: string; value: string; col
   );
 }
 
-function CoreCaption() {
-  return (
-    <div className="pointer-events-none absolute left-1/2 top-1/2 z-10 -translate-x-1/2 translate-y-[2.2rem] text-center md:translate-y-[3rem]">
-      {/* soft dark halo so the title reads cleanly over the wireframe globe */}
-      <div className="relative px-8 py-2">
-        <div
-          className="absolute inset-0 -z-10"
-          style={{
-            background:
-              "radial-gradient(60% 120% at 50% 50%, rgba(2,8,16,0.72) 0%, rgba(2,8,16,0.35) 55%, transparent 100%)",
-          }}
-        />
-        <div className="hud-label hud-glow text-3xl font-semibold tracking-[0.42em] text-sky-50 md:text-4xl">
-          JARVIS&nbsp;CORE
-        </div>
-        <div className="mt-2 flex items-center justify-center gap-2">
-          <span className="pulse-dot inline-block h-1.5 w-1.5 rounded-full bg-emerald-300 text-emerald-300" />
-          <span className="hud-label text-[11px] tracking-[0.6em] text-emerald-200/90">
-            Online
-          </span>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 function CommandBar() {
   const [focused, setFocused] = useState(false);
   const [value, setValue] = useState("");
@@ -200,8 +175,12 @@ function CommandBar() {
     setReply("");
     try {
       const r = await sendCommand(text);
-      setReply(r.response_text || "(no response)");
+      const answer = r.response_text || "(no response)";
+      setReply(answer);
       setValue("");
+      // core "speaks" the answer: pulse for a duration scaled to reply length
+      startSpeaking();
+      window.setTimeout(() => stopSpeaking(), 1500 + Math.min(6000, answer.length * 45));
     } catch (e) {
       setReply("Connection to GARVIS backend failed.");
     } finally {
@@ -307,7 +286,6 @@ export default function Hud() {
       <div className="scanlines pointer-events-none absolute inset-0 z-0" />
 
       <TopHud />
-      <CoreCaption />
       {/* left: presence (floating text, no box — like the reference) */}
       <div className="pointer-events-none absolute left-8 top-1/2 z-20 hidden -translate-y-1/2 lg:block">
         <div className="hud-label hud-glow text-sm text-sky-50">JARVIS is Active</div>

@@ -1,6 +1,7 @@
 import { useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
+import { readVoiceLevel } from "./voiceLevel";
 
 /**
  * The JARVIS core: a glowing neon-blue energy sphere surrounded by sharp
@@ -98,15 +99,24 @@ export default function NetworkGlobe() {
   const sprite = useMemo(nodeSprite, []);
   const sunTex = useMemo(sunSprite, []);
 
-  useFrame((state) => {
+  useFrame((state, dt) => {
     const t = state.clock.elapsedTime;
     group.current.rotation.y = t * 0.1;
-    const breathe = 1 + Math.sin(t * 0.8) * 0.02;
-    group.current.scale.setScalar(breathe);
-    // gentle sun pulse
-    const s = (1.45 + Math.sin(t * 1.4) * 0.08) * R;
+
+    // voice-reactive: 0 idle, surges 0..1 while GARVIS speaks
+    const voice = readVoiceLevel(dt, t);
+
+    const idleBreathe = Math.sin(t * 0.8) * 0.02;
+    const speakPulse = voice * 0.18;
+    group.current.scale.setScalar(1 + idleBreathe + speakPulse * 0.4);
+
+    const baseS = 1.45 + Math.sin(t * 1.4) * 0.06;
+    const s = (baseS + voice * 0.9) * R;
     sun.current.scale.set(s, s, 1);
-    (sun.current.material as THREE.SpriteMaterial).opacity = 0.9 + Math.sin(t * 1.4) * 0.1;
+    (sun.current.material as THREE.SpriteMaterial).opacity =
+      Math.min(1.6, 0.85 + Math.sin(t * 1.4) * 0.08 + voice * 0.7);
+
+    core.current.scale.setScalar(1 + voice * 0.5);
   });
 
   return (
