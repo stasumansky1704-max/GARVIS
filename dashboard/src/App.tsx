@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import JarvisCore3D from "./components/JarvisCore3D";
 import HolographicEarth3D from "./components/HolographicEarth3D";
+import LivingCore from "./living-core/LivingCore";
 
 type Page = "home" | "workflows" | "intelligence" | "settings";
 
@@ -74,77 +75,10 @@ export default function App() {
   );
 }
 
-function HomePage({ audioIntensity }: { audioIntensity: number }) {
-  return (
-    <section className="home-screen">
-      <div className="home-bg-grid" />
-
-      <div className="reactor-stage">
-        <JarvisCore3D audioIntensity={audioIntensity} />
-      </div>
-
-      <div className="home-hud home-hud-left">
-        <div className="hud-card">
-          <div className="hud-label">SYSTEM</div>
-          <div className="hud-value green">ONLINE</div>
-          <div className="hud-small">Runtime local</div>
-        </div>
-
-        <div className="hud-card">
-          <div className="hud-label">VOICE</div>
-          <div className="hud-value cyan">STANDBY</div>
-          <div className="hud-small">Awaiting command</div>
-        </div>
-
-        <div className="hud-card">
-          <div className="hud-label">OPERATOR</div>
-          <div className="hud-value">STAS</div>
-          <div className="hud-small">Commander profile active</div>
-        </div>
-      </div>
-
-      <div className="home-hud home-hud-right">
-        <div className="hud-card">
-          <div className="hud-label">MODE</div>
-          <div className="hud-value cyan">OPERATOR</div>
-          <div className="hud-small">Truth-first behavior</div>
-        </div>
-
-        <div className="hud-card">
-          <div className="hud-label">AUDIO SIGNAL</div>
-          <div className="audio-meter">
-            <div className="audio-meter-fill" style={{ width: `${audioIntensity * 100}%` }} />
-          </div>
-          <div className="hud-small">{Math.round(audioIntensity * 100)}%</div>
-        </div>
-
-        <div className="hud-card">
-          <div className="hud-label">CORE</div>
-          <div className="hud-value green">READY</div>
-          <div className="hud-small">Arc reactor shell active</div>
-        </div>
-      </div>
-
-      <div className="home-title-block">
-        <h1>JARVIS</h1>
-        <p>Adaptive AI Operating Environment</p>
-      </div>
-
-      <div className="command-box">
-        <span className="prompt-symbol">›</span>
-        <input placeholder="Type your command..." />
-        <button>VOICE</button>
-        <button>SEND</button>
-      </div>
-
-      <div className="shortcut-row">
-        <span>1 HOME</span>
-        <span>2 WORKFLOWS</span>
-        <span>3 INTELLIGENCE</span>
-        <span>4 SETTINGS</span>
-      </div>
-    </section>
-  );
+function HomePage({ audioIntensity: _audioIntensity }: { audioIntensity: number }) {
+  // The Living AI Core Chamber IS the home screen (not a dashboard).
+  // Full-bleed WebGL core + HUD, wired to the real GARVIS backend.
+  return <LivingCore />;
 }
 
 function WorkflowsPage() {
