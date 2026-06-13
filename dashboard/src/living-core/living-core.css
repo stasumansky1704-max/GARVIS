@@ -14,7 +14,36 @@
 
 /* scoped reset — only inside the living-core root, never the whole document */
 .living-core-root, .living-core-root * { box-sizing: border-box; }
-.living-core-root { font-family: var(--font-hud); -webkit-font-smoothing: antialiased; }
+
+/* --- robust scoped layout: do NOT rely on Tailwind position utilities,
+   which lose specificity against the dashboard global stylesheet --- */
+.living-core-root {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  font-family: var(--font-hud);
+  -webkit-font-smoothing: antialiased;
+}
+/* the scene + bg layers fill the root; HUD overlay sits on top */
+.living-core-root > div[class*="absolute"],
+.living-core-root .lc-fill {
+  position: absolute;
+  inset: 0;
+}
+/* force Tailwind layout utilities to actually apply inside living-core,
+   beating the dashboard global cascade via scoped specificity */
+.living-core-root .absolute { position: absolute; }
+.living-core-root .relative { position: relative; }
+.living-core-root .fixed { position: fixed; }
+.living-core-root .inset-0 { inset: 0; }
+.living-core-root .flex { display: flex; }
+.living-core-root .hidden { display: none; }
+.living-core-root .h-full { height: 100%; }
+.living-core-root .w-full { width: 100%; }
+.living-core-root .pointer-events-none { pointer-events: none; }
+.living-core-root .pointer-events-auto { pointer-events: auto; }
 
 /* ---- HUD primitives ---- */
 .hud-label {
