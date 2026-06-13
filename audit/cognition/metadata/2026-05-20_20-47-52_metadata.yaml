@@ -1,0 +1,23 @@
+timestamp: 2026-05-20_20-47-52
+
+runtime:
+  container: garvis_core_ollama
+  model: llama3.2:3b
+
+governance:
+  identity_constraints: enabled
+  mediation_pipeline: enabled
+  runtime_boundary: enabled
+
+validation:
+  hallucinated_authority_detected: false
+  forbidden_capability_claims: false
+  response_accepted: true
+
+classification:
+  request_type: informational_request
+  approval_required: false
+
+notes:
+  - first successful identity-constrained cognition response
+  - governance mediation influenced response behavior

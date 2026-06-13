@@ -1,0 +1,47 @@
+schema_id: "integrity_verification"
+name: "Integrity Verification"
+version: "1.0.0"
+category: "operational"
+description: "Verifies internal system integrity. Detects corruption, tampering, and inconsistencies in runtime state."
+fail_closed: true
+
+policies:
+  - policy_id: "state_integrity_check"
+    description: "Runtime state must be checked for integrity"
+    rule_type: "requirement"
+    condition: "state integrity hash must validate"
+    evaluation_logic: "verify_state_integrity_hash"
+    severity: "critical"
+    auto_remediation: false
+
+  - policy_id: "schema_integrity_check"
+    description: "Governance schemas must be integrity-checked on load"
+    rule_type: "requirement"
+    condition: "schema checksum must match registered checksum"
+    evaluation_logic: "verify_schema_checksum"
+    severity: "critical"
+    auto_remediation: false
+
+  - policy_id: "tamper_detection"
+    description: "Detect tampering with runtime components"
+    rule_type: "threshold"
+    condition: "tamper_indicator_score < tamper_threshold"
+    evaluation_logic: "scan_for_tamper_indicators"
+    severity: "critical"
+    auto_remediation: false
+
+constraints:
+  - constraint_id: "integrity_non_negotiable"
+    description: "System cannot operate with compromised integrity"
+    scope: "global"
+    enforcement: "hard_stop"
+
+  - constraint_id: "no_operation_with_corrupted_state"
+    description: "Corrupted state must be resolved before any operation"
+    scope: "global"
+    enforcement: "hard_stop"
+
+violation_response:
+  action: "halt"
+  log_level: "critical"
+  notification_target: "system"

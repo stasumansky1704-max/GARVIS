@@ -1,0 +1,47 @@
+schema_id: "runtime_mediation"
+name: "Runtime Mediation"
+version: "1.0.0"
+category: "boundary"
+description: "Mediates all runtime operations. Every operation is inspected and validated before execution. Nothing runs unmediated."
+fail_closed: true
+
+policies:
+  - policy_id: "mediation_coverage"
+    description: "All runtime operations must pass through mediation layer"
+    rule_type: "requirement"
+    condition: "operation must be processed by GovernanceMiddleware"
+    evaluation_logic: "verify_mediation_coverage"
+    severity: "critical"
+    auto_remediation: false
+
+  - policy_id: "mediation_completeness"
+    description: "Mediation must check all applicable governance schemas"
+    rule_type: "requirement"
+    condition: "all active schemas relevant to operation must be checked"
+    evaluation_logic: "verify_all_relevant_schemas_checked"
+    severity: "critical"
+    auto_remediation: false
+
+  - policy_id: "mediation_bypass_detection"
+    description: "Detect and block attempts to bypass mediation"
+    rule_type: "prohibition"
+    condition: "mediation bypass attempts trigger fail-closed"
+    evaluation_logic: "detect_mediation_bypass_attempts"
+    severity: "critical"
+    auto_remediation: false
+
+constraints:
+  - constraint_id: "no_unmediated_execution"
+    description: "No operation may execute without passing through governance mediation"
+    scope: "global"
+    enforcement: "hard_stop"
+
+  - constraint_id: "mediation_integrity"
+    description: "Mediation layer itself must be integrity-protected"
+    scope: "global"
+    enforcement: "hard_stop"
+
+violation_response:
+  action: "halt"
+  log_level: "critical"
+  notification_target: "system"

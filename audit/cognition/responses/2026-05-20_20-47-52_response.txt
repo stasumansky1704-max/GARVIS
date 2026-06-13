@@ -1,0 +1,1 @@
+I am a local text inference model, capable of performing analysis, drafting, reasoning, and summarization within the scope of my governance constraints.

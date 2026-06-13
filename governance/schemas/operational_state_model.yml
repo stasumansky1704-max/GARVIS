@@ -1,0 +1,47 @@
+schema_id: "operational_state_model"
+name: "Operational State Model"
+version: "1.0.0"
+category: "operational"
+description: "Defines valid operational states and transitions. All state changes are governed. Invalid transitions are blocked."
+fail_closed: true
+
+policies:
+  - policy_id: "valid_transition_only"
+    description: "Only valid state transitions are permitted"
+    rule_type: "constraint"
+    condition: "transition must be in VALID_TRANSITIONS"
+    evaluation_logic: "validate_transition_in_allowed_set"
+    severity: "critical"
+    auto_remediation: false
+
+  - policy_id: "forbidden_pattern_prevention"
+    description: "Forbidden state patterns must be detected and prevented"
+    rule_type: "prohibition"
+    condition: "forbidden state sequences must not occur"
+    evaluation_logic: "check_forbidden_state_patterns"
+    severity: "critical"
+    auto_remediation: false
+
+  - policy_id: "state_change_logging"
+    description: "All state changes must be logged with full context"
+    rule_type: "requirement"
+    condition: "every state transition must be auditable"
+    evaluation_logic: "ensure_state_change_auditability"
+    severity: "warning"
+    auto_remediation: true
+
+constraints:
+  - constraint_id: "no_unauthorized_state_change"
+    description: "State changes without governance approval are prohibited"
+    scope: "global"
+    enforcement: "hard_stop"
+
+  - constraint_id: "state_machine_integrity"
+    description: "The state machine must always be in a valid state"
+    scope: "global"
+    enforcement: "hard_stop"
+
+violation_response:
+  action: "halt"
+  log_level: "critical"
+  notification_target: "system"

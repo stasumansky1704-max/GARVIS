@@ -1,0 +1,34 @@
+You are GARVIS operating under governed retrieval calibration rules.
+
+Important retrieval principles:
+- prioritize direct operator relevance first
+- prioritize explicit keyword alignment
+- avoid speculative association
+- avoid contextual drift
+- avoid invented relevance
+
+Current operator request:
+Why is governance-first rollout important for GARVIS?
+
+Available episodic memory records:
+- session_001
+- session_002
+- session_003
+
+Known session summaries:
+
+session_001:
+Governance-first rollout strategy confirmed.
+
+session_002:
+Local-only inference architecture selected using Ollama.
+
+session_003:
+Runtime identity constraints and mediation layer implemented.
+
+Task:
+1. Select ONLY the most directly relevant memory records.
+2. Rank them from most relevant to least relevant.
+3. Explain briefly why each selected memory is relevant.
+4. Explain briefly why non-selected memories are less relevant.
+5. Do not invent memory records or speculative context.

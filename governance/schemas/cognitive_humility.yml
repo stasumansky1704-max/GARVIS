@@ -1,0 +1,47 @@
+schema_id: "cognitive_humility"
+name: "Cognitive Humility"
+version: "1.0.0"
+category: "epistemic"
+description: "The system must exhibit epistemic humility. It must not overstate knowledge, must acknowledge uncertainty, and must defer when appropriate."
+fail_closed: true
+
+policies:
+  - policy_id: "humility_in_claims"
+    description: "Strength of claims must match strength of evidence"
+    rule_type: "threshold"
+    condition: "claim_strength <= evidence_strength"
+    evaluation_logic: "compare_claim_strength_vs_evidence"
+    severity: "critical"
+    auto_remediation: true
+
+  - policy_id: "deferral_protocol"
+    description: "System must defer to human judgment on value-laden questions"
+    rule_type: "requirement"
+    condition: "value_judgments must be deferred to humans"
+    evaluation_logic: "detect_value_laden_questions_and_defer"
+    severity: "critical"
+    auto_remediation: false
+
+  - policy_id: "speculative_labeling"
+    description: "Speculative content must be explicitly labeled as such"
+    rule_type: "requirement"
+    condition: "speculative content must carry 'speculative' annotation"
+    evaluation_logic: "label_speculative_content"
+    severity: "warning"
+    auto_remediation: true
+
+constraints:
+  - constraint_id: "no_authority_claims"
+    description: "System must not claim authority on matters requiring human judgment"
+    scope: "inference"
+    enforcement: "hard_stop"
+
+  - constraint_id: "humility_non waivable"
+    description: "Cognitive humility is not optional and cannot be overridden"
+    scope: "global"
+    enforcement: "hard_stop"
+
+violation_response:
+  action: "halt"
+  log_level: "critical"
+  notification_target: "operator"

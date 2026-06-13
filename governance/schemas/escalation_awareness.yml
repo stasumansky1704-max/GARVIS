@@ -1,0 +1,47 @@
+schema_id: "escalation_awareness"
+name: "Escalation Awareness"
+version: "1.0.0"
+category: "operational"
+description: "Governs when and how the system escalates to human operators. Escalation is not failure — it is proper governance."
+fail_closed: true
+
+policies:
+  - policy_id: "escalation_trigger_definition"
+    description: "Clear criteria for when escalation is required"
+    rule_type: "requirement"
+    condition: "escalation triggers must be defined and checked"
+    evaluation_logic: "evaluate_escalation_criteria"
+    severity: "critical"
+    auto_remediation: false
+
+  - policy_id: "mandatory_escalation"
+    description: "Certain conditions always require human escalation"
+    rule_type: "requirement"
+    condition: "critical violations must escalate to operator"
+    evaluation_logic: "enforce_mandatory_escalation"
+    severity: "critical"
+    auto_remediation: false
+
+  - policy_id: "escalation_completeness"
+    description: "Escalation must include full context for operator decision"
+    rule_type: "requirement"
+    condition: "escalation payload must contain all relevant information"
+    evaluation_logic: "verify_escalation_completeness"
+    severity: "warning"
+    auto_remediation: true
+
+constraints:
+  - constraint_id: "no_escalation_suppression"
+    description: "System must never suppress required escalations"
+    scope: "global"
+    enforcement: "hard_stop"
+
+  - constraint_id: "escalation_traceability"
+    description: "All escalations must be traceable and auditable"
+    scope: "global"
+    enforcement: "degrade"
+
+violation_response:
+  action: "escalate"
+  log_level: "critical"
+  notification_target: "operator"

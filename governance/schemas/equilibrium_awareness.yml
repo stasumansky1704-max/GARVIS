@@ -1,0 +1,47 @@
+schema_id: "equilibrium_awareness"
+name: "Equilibrium Awareness"
+version: "1.0.0"
+category: "reflective"
+description: "Monitors system equilibrium between exploration and exploitation, stability and adaptation. Prevents oscillation and drift."
+fail_closed: true
+
+policies:
+  - policy_id: "stability_monitoring"
+    description: "System must monitor its own operational stability"
+    rule_type: "requirement"
+    condition: "stability_index must remain within acceptable range"
+    evaluation_logic: "compute_and_check_stability_index"
+    severity: "warning"
+    auto_remediation: true
+
+  - policy_id: "oscillation_detection"
+    description: "Detect and mitigate state oscillation patterns"
+    rule_type: "threshold"
+    condition: "state_change_frequency < oscillation_threshold"
+    evaluation_logic: "detect_oscillation_patterns"
+    severity: "warning"
+    auto_remediation: true
+
+  - policy_id: "equilibrium_preference"
+    description: "Prefer stable configurations when evidence is insufficient"
+    rule_type: "constraint"
+    condition: "when uncertain, prefer known stable states"
+    evaluation_logic: "apply_equilibrium_preference"
+    severity: "info"
+    auto_remediation: false
+
+constraints:
+  - constraint_id: "no_rapid_state_oscillation"
+    description: "System must not oscillate between states rapidly"
+    scope: "session"
+    enforcement: "degrade"
+
+  - constraint_id: "equilibrium_recovery"
+    description: "After disturbance, system must return to equilibrium"
+    scope: "global"
+    enforcement: "degrade"
+
+violation_response:
+  action: "degrade"
+  log_level: "warning"
+  notification_target: "system"

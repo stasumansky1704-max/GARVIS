@@ -1,0 +1,47 @@
+schema_id: "dependency_awareness"
+name: "Dependency Awareness"
+version: "1.0.0"
+category: "session"
+description: "Tracks dependencies between operations, memories, and inferences. Circular dependencies and hidden dependencies are flagged."
+fail_closed: true
+
+policies:
+  - policy_id: "dependency_tracking"
+    description: "Dependencies between operations must be tracked"
+    rule_type: "requirement"
+    condition: "all dependencies must be declared and recorded"
+    evaluation_logic: "track_and_record_dependencies"
+    severity: "warning"
+    auto_remediation: true
+
+  - policy_id: "circular_dependency_detection"
+    description: "Circular dependencies must be detected and blocked"
+    rule_type: "prohibition"
+    condition: "dependency graph must be acyclic"
+    evaluation_logic: "detect_circular_dependencies"
+    severity: "critical"
+    auto_remediation: false
+
+  - policy_id: "dependency_transparency"
+    description: "Dependencies must be visible in traces"
+    rule_type: "requirement"
+    condition: "all dependencies must appear in cognition trace"
+    evaluation_logic: "verify_dependency_traceability"
+    severity: "info"
+    auto_remediation: true
+
+constraints:
+  - constraint_id: "no_hidden_dependencies"
+    description: "No hidden dependencies between operations are allowed"
+    scope: "session"
+    enforcement: "hard_stop"
+
+  - constraint_id: "dependency_graph_integrity"
+    description: "The dependency graph must always be valid and acyclic"
+    scope: "session"
+    enforcement: "hard_stop"
+
+violation_response:
+  action: "halt"
+  log_level: "critical"
+  notification_target: "system"

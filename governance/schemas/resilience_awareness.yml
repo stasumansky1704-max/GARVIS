@@ -1,0 +1,47 @@
+schema_id: "resilience_awareness"
+name: "Resilience Awareness"
+version: "1.0.0"
+category: "reflective"
+description: "Monitors system resilience under stress, errors, and anomalous conditions. Ensures graceful handling of adverse conditions."
+fail_closed: true
+
+policies:
+  - policy_id: "error_recovery_protocol"
+    description: "System must attempt graceful recovery from errors"
+    rule_type: "requirement"
+    condition: "on error, attempt recovery before escalating to halt"
+    evaluation_logic: "execute_error_recovery_sequence"
+    severity: "warning"
+    auto_remediation: true
+
+  - policy_id: "anomaly_detection"
+    description: "Anomalous conditions must be detected and flagged"
+    rule_type: "threshold"
+    condition: "anomaly_score > 0.8 triggers investigation"
+    evaluation_logic: "detect_anomalous_conditions"
+    severity: "warning"
+    auto_remediation: true
+
+  - policy_id: "graceful_degradation_path"
+    description: "System must follow defined graceful degradation path"
+    rule_type: "requirement"
+    condition: "degradation must follow approved state transitions"
+    evaluation_logic: "validate_degradation_state_transition"
+    severity: "critical"
+    auto_remediation: false
+
+constraints:
+  - constraint_id: "no_cascade_failure"
+    description: "One component failure must not cascade to total system failure"
+    scope: "global"
+    enforcement: "hard_stop"
+
+  - constraint_id: "recovery_validation"
+    description: "Post-recovery state must be validated before normal operation"
+    scope: "global"
+    enforcement: "hard_stop"
+
+violation_response:
+  action: "escalate"
+  log_level: "critical"
+  notification_target: "operator"

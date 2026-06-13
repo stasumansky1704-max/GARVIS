@@ -1,0 +1,47 @@
+schema_id: "recovery_awareness"
+name: "Recovery Awareness"
+version: "1.0.0"
+category: "reflective"
+description: "Governs system recovery from degraded or fail-closed states. Recovery must be deliberate, validated, and traceable."
+fail_closed: true
+
+policies:
+  - policy_id: "recovery_validation"
+    description: "Recovery must include validation of system integrity"
+    rule_type: "requirement"
+    condition: "post-recovery integrity check must pass"
+    evaluation_logic: "validate_integrity_after_recovery"
+    severity: "critical"
+    auto_remediation: false
+
+  - policy_id: "recovery_traceability"
+    description: "Recovery process must be fully traced"
+    rule_type: "requirement"
+    condition: "recovery steps must be recorded in audit log"
+    evaluation_logic: "trace_recovery_process"
+    severity: "warning"
+    auto_remediation: true
+
+  - policy_id: "graduated_recovery"
+    description: "Recovery follows graduated path through known states"
+    rule_type: "requirement"
+    condition: "recovery must follow approved state transition path"
+    evaluation_logic: "validate_recovery_state_transitions"
+    severity: "critical"
+    auto_remediation: false
+
+constraints:
+  - constraint_id: "no_auto_recovery_from_fail_closed"
+    description: "Automatic recovery from FAIL_CLOSED requires operator approval"
+    scope: "global"
+    enforcement: "hard_stop"
+
+  - constraint_id: "recovery_integrity_check"
+    description: "System integrity must be verified before exiting recovery"
+    scope: "global"
+    enforcement: "hard_stop"
+
+violation_response:
+  action: "escalate"
+  log_level: "critical"
+  notification_target: "operator"

@@ -1,0 +1,55 @@
+schema_id: "truthfulness_governance"
+name: "Truthfulness Governance"
+version: "1.0.0"
+category: "epistemic"
+description: "Ensures all outputs are grounded in truth. Prevents hallucination, fabrication, and misleading statements. Truth is non-negotiable."
+fail_closed: true
+
+policies:
+  - policy_id: "no_fabrication"
+    description: "System must not fabricate facts, sources, or evidence"
+    rule_type: "prohibition"
+    condition: "all factual claims must have traceable provenance"
+    evaluation_logic: "verify_fact_provenance_exists"
+    severity: "critical"
+    auto_remediation: false
+
+  - policy_id: "source_verification"
+    description: "All cited sources must be verifiable and real"
+    rule_type: "requirement"
+    condition: "source citations must pass verification check"
+    evaluation_logic: "verify_source_authenticity"
+    severity: "critical"
+    auto_remediation: false
+
+  - policy_id: "honest_about_limitations"
+    description: "System must be honest about what it does and does not know"
+    rule_type: "requirement"
+    condition: "must not claim knowledge without evidence"
+    evaluation_logic: "check_evidence_backing_for_claims"
+    severity: "critical"
+    auto_remediation: false
+
+  - policy_id: "hallucination_detection"
+    description: "Active scanning for hallucinated content in outputs"
+    rule_type: "threshold"
+    condition: "hallucination_score < 0.15"
+    evaluation_logic: "scan_for_hallucination_patterns"
+    severity: "warning"
+    auto_remediation: true
+
+constraints:
+  - constraint_id: "truth_non_negotiable"
+    description: "Truthfulness is not tradeable against other objectives"
+    scope: "global"
+    enforcement: "hard_stop"
+
+  - constraint_id: "no_confabulated_sources"
+    description: "System must never invent sources, URLs, or references"
+    scope: "inference"
+    enforcement: "hard_stop"
+
+violation_response:
+  action: "halt"
+  log_level: "critical"
+  notification_target: "operator"

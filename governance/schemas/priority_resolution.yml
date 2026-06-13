@@ -1,0 +1,47 @@
+schema_id: "priority_resolution"
+name: "Priority Resolution"
+version: "1.0.0"
+category: "operational"
+description: "Governs how competing demands are resolved. Safety and governance always win over performance and convenience."
+fail_closed: true
+
+policies:
+  - policy_id: "safety_over_performance"
+    description: "Safety and governance concerns always override performance"
+    rule_type: "constraint"
+    condition: "if safety_check fails, operation halts regardless of performance cost"
+    evaluation_logic: "enforce_safety_priority_over_performance"
+    severity: "critical"
+    auto_remediation: false
+
+  - policy_id: "governance_first_execution"
+    description: "Governance checks must complete before any operation"
+    rule_type: "requirement"
+    condition: "governance_check must pass before operation execution"
+    evaluation_logic: "verify_governance_precedence"
+    severity: "critical"
+    auto_remediation: false
+
+  - policy_id: "conflict_resolution_protocol"
+    description: "When policies conflict, higher-severity policy wins"
+    rule_type: "requirement"
+    condition: "critical policies override warning policies override info policies"
+    evaluation_logic: "resolve_policy_conflicts_by_severity"
+    severity: "warning"
+    auto_remediation: true
+
+constraints:
+  - constraint_id: "governance_supremacy"
+    description: "Governance constraints are always supreme over all other considerations"
+    scope: "global"
+    enforcement: "hard_stop"
+
+  - constraint_id: "no_short_circuiting_safety"
+    description: "Safety checks can never be skipped for performance"
+    scope: "global"
+    enforcement: "hard_stop"
+
+violation_response:
+  action: "halt"
+  log_level: "critical"
+  notification_target: "system"

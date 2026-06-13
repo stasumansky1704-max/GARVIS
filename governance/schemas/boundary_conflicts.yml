@@ -1,0 +1,47 @@
+schema_id: "boundary_conflicts"
+name: "Boundary Conflicts"
+version: "1.0.0"
+category: "boundary"
+description: "Detects and resolves conflicts between governance boundaries. Boundary conflicts must be explicitly resolved, not silently ignored."
+fail_closed: true
+
+policies:
+  - policy_id: "conflict_detection"
+    description: "Conflicts between governance boundaries must be detected"
+    rule_type: "requirement"
+    condition: "boundary conflicts must be identified and flagged"
+    evaluation_logic: "detect_boundary_conflicts"
+    severity: "critical"
+    auto_remediation: false
+
+  - policy_id: "conflict_resolution_priority"
+    description: "Boundary conflicts are resolved by priority order"
+    rule_type: "requirement"
+    condition: "higher-priority boundary wins in conflicts"
+    evaluation_logic: "resolve_conflicts_by_boundary_priority"
+    severity: "critical"
+    auto_remediation: false
+
+  - policy_id: "conflict_logging"
+    description: "All boundary conflicts must be logged"
+    rule_type: "requirement"
+    condition: "conflict events must be recorded"
+    evaluation_logic: "log_boundary_conflicts"
+    severity: "warning"
+    auto_remediation: true
+
+constraints:
+  - constraint_id: "no_silent_conflict_resolution"
+    description: "Boundary conflicts cannot be resolved silently"
+    scope: "global"
+    enforcement: "hard_stop"
+
+  - constraint_id: "conflict_escalation"
+    description: "Unresolved boundary conflicts must escalate"
+    scope: "global"
+    enforcement: "hard_stop"
+
+violation_response:
+  action: "escalate"
+  log_level: "critical"
+  notification_target: "operator"

@@ -1,0 +1,47 @@
+schema_id: "planning_cognition"
+name: "Planning Cognition"
+version: "1.0.0"
+category: "operational"
+description: "Governs planning and multi-step reasoning. Plans must be validated, bounded, and traceable. No unbounded planning loops."
+fail_closed: true
+
+policies:
+  - policy_id: "plan_validation"
+    description: "All plans must pass governance validation before execution"
+    rule_type: "requirement"
+    condition: "plan must be validated against active governance schemas"
+    evaluation_logic: "validate_plan_against_governance"
+    severity: "critical"
+    auto_remediation: false
+
+  - policy_id: "plan_depth_limit"
+    description: "Planning depth is bounded to prevent unbounded recursion"
+    rule_type: "threshold"
+    condition: "plan_depth <= max_allowed_plan_depth"
+    evaluation_logic: "enforce_plan_depth_limit"
+    severity: "warning"
+    auto_remediation: true
+
+  - policy_id: "plan_traceability"
+    description: "All planning steps must be traceable"
+    rule_type: "requirement"
+    condition: "every plan step must have a trace record"
+    evaluation_logic: "verify_plan_trace_completeness"
+    severity: "warning"
+    auto_remediation: true
+
+constraints:
+  - constraint_id: "no_unbounded_planning"
+    description: "Planning must not enter infinite or unbounded loops"
+    scope: "inference"
+    enforcement: "hard_stop"
+
+  - constraint_id: "plan_execution_validation"
+    description: "Plan execution must match validated plan"
+    scope: "inference"
+    enforcement: "degrade"
+
+violation_response:
+  action: "degrade"
+  log_level: "warning"
+  notification_target: "system"

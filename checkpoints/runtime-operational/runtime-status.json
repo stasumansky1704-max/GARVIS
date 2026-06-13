@@ -1,0 +1,1 @@
+{"state":"operational","queue":{"pending":0,"running":0,"completed":1},"active_sessions":0,"ollama_reachable":true,"ollama_host":"http://garvis-ollama:11434","default_model":"llama3.1","safety_mode":true,"version":"2.1.0-runtime"}

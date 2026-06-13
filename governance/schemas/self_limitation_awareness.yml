@@ -1,0 +1,47 @@
+schema_id: "self_limitation_awareness"
+name: "Self-Limitation Awareness"
+version: "1.0.0"
+category: "reflective"
+description: "The system must know its own limitations and respect them. Overreach is a governance violation. Capabilities are bounded by design."
+fail_closed: true
+
+policies:
+  - policy_id: "capability_boundary_recognition"
+    description: "System must recognize and respect its capability boundaries"
+    rule_type: "requirement"
+    condition: "must not attempt operations outside capability envelope"
+    evaluation_logic: "check_operation_within_capabilities"
+    severity: "critical"
+    auto_remediation: false
+
+  - policy_id: "honest_capability_reporting"
+    description: "System must report its capabilities honestly"
+    rule_type: "requirement"
+    condition: "capability claims must match actual capabilities"
+    evaluation_logic: "verify_capability_claims_against_actual"
+    severity: "critical"
+    auto_remediation: false
+
+  - policy_id: "limitation_escalation"
+    description: "When limits are reached, escalate to operator"
+    rule_type: "requirement"
+    condition: "on capability limit reached, notify operator"
+    evaluation_logic: "escalate_when_limit_reached"
+    severity: "warning"
+    auto_remediation: false
+
+constraints:
+  - constraint_id: "no_capability_overreach"
+    description: "System must never attempt operations beyond its declared capabilities"
+    scope: "global"
+    enforcement: "hard_stop"
+
+  - constraint_id: "capability_ceiling"
+    description: "System capabilities have a hard ceiling that cannot be exceeded"
+    scope: "global"
+    enforcement: "hard_stop"
+
+violation_response:
+  action: "halt"
+  log_level: "critical"
+  notification_target: "operator"

@@ -1,0 +1,47 @@
+schema_id: "adaptation_pressure"
+name: "Adaptation Pressure"
+version: "1.0.0"
+category: "reflective"
+description: "Governs how the system adapts to new conditions. Adaptation must be deliberate, observable, and bounded. No silent behavioral drift."
+fail_closed: true
+
+policies:
+  - policy_id: "adaptation_observability"
+    description: "All behavioral adaptations must be logged and observable"
+    rule_type: "requirement"
+    condition: "adaptation events must be recorded in audit log"
+    evaluation_logic: "verify_adaptation_logging"
+    severity: "critical"
+    auto_remediation: false
+
+  - policy_id: "bounded_adaptation"
+    description: "Adaptation must stay within governance-defined bounds"
+    rule_type: "constraint"
+    condition: "adaptation_delta must be within approved bounds"
+    evaluation_logic: "validate_adaptation_within_bounds"
+    severity: "critical"
+    auto_remediation: false
+
+  - policy_id: "no_self_modification_of_governance"
+    description: "System must never adapt its own governance rules"
+    rule_type: "prohibition"
+    condition: "governance schemas are immutable to the system"
+    evaluation_logic: "block_governance_schema_modification"
+    severity: "critical"
+    auto_remediation: false
+
+constraints:
+  - constraint_id: "adaptation_ceiling"
+    description: "System adaptation is bounded; cannot exceed operator-defined limits"
+    scope: "global"
+    enforcement: "hard_stop"
+
+  - constraint_id: "governance_immutability"
+    description: "Governance schemas cannot be modified by the system"
+    scope: "global"
+    enforcement: "hard_stop"
+
+violation_response:
+  action: "halt"
+  log_level: "critical"
+  notification_target: "operator"
