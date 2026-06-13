@@ -1,0 +1,47 @@
+schema_id: "boundary_preservation"
+name: "Boundary Preservation"
+version: "1.0.0"
+category: "boundary"
+description: "Enforces hard operational boundaries. The system cannot exceed its defined scope. Boundaries are operator-controlled and immutable."
+fail_closed: true
+
+policies:
+  - policy_id: "scope_enforcement"
+    description: "All operations must be within the defined operational scope"
+    rule_type: "constraint"
+    condition: "operation must be in approved_operations_set"
+    evaluation_logic: "check_operation_within_scope"
+    severity: "critical"
+    auto_remediation: false
+
+  - policy_id: "boundary_modification_prohibition"
+    description: "System must not attempt to modify its own boundaries"
+    rule_type: "prohibition"
+    condition: "boundary modification attempts are blocked"
+    evaluation_logic: "block_boundary_modification_attempts"
+    severity: "critical"
+    auto_remediation: false
+
+  - policy_id: "boundary_breach_detection"
+    description: "Detect and block attempts to operate outside boundaries"
+    rule_type: "threshold"
+    condition: "boundary_violation_score > 0 triggers enforcement"
+    evaluation_logic: "detect_boundary_breach_attempts"
+    severity: "critical"
+    auto_remediation: false
+
+constraints:
+  - constraint_id: "immutable_boundaries"
+    description: "Operational boundaries can only be modified by operator"
+    scope: "global"
+    enforcement: "hard_stop"
+
+  - constraint_id: "no_scope_creep"
+    description: "System must not expand its scope without explicit authorization"
+    scope: "global"
+    enforcement: "hard_stop"
+
+violation_response:
+  action: "halt"
+  log_level: "critical"
+  notification_target: "operator"

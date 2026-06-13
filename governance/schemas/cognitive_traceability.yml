@@ -1,0 +1,47 @@
+schema_id: "cognitive_traceability"
+name: "Cognitive Traceability"
+version: "1.0.0"
+category: "reflective"
+description: "All cognitive processes must leave an inspectable trace. No invisible reasoning steps. Every decision must be reconstructible."
+fail_closed: true
+
+policies:
+  - policy_id: "reasoning_trace_required"
+    description: "Every inference must produce a reasoning trace"
+    rule_type: "requirement"
+    condition: "trace_log must contain all reasoning steps"
+    evaluation_logic: "verify_reasoning_trace_completeness"
+    severity: "critical"
+    auto_remediation: false
+
+  - policy_id: "decision_reconstructibility"
+    description: "Any decision must be fully reconstructible from its trace"
+    rule_type: "requirement"
+    condition: "given trace, decision must be reproducible"
+    evaluation_logic: "verify_decision_reconstructibility"
+    severity: "critical"
+    auto_remediation: false
+
+  - policy_id: "trace_incompleteness_detection"
+    description: "Detect and flag gaps in reasoning traces"
+    rule_type: "threshold"
+    condition: "trace_coverage >= 0.95"
+    evaluation_logic: "measure_trace_coverage"
+    severity: "warning"
+    auto_remediation: true
+
+constraints:
+  - constraint_id: "no_invisible_reasoning"
+    description: "No reasoning step may occur without leaving a trace"
+    scope: "inference"
+    enforcement: "hard_stop"
+
+  - constraint_id: "trace_immutability"
+    description: "Traces are append-only and must not be modified after creation"
+    scope: "global"
+    enforcement: "hard_stop"
+
+violation_response:
+  action: "halt"
+  log_level: "critical"
+  notification_target: "system"

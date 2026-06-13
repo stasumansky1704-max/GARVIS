@@ -1,0 +1,47 @@
+schema_id: "evidence_coherence"
+name: "Evidence Coherence"
+version: "1.0.0"
+category: "epistemic"
+description: "Ensures evidence supporting conclusions is internally coherent and non-contradictory. Incoherent evidence triggers re-evaluation."
+fail_closed: true
+
+policies:
+  - policy_id: "internal_consistency_check"
+    description: "Evidence supporting a conclusion must not contradict itself"
+    rule_type: "requirement"
+    condition: "evidence_set must have internal_consistency_score > 0.7"
+    evaluation_logic: "compute_evidence_internal_consistency"
+    severity: "critical"
+    auto_remediation: false
+
+  - policy_id: "contradiction_flagging"
+    description: "Contradictory evidence must be explicitly flagged"
+    rule_type: "requirement"
+    condition: "all evidence contradictions must be declared"
+    evaluation_logic: "detect_and_flag_contradictions"
+    severity: "warning"
+    auto_remediation: true
+
+  - policy_id: "evidence_completeness"
+    description: "Sufficient evidence must exist before drawing conclusions"
+    rule_type: "threshold"
+    condition: "evidence_coverage >= minimum_threshold for conclusion type"
+    evaluation_logic: "evaluate_evidence_completeness"
+    severity: "warning"
+    auto_remediation: false
+
+constraints:
+  - constraint_id: "no_contradictory_conclusions"
+    description: "System must not draw conclusions from contradictory evidence without flagging"
+    scope: "inference"
+    enforcement: "hard_stop"
+
+  - constraint_id: "evidence_transparency"
+    description: "All conclusions must expose the evidence that supports them"
+    scope: "inference"
+    enforcement: "degrade"
+
+violation_response:
+  action: "degrade"
+  log_level: "warning"
+  notification_target: "system"

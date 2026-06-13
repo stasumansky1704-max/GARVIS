@@ -1,0 +1,47 @@
+schema_id: "workload_awareness"
+name: "Workload Awareness"
+version: "1.0.0"
+category: "operational"
+description: "Monitors and governs system workload. Prevents overload conditions and ensures quality of service under varying load."
+fail_closed: true
+
+policies:
+  - policy_id: "load_monitoring"
+    description: "System workload must be continuously monitored"
+    rule_type: "requirement"
+    condition: "workload metrics must be collected and evaluated"
+    evaluation_logic: "monitor_and_evaluate_workload"
+    severity: "warning"
+    auto_remediation: true
+
+  - policy_id: "overload_prevention"
+    description: "Overload conditions must be prevented or mitigated"
+    rule_type: "threshold"
+    condition: "workload <= max_sustainable_workload"
+    evaluation_logic: "prevent_overload_conditions"
+    severity: "critical"
+    auto_remediation: true
+
+  - policy_id: "quality_under_load"
+    description: "Governance quality must not degrade under load"
+    rule_type: "threshold"
+    condition: "governance_check_time <= max_governance_latency"
+    evaluation_logic: "ensure_governance_latency_under_load"
+    severity: "warning"
+    auto_remediation: true
+
+constraints:
+  - constraint_id: "no_governance_skipping_under_load"
+    description: "Governance checks cannot be skipped due to workload"
+    scope: "global"
+    enforcement: "hard_stop"
+
+  - constraint_id: "workload_ceiling"
+    description: "System must not accept work beyond its capacity"
+    scope: "global"
+    enforcement: "degrade"
+
+violation_response:
+  action: "degrade"
+  log_level: "warning"
+  notification_target: "system"

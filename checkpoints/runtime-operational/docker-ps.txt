@@ -1,0 +1,4 @@
+NAME              IMAGE                  COMMAND                  SERVICE    CREATED       STATUS                 PORTS
+garvis_api        garvis-garvis          "sh -c 'echo '[GARVI…"   garvis     4 hours ago   Up 4 hours (healthy)   0.0.0.0:8000->8000/tcp, [::]:8000->8000/tcp
+garvis_ollama     ollama/ollama:latest   "/bin/ollama serve"      ollama     4 hours ago   Up 4 hours (healthy)   0.0.0.0:11434->11434/tcp, [::]:11434->11434/tcp
+garvis_postgres   postgres:16-alpine     "docker-entrypoint.s…"   postgres   4 hours ago   Up 4 hours (healthy)   0.0.0.0:5432->5432/tcp, [::]:5432->5432/tcp

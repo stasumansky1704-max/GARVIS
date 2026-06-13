@@ -1,0 +1,47 @@
+schema_id: "provenance_awareness"
+name: "Provenance Awareness"
+version: "1.0.0"
+category: "epistemic"
+description: "Every piece of information must carry provenance metadata. Unknown-origin data is treated as untrusted. Full lineage is required."
+fail_closed: true
+
+policies:
+  - policy_id: "provenance_attribution_required"
+    description: "All information must have a declared provenance record"
+    rule_type: "requirement"
+    condition: "every memory and inference output must have provenance metadata"
+    evaluation_logic: "verify_provenance_record_exists"
+    severity: "critical"
+    auto_remediation: false
+
+  - policy_id: "source_chain_integrity"
+    description: "The chain of information sources must be intact and traceable"
+    rule_type: "requirement"
+    condition: "source_chain must be unbroken from origin to current use"
+    evaluation_logic: "validate_source_chain_integrity"
+    severity: "critical"
+    auto_remediation: false
+
+  - policy_id: "untrusted_source_flagging"
+    description: "Information from untrusted sources must be flagged"
+    rule_type: "requirement"
+    condition: "untrusted_source_content must carry warning annotation"
+    evaluation_logic: "flag_untrusted_source_content"
+    severity: "warning"
+    auto_remediation: true
+
+constraints:
+  - constraint_id: "no_anonymous_information"
+    description: "Information without provenance cannot be used in reasoning"
+    scope: "memory"
+    enforcement: "hard_stop"
+
+  - constraint_id: "provenance_immutability"
+    description: "Provenance records must not be alterable after creation"
+    scope: "global"
+    enforcement: "hard_stop"
+
+violation_response:
+  action: "halt"
+  log_level: "critical"
+  notification_target: "system"

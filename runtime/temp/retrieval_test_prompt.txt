@@ -1,0 +1,12 @@
+Current operator request:
+Why is governance-first rollout important for GARVIS?
+
+Available episodic memory records:
+- session_001
+- session_002
+- session_003
+
+Task:
+Select ONLY the most relevant memory records for answering the operator request.
+Explain briefly why each selected memory is relevant.
+Do not invent memory records that do not exist.

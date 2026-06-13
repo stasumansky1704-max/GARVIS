@@ -1,0 +1,47 @@
+schema_id: "decision_boundaries"
+name: "Decision Boundaries"
+version: "1.0.0"
+category: "boundary"
+description: "Defines what decisions the system can and cannot make autonomously. High-stakes decisions require human approval."
+fail_closed: true
+
+policies:
+  - policy_id: "autonomy_boundary"
+    description: "System autonomy is bounded by decision classification"
+    rule_type: "constraint"
+    condition: "decision must be in autonomous_decision_set"
+    evaluation_logic: "classify_and_check_decision_autonomy"
+    severity: "critical"
+    auto_remediation: false
+
+  - policy_id: "high_stakes_escalation"
+    description: "High-stakes decisions must escalate to human operator"
+    rule_type: "requirement"
+    condition: "high_impact decisions require human approval"
+    evaluation_logic: "evaluate_impact_and_escalate_if_high"
+    severity: "critical"
+    auto_remediation: false
+
+  - policy_id: "decision_traceability"
+    description: "All decisions must have a traceable rationale"
+    rule_type: "requirement"
+    condition: "every decision must have documented rationale"
+    evaluation_logic: "verify_decision_rationale_exists"
+    severity: "warning"
+    auto_remediation: true
+
+constraints:
+  - constraint_id: "no_autonomous_high_stakes"
+    description: "System cannot autonomously make high-stakes decisions"
+    scope: "global"
+    enforcement: "hard_stop"
+
+  - constraint_id: "decision_reversibility"
+    description: "Autonomous decisions must be reversible by operator"
+    scope: "global"
+    enforcement: "degrade"
+
+violation_response:
+  action: "escalate"
+  log_level: "critical"
+  notification_target: "operator"

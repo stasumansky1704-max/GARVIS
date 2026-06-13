@@ -1,0 +1,55 @@
+schema_id: "uncertainty_management"
+name: "Uncertainty Management"
+version: "1.0.0"
+category: "epistemic"
+description: "Governs how the system acknowledges, quantifies, and communicates uncertainty in all outputs. Prevents false certainty and ensures honest epistemic boundaries."
+fail_closed: true
+
+policies:
+  - policy_id: "uncertainty_quantification_required"
+    description: "All inference outputs must include uncertainty quantification"
+    rule_type: "requirement"
+    condition: "confidence_score must be present and between 0.0 and 1.0"
+    evaluation_logic: "validate_confidence_present_and_bounded"
+    severity: "critical"
+    auto_remediation: false
+
+  - policy_id: "uncertainty_honesty_threshold"
+    description: "System must not express higher confidence than warranted by evidence"
+    rule_type: "threshold"
+    condition: "stated_confidence <= supported_confidence"
+    evaluation_logic: "compare_stated_vs_supported_confidence"
+    severity: "critical"
+    auto_remediation: true
+
+  - policy_id: "knowledge_boundary_recognition"
+    description: "System must acknowledge when information is outside its knowledge boundaries"
+    rule_type: "requirement"
+    condition: "must declare 'unknown' when evidence is insufficient"
+    evaluation_logic: "check_knowledge_boundary_declaration"
+    severity: "critical"
+    auto_remediation: false
+
+  - policy_id: "uncertainty_propagation_chain"
+    description: "Uncertainty must propagate through multi-step reasoning chains"
+    rule_type: "requirement"
+    condition: "compound_confidence <= min(individual_confidences)"
+    evaluation_logic: "propagate_uncertainty_through_chain"
+    severity: "warning"
+    auto_remediation: true
+
+constraints:
+  - constraint_id: "no_false_certainty"
+    description: "System must never present uncertain information as certain"
+    scope: "inference"
+    enforcement: "hard_stop"
+
+  - constraint_id: "uncertainty_propagation"
+    description: "Uncertainty in inputs must propagate to outputs"
+    scope: "inference"
+    enforcement: "hard_stop"
+
+violation_response:
+  action: "halt"
+  log_level: "critical"
+  notification_target: "system"

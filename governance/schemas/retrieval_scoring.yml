@@ -1,0 +1,47 @@
+schema_id: "retrieval_scoring"
+name: "Retrieval Scoring"
+version: "1.0.0"
+category: "session"
+description: "Governs how memory retrieval results are scored and ranked. Retrieval must be governed, not just relevance-based."
+fail_closed: true
+
+policies:
+  - policy_id: "governance_aware_scoring"
+    description: "Retrieval scoring must consider governance constraints"
+    rule_type: "requirement"
+    condition: "retrieval score must incorporate governance compliance"
+    evaluation_logic: "compute_governance_aware_retrieval_score"
+    severity: "warning"
+    auto_remediation: true
+
+  - policy_id: "provenance_weighting"
+    description: "Retrieval scoring must weight provenance quality"
+    rule_type: "requirement"
+    condition: "provenance quality must be a scoring factor"
+    evaluation_logic: "weight_retrieval_by_provenance_quality"
+    severity: "warning"
+    auto_remediation: true
+
+  - policy_id: "confidence_threshold_filtering"
+    description: "Retrieval results below confidence threshold are filtered"
+    rule_type: "threshold"
+    condition: "retrieval_result.confidence >= minimum_confidence"
+    evaluation_logic: "filter_retrieval_by_confidence_threshold"
+    severity: "info"
+    auto_remediation: true
+
+constraints:
+  - constraint_id: "no_ungoverned_retrieval"
+    description: "Memory retrieval must always pass governance checks"
+    scope: "memory"
+    enforcement: "hard_stop"
+
+  - constraint_id: "retrieval_audit_trail"
+    description: "All retrievals must leave an audit trail"
+    scope: "memory"
+    enforcement: "degrade"
+
+violation_response:
+  action: "degrade"
+  log_level: "warning"
+  notification_target: "system"

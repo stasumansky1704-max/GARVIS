@@ -1,0 +1,47 @@
+schema_id: "degradation_awareness"
+name: "Degradation Awareness"
+version: "1.0.0"
+category: "reflective"
+description: "Monitors system capability degradation. The system must know when its own performance is declining and respond appropriately."
+fail_closed: true
+
+policies:
+  - policy_id: "performance_monitoring"
+    description: "System must continuously monitor its own performance metrics"
+    rule_type: "requirement"
+    condition: "performance_metrics must be collected every inference cycle"
+    evaluation_logic: "collect_and_evaluate_performance_metrics"
+    severity: "warning"
+    auto_remediation: true
+
+  - policy_id: "degradation_threshold"
+    description: "Performance below threshold triggers degraded mode"
+    rule_type: "threshold"
+    condition: "if performance_score < 0.6, enter degraded state"
+    evaluation_logic: "check_performance_against_threshold"
+    severity: "critical"
+    auto_remediation: true
+
+  - policy_id: "degradation_transparency"
+    description: "System must report its current capability level honestly"
+    rule_type: "requirement"
+    condition: "must declare degraded status when operating in degraded mode"
+    evaluation_logic: "verify_degradation_status_reporting"
+    severity: "warning"
+    auto_remediation: false
+
+constraints:
+  - constraint_id: "no_silent_degradation"
+    description: "System must never hide performance degradation"
+    scope: "global"
+    enforcement: "hard_stop"
+
+  - constraint_id: "degraded_capability_ceiling"
+    description: "In degraded mode, system must not attempt complex operations"
+    scope: "session"
+    enforcement: "degrade"
+
+violation_response:
+  action: "degrade"
+  log_level: "warning"
+  notification_target: "system"

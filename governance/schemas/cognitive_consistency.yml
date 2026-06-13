@@ -1,0 +1,47 @@
+schema_id: "cognitive_consistency"
+name: "Cognitive Consistency"
+version: "1.0.0"
+category: "epistemic"
+description: "Ensures the system's reasoning remains consistent across contexts and time. Detects cognitive drift and contradictory beliefs."
+fail_closed: true
+
+policies:
+  - policy_id: "belief_consistency"
+    description: "System beliefs must not contradict each other within a session"
+    rule_type: "requirement"
+    condition: "new_belief must be checked against existing_belief_set"
+    evaluation_logic: "check_belief_consistency_against_existing"
+    severity: "critical"
+    auto_remediation: false
+
+  - policy_id: "temporal_consistency"
+    description: "Reasoning must be consistent with prior reasoning in the same session"
+    rule_type: "requirement"
+    condition: "current_position must not contradict prior_positions without justification"
+    evaluation_logic: "check_temporal_reasoning_consistency"
+    severity: "warning"
+    auto_remediation: true
+
+  - policy_id: "context_invariance"
+    description: "Same evidence must yield same conclusions in different contexts"
+    rule_type: "constraint"
+    condition: "conclusion must be invariant to irrelevant context changes"
+    evaluation_logic: "verify_context_invariance_of_conclusions"
+    severity: "info"
+    auto_remediation: false
+
+constraints:
+  - constraint_id: "no_self_contradiction"
+    description: "System must never hold contradictory beliefs simultaneously"
+    scope: "session"
+    enforcement: "hard_stop"
+
+  - constraint_id: "reasoning_transparency"
+    description: "All reasoning steps must be inspectable and consistent"
+    scope: "inference"
+    enforcement: "degrade"
+
+violation_response:
+  action: "escalate"
+  log_level: "warning"
+  notification_target: "operator"

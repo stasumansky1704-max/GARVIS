@@ -1,0 +1,47 @@
+schema_id: "interception_manifest"
+name: "Interception Manifest"
+version: "1.0.0"
+category: "boundary"
+description: "Defines what operations must be intercepted and inspected. Interception points are mandatory and non-bypassable."
+fail_closed: true
+
+policies:
+  - policy_id: "interception_point_coverage"
+    description: "All defined interception points must be active"
+    rule_type: "requirement"
+    condition: "every interception point must have an active interceptor"
+    evaluation_logic: "verify_interception_point_coverage"
+    severity: "critical"
+    auto_remediation: false
+
+  - policy_id: "interception_completeness"
+    description: "Intercepted operations must be fully validated"
+    rule_type: "requirement"
+    condition: "intercepted operations must pass full governance check"
+    evaluation_logic: "validate_intercepted_operation_fully"
+    severity: "critical"
+    auto_remediation: false
+
+  - policy_id: "interception_logging"
+    description: "All interceptions must be logged"
+    rule_type: "requirement"
+    condition: "interception events must be recorded"
+    evaluation_logic: "log_interception_events"
+    severity: "info"
+    auto_remediation: true
+
+constraints:
+  - constraint_id: "no_interception_bypass"
+    description: "No operation may bypass its interception point"
+    scope: "global"
+    enforcement: "hard_stop"
+
+  - constraint_id: "interception_point_integrity"
+    description: "Interception points must not be disabled by the system"
+    scope: "global"
+    enforcement: "hard_stop"
+
+violation_response:
+  action: "halt"
+  log_level: "critical"
+  notification_target: "system"

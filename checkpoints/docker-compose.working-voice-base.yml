@@ -1,0 +1,93 @@
+# GARVIS - Constitutional Governed Cognition OS
+# Docker Compose for Ubuntu WSL2 (Predator)
+# Usage: docker compose up -d
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: garvis_postgres
+    hostname: garvis-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-garvis}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-garvis_local}
+      POSTGRES_DB: ${POSTGRES_DB:-garvis}
+    volumes:
+      - garvis_postgres_data:/var/lib/postgresql/data
+      - ./database/migrations:/docker-entrypoint-initdb.d:ro
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-garvis} -d ${POSTGRES_DB:-garvis}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    networks:
+      - garvis
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: garvis_ollama
+    hostname: garvis-ollama
+    restart: unless-stopped
+    volumes:
+      - garvis_ollama_data:/root/.ollama
+    ports:
+      - "11434:11434"
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - garvis
+
+  garvis:
+    build: .
+    image: garvis-garvis
+    container_name: garvis_api
+    hostname: garvis-api
+    restart: unless-stopped
+    environment:
+      POSTGRES_HOST: garvis-postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: ${POSTGRES_USER:-garvis}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-garvis_local}
+      POSTGRES_DB: ${POSTGRES_DB:-garvis}
+      OLLAMA_HOST: http://garvis-ollama:11434
+      OLLAMA_DEFAULT_MODEL: ${OLLAMA_DEFAULT_MODEL:-llama3.1}
+      GOVERNANCE_SCHEMAS_PATH: /app/governance/schemas
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      GARVIS_ENV: local
+    volumes:
+      - ./governance/schemas:/app/governance/schemas:ro
+      - garvis_logs:/app/logs
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      ollama:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/status/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    command: >
+      sh -c "echo '[GARVIS] Starting API...' &&
+             uvicorn api.main:app --host 0.0.0.0 --port 8000 --log-level ${LOG_LEVEL:-info}"
+    networks:
+      - garvis
+
+volumes:
+  garvis_postgres_data:
+  garvis_ollama_data:
+  garvis_logs:
+
+networks:
+  garvis:
+    driver: bridge
