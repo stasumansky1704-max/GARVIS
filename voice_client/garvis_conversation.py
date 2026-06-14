@@ -117,8 +117,13 @@ def _find_piper():
 PIPER_EXE = _find_piper()
 # English Piper voice model (calm). Override with TTS_VOICE=<path to .onnx>.
 TTS_VOICE = os.getenv("TTS_VOICE", os.path.join(_VOICE_DIR, "en_US-lessac-medium.onnx"))
+# Russian Piper voice. NOTE: on Python 3.14 the bundled espeak phonemizer currently
+# fails for Russian (no piper-phonemize wheel) - the routing is wired and will work
+# on an env where Russian phonemization is available; otherwise it falls back.
+TTS_VOICE_RU = os.getenv("TTS_VOICE_RU", os.path.join(_VOICE_DIR, "ru_RU-dmitri-medium.onnx"))
 PIPER_LENGTH_SCALE = _env_f("PIPER_LENGTH_SCALE", 1.15)  # >1.0 = slower / calmer
 PIPER_SENTENCE_SILENCE = _env_f("PIPER_SENTENCE_SILENCE", 0.35)  # pause between sentences
+PIPER_RETRY = True              # retry Piper once on transient empty-output failures
 
 # pyttsx3 (fallback + Hebrew): slow it slightly for a calmer cadence.
 TTS_RATE = int(os.getenv("TTS_RATE", "165"))
@@ -499,38 +504,43 @@ def is_stop_word(text: str) -> bool:
 # ----------------------------------------------------------------------------
 import re as _re
 _HEBREW = _re.compile(r"[֐-׿]")
+_CYRILLIC = _re.compile(r"[Ѐ-ӿ]")
 
 
 def _is_hebrew(text: str) -> bool:
     return bool(_HEBREW.search(text or ""))
 
 
+def _is_cyrillic(text: str) -> bool:
+    return bool(_CYRILLIC.search(text or ""))
+
+
+def _voice_for(text: str) -> str:
+    """Pick the Piper voice model for the text's script (Russian -> RU, else EN)."""
+    return TTS_VOICE_RU if _is_cyrillic(text) else TTS_VOICE
+
+
 def piper_available() -> bool:
     return bool(PIPER_EXE) and os.path.exists(TTS_VOICE)
 
 
-def speak_piper(text: str) -> bool:
-    """Synthesize with Piper to a temp WAV and play it (blocking). Never raises."""
-    if not piper_available():
-        return False
+def _piper_synth_play(text: str, voice: str) -> bool:
     import subprocess, tempfile, winsound
     wav = None
     try:
         fd, wav = tempfile.mkstemp(suffix=".wav", prefix="jarvis_tts_")
         os.close(fd)
-        log("TTS_START", f"(piper) {text[:60].replace(chr(10), ' ')!r}")
         proc = subprocess.run(
-            [PIPER_EXE, "-m", TTS_VOICE, "-f", wav,
+            [PIPER_EXE, "-m", voice, "-f", wav,
              "--length-scale", str(PIPER_LENGTH_SCALE),
              "--sentence-silence", str(PIPER_SENTENCE_SILENCE)],
             input=text.encode("utf-8"), capture_output=True, timeout=60,
         )
         if proc.returncode != 0 or not os.path.exists(wav) or os.path.getsize(wav) < 1024:
-            err = proc.stderr.decode("utf-8", "replace")[:160]
-            log("TTS_ERROR", f"piper rc={proc.returncode} {err!r}")
+            err = proc.stderr.decode("utf-8", "replace")
+            log("TTS_ERROR", f"piper rc={proc.returncode} {err[-160:]!r}")
             return False
         winsound.PlaySound(wav, winsound.SND_FILENAME)   # blocking playback
-        log("TTS_DONE", "(piper)")
         return True
     except Exception as exc:
         log("TTS_ERROR", f"piper {type(exc).__name__}: {exc}")
@@ -541,6 +551,22 @@ def speak_piper(text: str) -> bool:
                 os.remove(wav)
             except Exception:
                 pass
+
+
+def speak_piper(text: str, voice: str | None = None) -> bool:
+    """Synthesize with Piper and play (blocking). Retries once. Never raises."""
+    voice = voice or _voice_for(text)
+    if not PIPER_EXE or not os.path.exists(voice):
+        return False
+    log("TTS_START", f"(piper {os.path.basename(voice)}) {text[:60].replace(chr(10), ' ')!r}")
+    attempts = 2 if PIPER_RETRY else 1
+    for attempt in range(1, attempts + 1):
+        if _piper_synth_play(text, voice):
+            log("TTS_DONE", "(piper)")
+            return True
+        if attempt < attempts:
+            log("TTS_RETRY", f"piper attempt {attempt+1}/{attempts}")
+    return False
 
 
 def tts_reset() -> None:
@@ -584,12 +610,18 @@ def speak_pyttsx3(text: str) -> bool:
 
 
 def speak(text: str) -> bool:
-    """Language- and engine-aware TTS dispatcher. Never raises."""
+    """
+    Language- and engine-aware TTS dispatcher. Never raises.
+      - Hebrew  -> pyttsx3 (Piper has no Hebrew voice)
+      - Russian -> Piper ru_RU voice (speak_piper auto-selects by Cyrillic script)
+      - English -> Piper en_US voice
+      - any Piper failure -> pyttsx3 fallback
+    """
     if not text or not text.strip():
         return True
     # Piper has no Hebrew voice -> Hebrew always via pyttsx3.
     if TTS_ENGINE == "piper" and not _is_hebrew(text):
-        if speak_piper(text):
+        if speak_piper(text):       # picks RU voice for Cyrillic, EN otherwise
             return True
         log("TTS_FALLBACK", "piper failed -> pyttsx3")
     return speak_pyttsx3(text)
@@ -612,7 +644,9 @@ def main() -> None:
     print("=" * 64)
     log("RUNTIME_URL", API_URL)   # audit: which runtime URL this client calls
     if TTS_ENGINE == "piper" and piper_available():
-        log("TTS_ENGINE", f"piper ({os.path.basename(TTS_VOICE)}, length-scale {PIPER_LENGTH_SCALE}); Hebrew -> pyttsx3")
+        ru = "yes" if os.path.exists(TTS_VOICE_RU) else "no"
+        log("TTS_ENGINE", f"piper EN={os.path.basename(TTS_VOICE)} RU={os.path.basename(TTS_VOICE_RU)}"
+                          f"(present={ru}) len-scale={PIPER_LENGTH_SCALE}; Hebrew -> pyttsx3")
     else:
         reason = "" if TTS_ENGINE != "piper" else " (piper.exe or voice model missing)"
         log("TTS_ENGINE", f"pyttsx3{reason}")
