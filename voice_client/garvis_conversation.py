@@ -34,6 +34,21 @@ import requests
 API_URL = "http://localhost:8000/api/v1/runtime/command"
 SESSION_ID = "windows-voice-conv"
 
+# ============================================================================
+# TUNABLES  (all overridable via environment variables)
+# ============================================================================
+import os
+
+def _env_f(name, default):  # float env helper
+    try: return float(os.getenv(name, str(default)))
+    except (TypeError, ValueError): return default
+
+def _env_b(name, default):  # bool env helper
+    return os.getenv(name, str(default)).strip().lower() in ("1", "true", "yes", "on")
+
+# Print per-chunk energy/peak only when DEBUG_VOICE=true (quiet by default).
+DEBUG_VOICE = _env_b("DEBUG_VOICE", False)
+
 # --- Microphone ---
 # Device is resolved at RUNTIME by name + host API (see resolve_device). We do NOT
 # hardcode an index - indices drift and cause PaErrorCode -9996 Invalid device.
@@ -42,31 +57,45 @@ PREFERRED_HOSTAPI = "WDM-KS"        # the only HyperX endpoint that captures on 
 MIC_DEVICE = None                   # optional manual override (index); None = resolve by name
 CAPTURE_RATE = 44100                # HyperX native rate
 STT_RATE = 16000                    # Whisper wants 16k
-USABLE_PEAK = 0.02                  # device must beat this while speaking
+USABLE_PEAK = _env_f("USABLE_PEAK", 0.015)   # device must beat this while speaking
 AUTO_DETECT_IF_SILENT = True
+# Software gain applied to EVERY captured chunk (helps quiet 20-30 cm speech reach
+# STT and the peak gate). Signal is clipped to [-1, 1]. 1.0 = no gain.
+MIC_GAIN = _env_f("MIC_GAIN", 2.0)
 
 # --- VAD (over rec chunks) ---
 # Hysteresis: a HIGH threshold to START an utterance (avoids false triggers), and a
 # LOWER threshold to KEEP accumulating (so normal speech after a loud onset is not
 # misread as silence). Acceptance is by VOICED time, not (total - silence).
-CHUNK_MS = 120                  # blocking record granularity
-SILENCE_TIMEOUT_S = 1.2         # end of turn after this trailing silence
-MIN_SPEECH_S = 0.4              # reject blips with less than this voiced time
-MAX_LISTEN_S = 20.0             # max wait for speech to start
+# Tuned looser for 20-30 cm desk distance (catch quieter onsets and word tails).
+CHUNK_MS = 100                              # blocking record granularity (finer)
+SILENCE_TIMEOUT_S = _env_f("SILENCE_TIMEOUT_S", 1.0)   # end of turn after trailing silence
+MIN_SPEECH_S = _env_f("MIN_SPEECH_S", 0.3)             # accept short commands ("stop"/"כן")
+MAX_LISTEN_S = 30.0                         # max wait for speech to start
 MAX_UTTERANCE_S = 30.0
-START_ENERGY_MULT = 3.0         # start threshold = floor * this
-CONTINUE_ENERGY_MULT = 1.4      # continue threshold = floor * this (lower than start)
-MIN_ABS_FLOOR = 0.01            # absolute speech threshold floor
+START_ENERGY_MULT = _env_f("START_ENERGY_MULT", 2.5)      # start threshold = floor * this
+CONTINUE_ENERGY_MULT = _env_f("CONTINUE_ENERGY_MULT", 1.2)  # continue threshold = floor * this
+MIN_ABS_FLOOR = _env_f("MIN_ABS_FLOOR", 0.008)           # absolute speech threshold floor
 MAX_NOISE_FLOOR = 0.05          # cap floor so an inflated calibration can't gate out speech
 COOLDOWN_S = 0.4
 
-WHISPER_MODEL = "base"
-WHISPER_DEVICE = "cpu"
-WHISPER_COMPUTE = "int8"
-HTTP_TIMEOUT_S = 90
-STOP_WORDS = {"goodbye", "exit", "stop", "quit", "stop listening", "shut down"}
+# --- STT (faster-whisper) ---
+# "small" is markedly better than "base" for Hebrew and Hebrew/English mixed speech
+# (the reported missed-words problem). Override with GARVIS_WHISPER_MODEL=base for
+# lower latency if needed. Downloaded once on first use.
+WHISPER_MODEL = os.getenv("GARVIS_WHISPER_MODEL", "small")
+WHISPER_DEVICE = os.getenv("GARVIS_WHISPER_DEVICE", "cpu")
+WHISPER_COMPUTE = os.getenv("GARVIS_WHISPER_COMPUTE", "int8")
+# Language: empty => auto-detect per utterance (handles he/en switching). Force with
+# GARVIS_WHISPER_LANG=he or =en if auto-detect is unreliable for short commands.
+WHISPER_LANGUAGE = os.getenv("GARVIS_WHISPER_LANG", "").strip() or None
+WHISPER_BEAM = int(os.getenv("GARVIS_WHISPER_BEAM", "5"))
 
-TTS_RATE = 170
+HTTP_TIMEOUT_S = 90
+STOP_WORDS = {"goodbye", "exit", "stop", "quit", "stop listening", "shut down",
+              "ביי", "להתראות", "תפסיק", "עצור"}
+
+TTS_RATE = int(os.getenv("TTS_RATE", "175"))
 TTS_VOLUME = 1.0
 
 
@@ -141,7 +170,10 @@ def _do_rec(seconds: float, device, rate: int) -> np.ndarray:
     rec = sd.rec(int(seconds * rate), samplerate=rate, channels=1,
                  dtype="float32", device=device)
     sd.wait()
-    return rec.reshape(-1)
+    audio = rec.reshape(-1)
+    if MIC_GAIN != 1.0 and audio.size:
+        audio = np.clip(audio * MIC_GAIN, -1.0, 1.0)  # software gain for quiet/far speech
+    return audio
 
 
 def rec_chunk(seconds: float, device, rate: int) -> np.ndarray:
@@ -310,6 +342,10 @@ def listen_utterance(noise_floor: float):
     while True:
         c = rec_chunk(chunk_s, _ACTIVE["device"], _ACTIVE["rate"])
         e = float(np.sqrt(np.mean(c ** 2))) if c.size else 0.0
+        if DEBUG_VOICE:
+            log("VAD_DBG", f"energy={e:.4f} peak={peak_of(c):.4f} "
+                           f"start_thr={start_thresh:.4f} cont_thr={cont_thresh:.4f} "
+                           f"{'SPEAK' if (e > (cont_thresh if started else start_thresh)) else 'sil'}")
 
         if not started:
             if e > start_thresh:
@@ -367,8 +403,21 @@ def load_stt():
 
 
 def transcribe(model, audio16: np.ndarray) -> str:
-    segments, _ = model.transcribe(audio16, vad_filter=True, condition_on_previous_text=False)
-    return " ".join(s.text.strip() for s in segments).strip()
+    # vad_filter=False on purpose: our own VAD already segmented the utterance, and
+    # Whisper's internal VAD tends to trim leading/trailing words (the missed-words
+    # problem). language=None auto-detects per utterance so he/en both work.
+    segments, info = model.transcribe(
+        audio16,
+        language=WHISPER_LANGUAGE,
+        beam_size=WHISPER_BEAM,
+        vad_filter=False,
+        condition_on_previous_text=False,
+    )
+    text = " ".join(s.text.strip() for s in segments).strip()
+    if DEBUG_VOICE:
+        log("STT_LANG", f"{getattr(info, 'language', '?')} "
+                        f"p={getattr(info, 'language_probability', 0.0):.2f}")
+    return text
 
 
 def ask_jarvis(conv: Conversation, text: str):
@@ -434,8 +483,16 @@ def speak(text: str) -> bool:
 # Main loop
 # ----------------------------------------------------------------------------
 def main() -> None:
+    # Make stdout/stderr UTF-8 so Hebrew transcriptions/replies print without
+    # crashing on a cp1252 Windows console.
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
+
     print("=" * 64)
-    print("  JARVIS - Continuous Conversation (rec-based capture)")
+    print("  GARVIS - Continuous Conversation (rec-based capture)")
     print("=" * 64)
 
     log("STATE", "loading Whisper...")
