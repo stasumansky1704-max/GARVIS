@@ -1,92 +1,92 @@
 """
-GARVIS Voice — Continuous Conversation Mode (Sprint 1.0)
+GARVIS Voice — Continuous Conversation Mode (Windows voice client)
 
-Reuses the existing, verified stack — nothing rebuilt:
-  - faster-whisper (STT)            : already installed & working
-  - sounddevice (mic I/O)           : already installed & working
-  - pyttsx3 (TTS)                   : already installed & working
-  - POST /api/v1/runtime/command    : verified working (Ollama-backed)
+Explicit state machine with TTS fully isolated from listening:
 
-Adds ONLY conversation quality:
-  Phase 2  energy-based Voice Activity Detection (no fixed 5s window, no new deps)
-  Phase 3  continuous loop — listening resumes automatically after each answer
-  Phase 4  persistent runtime session_id + last-turn context (model loaded once)
-  Phase 5  per-stage latency timing
-  Phase 6  graceful error recovery (no crashes, no manual restart)
-  Phase 7  voice-state indicators: IDLE / LISTENING / THINKING / SPEAKING
+    IDLE -> LISTENING -> TRANSCRIBING -> THINKING -> SPEAKING -> COOLDOWN -> LISTENING
+                                          (any failure) -> ERROR_RECOVERY -> COOLDOWN
 
-Run on the Windows host (where the mic + deps live):
+Reuses the existing verified stack (nothing rebuilt):
+    faster-whisper (STT), sounddevice (mic), pyttsx3 (TTS), POST /api/v1/runtime/command
+
+Key reliability rules:
+  - NEVER listen while speaking: the mic InputStream is STOPPED before TTS and
+    restarted after a cooldown, so TTS output cannot bleed into the mic and the
+    loop cannot half-listen during speech.
+  - Fresh pyttsx3 engine per utterance (a shared engine + repeated runAndWait()
+    wedges Windows SAPI5 -> silent after the first reply). On failure: reset + retry.
+  - Re-calibrate the noise floor before every listening turn (adaptive + abs floor).
+
+Run on the Windows host (mic + deps live there):
     python voice_client/garvis_conversation.py
-Quit any time with Ctrl+C, or say "goodbye" / "exit".
+Say "goodbye" / "exit" / "stop" / "quit" (or Ctrl+C) to end.
 """
 from __future__ import annotations
 
 import sys
 import time
-import queue
 import signal
 from dataclasses import dataclass, field
 
 import numpy as np
 import requests
 
-# Hardware/heavy deps are imported lazily inside the functions that use them.
-# This lets the module load for headless logic tests and makes each component
-# fail gracefully (Phase 6) instead of crashing the whole program at import.
+# Heavy/hardware deps imported lazily so the module loads headless for tests.
 
 # ----------------------------------------------------------------------------
-# Config (all tunable; sensible defaults)
+# Config
 # ----------------------------------------------------------------------------
 API_URL = "http://localhost:8000/api/v1/runtime/command"
-SESSION_ID = "windows-voice-conv"          # Phase 4: stable session across turns
+SESSION_ID = "windows-voice-conv"
 SAMPLE_RATE = 16000
-FRAME_MS = 30                              # VAD analysis frame
+FRAME_MS = 30
 FRAME_LEN = SAMPLE_RATE * FRAME_MS // 1000
 
-# Phase 2 — VAD tuning
-SILENCE_TIMEOUT_S = 1.0                    # stop after this much trailing silence
-MIN_SPEECH_S = 0.4                         # ignore blips shorter than this
-MAX_UTTERANCE_S = 30.0                     # hard safety cap
-START_ENERGY_MULT = 3.0                    # speech must exceed noise floor * this
-PREROLL_FRAMES = 8                         # keep audio just before speech onset
+# VAD tuning
+SILENCE_TIMEOUT_S = 1.0          # end of turn after this trailing silence
+MIN_SPEECH_S = 0.4               # reject blips shorter than this
+MAX_LISTEN_S = 20.0              # max time waiting for speech to START
+MAX_UTTERANCE_S = 30.0           # max length of a single utterance
+START_ENERGY_MULT = 3.0          # speech must exceed noise floor * this
+MIN_ABS_FLOOR = 0.005            # absolute threshold floor (silent room / TTS tail safety)
+PREROLL_FRAMES = 8               # audio kept just before speech onset
+
+COOLDOWN_S = 0.5                 # 300–700ms cooldown after speaking
 
 WHISPER_MODEL = "base"
 WHISPER_DEVICE = "cpu"
 WHISPER_COMPUTE = "int8"
-
 HTTP_TIMEOUT_S = 90
-STOP_WORDS = {"goodbye", "exit", "quit", "stop listening", "shut down"}
+STOP_WORDS = {"goodbye", "exit", "stop", "quit", "stop listening", "shut down"}
+
+TTS_RATE = 170
+TTS_VOLUME = 1.0
 
 
 # ----------------------------------------------------------------------------
-# Phase 7 — voice-state indicator (terminal; mirrors dashboard LISTENING/THINKING/SPEAKING/IDLE)
+# States
 # ----------------------------------------------------------------------------
 class State:
     IDLE = "IDLE"
     LISTENING = "LISTENING"
+    TRANSCRIBING = "TRANSCRIBING"
     THINKING = "THINKING"
     SPEAKING = "SPEAKING"
+    COOLDOWN = "COOLDOWN"
+    ERROR_RECOVERY = "ERROR_RECOVERY"
 
 
-_GLYPH = {
-    State.IDLE: "·",
-    State.LISTENING: "🎤",
-    State.THINKING: "🧠",
-    State.SPEAKING: "🔊",
-}
-
-
-def show_state(state: str, detail: str = "") -> None:
-    print(f"\r[{_GLYPH.get(state,'')} {state:<9}] {detail:<60}", end="", flush=True)
+def log_state(state: str, detail: str = "") -> None:
+    print(f"[{state:<15}] {detail}", flush=True)
 
 
 # ----------------------------------------------------------------------------
-# Phase 4 — conversation/session state
+# Conversation/session state
 # ----------------------------------------------------------------------------
 @dataclass
 class Conversation:
     session_id: str = SESSION_ID
-    turns: list[tuple[str, str]] = field(default_factory=list)  # (user, garvis)
+    turns: list[tuple[str, str]] = field(default_factory=list)
 
     def add(self, user: str, garvis: str) -> None:
         self.turns.append((user, garvis))
@@ -97,34 +97,118 @@ class Conversation:
 
 
 # ----------------------------------------------------------------------------
-# Phase 2 — VAD capture (energy-based, pure numpy; replaces the fixed 5s window)
+# TTS — isolated, fresh engine per utterance, full logs, reset + retry
 # ----------------------------------------------------------------------------
-def calibrate_noise_floor(stream, frames: int = 20) -> float:
-    """Sample ambient noise for ~0.6s to set an adaptive speech threshold."""
+def tts_reset() -> None:
+    print("   [TTS_RESET]", flush=True)
+    try:
+        import pythoncom  # pywin32 (pulled in by pyttsx3 on Windows)
+        pythoncom.CoUninitialize()
+        pythoncom.CoInitialize()
+    except Exception:
+        pass  # not on Windows / not present — fresh init() suffices
+
+
+def _speak_once(text: str) -> None:
+    import pyttsx3
+    print("   [TTS_INIT]", flush=True)
+    engine = pyttsx3.init()
+    try:
+        engine.setProperty("rate", TTS_RATE)
+        engine.setProperty("volume", TTS_VOLUME)
+        engine.say(text)
+        engine.runAndWait()
+    finally:
+        try:
+            engine.stop()
+        except Exception:
+            pass
+        del engine
+
+
+def speak(text: str) -> bool:
+    """Speak text reliably. Logs TTS_START/TTS_DONE/TTS_ERROR(+TTS_RESET). Never raises."""
+    if not text or not text.strip():
+        return True
+    preview = text[:60].replace("\n", " ")
+    for attempt in (1, 2):
+        print(f"   [TTS_START] (attempt {attempt}) {preview!r}", flush=True)
+        try:
+            _speak_once(text)
+            print("   [TTS_DONE]", flush=True)
+            return True
+        except Exception as exc:
+            print(f"   [TTS_ERROR] {type(exc).__name__}: {exc}", flush=True)
+            if attempt == 1:
+                tts_reset()
+    return False
+
+
+# ----------------------------------------------------------------------------
+# Mic stream lifecycle (stop fully while speaking)
+# ----------------------------------------------------------------------------
+def open_stream():
+    import sounddevice as sd
+    stream = sd.InputStream(samplerate=SAMPLE_RATE, channels=1, dtype="float32", blocksize=FRAME_LEN)
+    stream.start()
+    return stream
+
+
+def close_stream(stream) -> None:
+    try:
+        stream.stop()
+        stream.close()
+    except Exception:
+        pass
+
+
+def speak_isolated(stream, text: str) -> bool:
+    """Stop the mic, speak fully, restart the mic. Never listen while speaking."""
+    try:
+        stream.stop()           # pause capture so TTS can't bleed into the mic
+    except Exception:
+        pass
+    ok = speak(text)
+    try:
+        stream.start()          # resume capture for the next turn
+    except Exception:
+        pass
+    return ok
+
+
+def recover_stream(stream):
+    log_state(State.ERROR_RECOVERY, "resetting mic stream")
+    close_stream(stream)
+    try:
+        return open_stream()
+    except Exception as exc:
+        print(f"❌ mic reopen failed: {exc}; retrying in 1s")
+        time.sleep(1.0)
+        return open_stream()
+
+
+# ----------------------------------------------------------------------------
+# VAD
+# ----------------------------------------------------------------------------
+def calibrate_noise_floor(stream, frames: int = 12) -> float:
     energies = []
     for _ in range(frames):
         block, _ = stream.read(FRAME_LEN)
         energies.append(float(np.sqrt(np.mean(block.astype(np.float32) ** 2))))
-    floor = float(np.median(energies)) if energies else 1e-4
-    return max(floor, 1e-4)
+    floor = float(np.median(energies)) if energies else MIN_ABS_FLOOR
+    return max(floor, MIN_ABS_FLOOR)
 
 
 def listen_utterance(stream, noise_floor: float) -> np.ndarray | None:
-    """
-    Record one utterance using VAD:
-      - wait for speech (energy > floor * START_ENERGY_MULT)
-      - keep recording while speech continues
-      - stop after SILENCE_TIMEOUT_S of trailing silence
-      - return None if utterance shorter than MIN_SPEECH_S
-    """
-    speech_thresh = noise_floor * START_ENERGY_MULT
+    """Capture one utterance. Logs VAD_START / VAD_STOP / VAD_TIMEOUT. None on timeout/too-short."""
+    speech_thresh = max(noise_floor, MIN_ABS_FLOOR) * START_ENERGY_MULT
     preroll: list[np.ndarray] = []
     collected: list[np.ndarray] = []
     started = False
     silence_run = 0.0
+    wait = 0.0
     total = 0.0
 
-    show_state(State.LISTENING, "waiting for speech…")
     while True:
         block, _ = stream.read(FRAME_LEN)
         mono = block.reshape(-1).astype(np.float32)
@@ -132,14 +216,18 @@ def listen_utterance(stream, noise_floor: float) -> np.ndarray | None:
         is_speech = energy > speech_thresh
 
         if not started:
+            wait += FRAME_MS / 1000.0
             preroll.append(mono)
             if len(preroll) > PREROLL_FRAMES:
                 preroll.pop(0)
             if is_speech:
                 started = True
-                collected.extend(preroll)   # keep the lead-in so first word isn't clipped
+                print("   [VAD_START]", flush=True)
+                collected.extend(preroll)
                 collected.append(mono)
-                show_state(State.LISTENING, "speech detected…")
+            elif wait >= MAX_LISTEN_S:
+                print("   [VAD_TIMEOUT] no speech", flush=True)
+                return None
             continue
 
         collected.append(mono)
@@ -149,19 +237,21 @@ def listen_utterance(stream, noise_floor: float) -> np.ndarray | None:
         else:
             silence_run += FRAME_MS / 1000.0
             if silence_run >= SILENCE_TIMEOUT_S:
+                print("   [VAD_STOP] silence", flush=True)
                 break
         if total >= MAX_UTTERANCE_S:
+            print("   [VAD_STOP] max utterance", flush=True)
             break
 
-    audio = np.concatenate(collected) if collected else np.zeros(0, dtype=np.float32)
     speech_dur = max(0.0, total - silence_run)
     if speech_dur < MIN_SPEECH_S:
+        print(f"   [VAD_STOP] too short ({speech_dur:.2f}s) — rejected", flush=True)
         return None
-    return audio
+    return np.concatenate(collected) if collected else None
 
 
 # ----------------------------------------------------------------------------
-# STT / Runtime / TTS — reuse existing working components
+# STT / Runtime
 # ----------------------------------------------------------------------------
 def load_stt():
     from faster_whisper import WhisperModel
@@ -174,7 +264,6 @@ def transcribe(model, audio: np.ndarray) -> str:
 
 
 def ask_garvis(conv: Conversation, text: str) -> tuple[str, float]:
-    """POST to the existing runtime command endpoint. Returns (reply, latency_s)."""
     t0 = time.perf_counter()
     r = requests.post(
         API_URL,
@@ -183,130 +272,109 @@ def ask_garvis(conv: Conversation, text: str) -> tuple[str, float]:
     )
     dt = time.perf_counter() - t0
     r.raise_for_status()
-    data = r.json()
-    return (data.get("response_text") or "I did not get a response."), dt
+    return (r.json().get("response_text") or "I did not get a response."), dt
 
 
-def make_tts():
-    import pyttsx3
-    engine = pyttsx3.init()
-    engine.setProperty("rate", 170)
-    engine.setProperty("volume", 1.0)
-    return engine
-
-
-def speak(engine, text: str) -> None:
-    engine.say(text)
-    engine.runAndWait()
+def is_stop_word(text: str) -> bool:
+    return text.lower().strip(" .!?,") in STOP_WORDS
 
 
 # ----------------------------------------------------------------------------
-# Main continuous loop (Phase 3) with error recovery (Phase 6) + latency (Phase 5)
+# Main state machine
 # ----------------------------------------------------------------------------
 def main() -> None:
     print("=" * 64)
-    print("  GARVIS — Continuous Conversation Mode")
+    print("  GARVIS — Continuous Conversation (state machine)")
     print("=" * 64)
 
-    # one-time inits (Phase 4: model loaded ONCE, reused every turn)
-    show_state(State.IDLE, "loading Whisper…")
+    log_state(State.IDLE, "loading Whisper…")
     try:
         model = load_stt()
-    except Exception as exc:  # Phase 6
-        print(f"\n❌ Could not load STT model: {exc}")
-        sys.exit(1)
-
-    try:
-        tts = make_tts()
-    except Exception as exc:  # Phase 6
-        print(f"\n❌ Could not init TTS: {exc}")
-        sys.exit(1)
+    except Exception as exc:
+        print(f"❌ STT load failed: {exc}"); sys.exit(1)
 
     conv = Conversation()
-
-    # graceful Ctrl+C
     stop = {"flag": False}
     signal.signal(signal.SIGINT, lambda *_: stop.update(flag=True))
 
     try:
-        import sounddevice as sd
-        stream = sd.InputStream(samplerate=SAMPLE_RATE, channels=1, dtype="float32", blocksize=FRAME_LEN)
-        stream.start()
-    except Exception as exc:  # Phase 6: mic unavailable
-        print(f"\n❌ Microphone unavailable: {exc}")
-        sys.exit(1)
-
-    show_state(State.IDLE, "calibrating mic…")
-    try:
-        noise_floor = calibrate_noise_floor(stream)
-    except Exception:
-        noise_floor = 1e-3
-    print(f"\n  Noise floor ~{noise_floor:.4f} · say 'goodbye' to exit.\n")
+        stream = open_stream()
+    except Exception as exc:
+        print(f"❌ Microphone unavailable: {exc}"); sys.exit(1)
+    noise_floor = calibrate_noise_floor(stream)
+    log_state(State.IDLE, f"ready · noise floor ~{noise_floor:.4f} · say 'goodbye' to exit")
 
     turn = 0
+    user_text = ""
+    reply = ""
+    stt_dt = rt_dt = 0.0
+    state = State.LISTENING
+
     while not stop["flag"]:
         try:
-            # ---- LISTEN (Phase 2 VAD) ----
-            audio = listen_utterance(stream, noise_floor)
-            if audio is None:                       # Phase 6: no speech
-                show_state(State.IDLE, "no speech, still listening…")
-                continue
+            if state == State.LISTENING:
+                log_state(State.LISTENING, "waiting for speech…")
+                audio = listen_utterance(stream, noise_floor)
+                if audio is None:
+                    state = State.COOLDOWN
+                    continue
+                t0 = time.perf_counter()
+                state = State.TRANSCRIBING
 
-            # ---- STT ----
-            show_state(State.THINKING, "transcribing…")
-            t0 = time.perf_counter()
-            try:
+            if state == State.TRANSCRIBING:
+                log_state(State.TRANSCRIBING, "transcribing…")
                 user_text = transcribe(model, audio)
-            except Exception as exc:                # Phase 6
-                show_state(State.IDLE, f"STT error: {exc}")
-                continue
-            stt_dt = time.perf_counter() - t0
-            if not user_text:
-                show_state(State.IDLE, "empty transcript, listening…")
-                continue
+                stt_dt = time.perf_counter() - t0
+                if not user_text:
+                    log_state(State.TRANSCRIBING, "empty transcript")
+                    state = State.COOLDOWN
+                    continue
+                print(f"  🗣️  You: {user_text}")
+                if is_stop_word(user_text):
+                    speak_isolated(stream, "Goodbye.")
+                    break
+                state = State.THINKING
 
-            print(f"\n  🗣️  You: {user_text}")
-            if user_text.lower().strip(" .!?") in STOP_WORDS:
-                speak(tts, "Goodbye.")
-                break
-
-            # ---- RUNTIME + OLLAMA ----
-            show_state(State.THINKING, "GARVIS is thinking…")
-            try:
+            if state == State.THINKING:
+                log_state(State.THINKING, "GARVIS is thinking…")
                 reply, rt_dt = ask_garvis(conv, user_text)
-            except requests.Timeout:                # Phase 6
-                show_state(State.IDLE, "runtime timeout, listening…")
-                speak(tts, "That took too long. Let's try again.")
-                continue
-            except Exception as exc:                # Phase 6
-                show_state(State.IDLE, f"runtime error: {exc}")
-                speak(tts, "I could not reach my runtime.")
-                continue
+                print(f"  🤖 GARVIS: {reply}")
+                state = State.SPEAKING
 
-            # ---- SPEAK ----
-            print(f"  🤖 GARVIS: {reply}")
-            show_state(State.SPEAKING, "speaking…")
-            t0 = time.perf_counter()
-            try:
-                speak(tts, reply)
-            except Exception as exc:                # Phase 6
-                show_state(State.IDLE, f"TTS error: {exc}")
-            tts_dt = time.perf_counter() - t0
+            if state == State.SPEAKING:
+                log_state(State.SPEAKING, "mic paused, speaking…")
+                t0 = time.perf_counter()
+                spoke = speak_isolated(stream, reply)
+                tts_dt = time.perf_counter() - t0
+                if not spoke:
+                    log_state(State.ERROR_RECOVERY, "TTS failed — continuing")
+                conv.add(user_text, reply)
+                turn += 1
+                print(f"     ⏱  stt {stt_dt:.1f}s · runtime {rt_dt:.1f}s · tts {tts_dt:.1f}s · turn #{turn}")
+                state = State.COOLDOWN
 
-            conv.add(user_text, reply)              # Phase 4
-            turn += 1
-            print(f"     ⏱  stt {stt_dt:.1f}s · runtime {rt_dt:.1f}s · tts {tts_dt:.1f}s · turn #{turn}\n")
-            show_state(State.IDLE, "listening resumes…")  # Phase 3: auto back to listen
+            if state == State.COOLDOWN:
+                log_state(State.COOLDOWN, f"{int(COOLDOWN_S*1000)}ms…")
+                time.sleep(COOLDOWN_S)
+                try:
+                    for _ in range(int(0.2 / (FRAME_MS / 1000))):
+                        stream.read(FRAME_LEN)          # drain buffered audio
+                    noise_floor = calibrate_noise_floor(stream, frames=10)
+                except Exception:
+                    stream = recover_stream(stream)
+                state = State.LISTENING
 
-        except Exception as exc:                    # Phase 6: never crash the loop
-            show_state(State.IDLE, f"recovered from: {exc}")
-            time.sleep(0.5)
+        except requests.Timeout:
+            log_state(State.ERROR_RECOVERY, "runtime timeout")
+            speak_isolated(stream, "That took too long. Let us try again.")
+            state = State.COOLDOWN
+        except Exception as exc:
+            log_state(State.ERROR_RECOVERY, f"{type(exc).__name__}: {exc}")
+            stream = recover_stream(stream)
+            state = State.COOLDOWN
 
-    try:
-        stream.stop(); stream.close()
-    except Exception:
-        pass
-    print(f"\n\n  Conversation ended — {turn} turn(s).")
+    close_stream(stream)
+    print(f"\n  Conversation ended — {turn} turn(s).")
 
 
 if __name__ == "__main__":
