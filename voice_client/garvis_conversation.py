@@ -31,7 +31,7 @@ from dataclasses import dataclass, field
 import numpy as np
 import requests
 
-API_URL = "http://localhost:8000/api/v1/runtime/command"
+API_URL = "http://127.0.0.1:8000/api/v1/runtime/command"  # 127.0.0.1 not localhost (avoids IPv6 ::1 ambiguity)
 SESSION_ID = "windows-voice-conv"
 
 # ============================================================================
@@ -91,7 +91,13 @@ WHISPER_COMPUTE = os.getenv("GARVIS_WHISPER_COMPUTE", "int8")
 WHISPER_LANGUAGE = os.getenv("GARVIS_WHISPER_LANG", "").strip() or None
 WHISPER_BEAM = int(os.getenv("GARVIS_WHISPER_BEAM", "5"))
 
+# Timeouts: (connect, read). Fast-fail the connect (5s) so an unreachable backend
+# surfaces immediately; allow 90s read for LLM generation.
+CONNECT_TIMEOUT_S = 5
 HTTP_TIMEOUT_S = 90
+RUNTIME_RETRY = True            # retry once on ConnectionError / HTTP 5xx (not 4xx)
+RETRY_BACKOFF_S = 0.5
+
 STOP_WORDS = {"goodbye", "exit", "stop", "quit", "stop listening", "shut down",
               "ביי", "להתראות", "תפסיק", "עצור"}
 
@@ -420,14 +426,43 @@ def transcribe(model, audio16: np.ndarray) -> str:
     return text
 
 
-def ask_jarvis(conv: Conversation, text: str):
+def _runtime_post_once(conv: Conversation, text: str):
+    """Single POST to the runtime. Logs URL + status/body. Raises HTTPError on non-2xx."""
+    log("RUNTIME_REQUEST", f"POST {API_URL}")
     t0 = time.perf_counter()
     r = requests.post(API_URL, json={"text": text, "source": "voice",
                                      "session_id": conv.session_id, "metadata": {}},
-                      timeout=HTTP_TIMEOUT_S)
+                      timeout=(CONNECT_TIMEOUT_S, HTTP_TIMEOUT_S))
     dt = time.perf_counter() - t0
+    body_preview = (r.text or "")[:200].replace("\n", " ")
+    log("RUNTIME_RESPONSE", f"status={r.status_code} dt={dt:.1f}s body={body_preview!r}")
     r.raise_for_status()
     return (r.json().get("response_text") or "I did not get a response."), dt
+
+
+def ask_jarvis(conv: Conversation, text: str):
+    """
+    POST to the runtime with ONE retry on transient failures (ConnectionError or
+    HTTP 5xx) - covers the brief Ollama model-reload window. Never retries 4xx.
+    Read timeouts (slow generation) are NOT retried; they propagate as Timeout.
+    """
+    attempts = 2 if RUNTIME_RETRY else 1
+    for attempt in range(1, attempts + 1):
+        try:
+            return _runtime_post_once(conv, text)
+        except requests.ConnectionError as exc:
+            if attempt < attempts:
+                log("RUNTIME_RETRY", f"ConnectionError ({type(exc).__name__}) - retry {attempt+1}/{attempts}")
+                time.sleep(RETRY_BACKOFF_S)
+                continue
+            raise
+        except requests.HTTPError as exc:
+            code = exc.response.status_code if exc.response is not None else 0
+            if 500 <= code < 600 and attempt < attempts:
+                log("RUNTIME_RETRY", f"HTTP {code} - retry {attempt+1}/{attempts}")
+                time.sleep(RETRY_BACKOFF_S)
+                continue
+            raise  # 4xx, or 5xx after final attempt -> propagate, do not retry
 
 
 def is_stop_word(text: str) -> bool:
@@ -494,6 +529,7 @@ def main() -> None:
     print("=" * 64)
     print("  JARVIS - Continuous Conversation (rec-based capture)")
     print("=" * 64)
+    log("RUNTIME_URL", API_URL)   # audit: which runtime URL this client calls
 
     log("STATE", "loading Whisper...")
     try:
@@ -549,10 +585,20 @@ def main() -> None:
             log("THINKING", "JARVIS is thinking...")
             try:
                 reply, rt_dt = ask_jarvis(conv, user_text)
-            except requests.Timeout:
-                log("RUNTIME_TIMEOUT"); speak("That took too long. Let us try again."); continue
+            except requests.HTTPError as exc:
+                code = exc.response.status_code if exc.response is not None else "?"
+                body = (exc.response.text[:200].replace("\n", " ") if exc.response is not None else "")
+                log("RUNTIME_HTTP_ERROR", f"status={code} body={body!r}")
+                speak("My runtime returned an error."); continue
+            except requests.ConnectionError as exc:
+                log("RUNTIME_CONN_ERROR", f"{type(exc).__name__}: {exc}")
+                speak("I could not reach my runtime."); continue
+            except requests.Timeout as exc:
+                log("RUNTIME_TIMEOUT", f"{type(exc).__name__}: {exc}")
+                speak("That took too long. Let us try again."); continue
             except Exception as exc:
-                log("RUNTIME_ERROR", str(exc)); speak("I could not reach my runtime."); continue
+                log("RUNTIME_ERROR", f"{type(exc).__name__}: {exc}")
+                speak("Something went wrong talking to my runtime."); continue
 
             print(f"  JARVIS: {reply}")
             t0 = time.perf_counter()
