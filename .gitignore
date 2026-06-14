@@ -15,3 +15,7 @@ dashboard/.env.local
 dist/
 node_modules/
 reference-repos/
+
+# Piper TTS voice models / artifacts (downloaded via voice_client/piper_setup.py)
+voice_client/piper_voices/
+*.onnx
