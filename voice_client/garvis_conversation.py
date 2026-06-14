@@ -39,9 +39,30 @@ import requests
 # ----------------------------------------------------------------------------
 API_URL = "http://localhost:8000/api/v1/runtime/command"
 SESSION_ID = "windows-voice-conv"          # Phase 4: stable session across turns
-SAMPLE_RATE = 16000
-FRAME_MS = 30                              # VAD analysis frame
-FRAME_LEN = SAMPLE_RATE * FRAME_MS // 1000
+
+# --- Microphone selection -------------------------------------------------
+# The default Windows input device can be near-silent (e.g. a disabled array
+# mic): MAX~0.00006. An explicit working device (HyperX QuadCast 2 S = device 1
+# @ 48000Hz) records correctly (MAX~0.76). So we select a device + its native
+# capture rate, then resample to 16k for Whisper.
+MIC_DEVICE = 1                              # preferred input device index (None = system default)
+MIC_NAME_HINT = "HyperX QuadCast"          # preferred device name substring (overrides index if found)
+CAPTURE_RATE = 48000                       # native capture samplerate for the selected device
+AUTO_DETECT_IF_SILENT = True               # if the chosen device is silent, scan for a working one
+SILENT_MAX_THRESHOLD = 0.005               # capture considered "silent" below this peak
+
+STT_RATE = 16000                           # faster-whisper expects 16 kHz
+FRAME_MS = 30                              # VAD analysis frame (at CAPTURE_RATE)
+
+# Back-compat name used elsewhere; STT side always uses STT_RATE.
+SAMPLE_RATE = STT_RATE
+
+
+def _frame_len(rate: int) -> int:
+    return rate * FRAME_MS // 1000
+
+
+FRAME_LEN = _frame_len(CAPTURE_RATE)       # capture frame length (recomputed if rate changes)
 
 # Phase 2 — VAD tuning
 SILENCE_TIMEOUT_S = 1.0                    # stop after this much trailing silence
@@ -94,6 +115,95 @@ class Conversation:
     @property
     def last(self) -> tuple[str, str] | None:
         return self.turns[-1] if self.turns else None
+
+
+# ----------------------------------------------------------------------------
+# Microphone device selection + audio resampling
+# ----------------------------------------------------------------------------
+def list_input_devices():
+    """Return [(index, name, default_samplerate), ...] for devices with input channels."""
+    import sounddevice as sd
+    out = []
+    for i, d in enumerate(sd.query_devices()):
+        if d.get("max_input_channels", 0) > 0:
+            out.append((i, d["name"], int(d.get("default_samplerate", 44100))))
+    return out
+
+
+def _peak_for_device(index: int, rate: int, seconds: float = 0.8) -> float:
+    """Record briefly from a device and return the peak abs level (0..1)."""
+    import sounddevice as sd
+    try:
+        rec = sd.rec(int(seconds * rate), samplerate=rate, channels=1,
+                     dtype="float32", device=index)
+        sd.wait()
+        return float(np.max(np.abs(rec))) if rec.size else 0.0
+    except Exception:
+        return 0.0
+
+
+def select_input_device():
+    """
+    Choose (device_index, capture_rate, device_name).
+    Priority: name hint -> configured index -> system default. If AUTO_DETECT_IF_SILENT
+    and the chosen device records silence, scan all input devices for the loudest one.
+    """
+    import sounddevice as sd
+    devices = list_input_devices()
+
+    chosen_idx = None
+    chosen_name = "system default"
+    chosen_rate = CAPTURE_RATE
+
+    # 1) name hint
+    if MIC_NAME_HINT:
+        for i, name, sr in devices:
+            if MIC_NAME_HINT.lower() in name.lower():
+                chosen_idx, chosen_name, chosen_rate = i, name, sr
+                break
+    # 2) configured index
+    if chosen_idx is None and MIC_DEVICE is not None:
+        for i, name, sr in devices:
+            if i == MIC_DEVICE:
+                chosen_idx, chosen_name, chosen_rate = i, name, sr
+                break
+    # 3) system default (index stays None -> sounddevice picks default)
+    if chosen_idx is None:
+        try:
+            di = sd.default.device[0]
+            for i, name, sr in devices:
+                if i == di:
+                    chosen_idx, chosen_name, chosen_rate = i, name, sr
+                    break
+        except Exception:
+            pass
+
+    # auto-detect if the chosen device is silent
+    if AUTO_DETECT_IF_SILENT and chosen_idx is not None:
+        peak = _peak_for_device(chosen_idx, chosen_rate)
+        if peak < SILENT_MAX_THRESHOLD:
+            print(f"   [MIC_AUTODETECT] '{chosen_name}' peak={peak:.5f} too low — scanning…", flush=True)
+            best = (chosen_idx, chosen_rate, chosen_name, peak)
+            for i, name, sr in devices:
+                p = _peak_for_device(i, sr, seconds=0.5)
+                print(f"      device {i}: {name[:34]:<34} peak={p:.5f}", flush=True)
+                if p > best[3]:
+                    best = (i, sr, name, p)
+            chosen_idx, chosen_rate, chosen_name, _ = best
+
+    return chosen_idx, chosen_rate, chosen_name
+
+
+def resample_to_stt(audio: np.ndarray, src_rate: int) -> np.ndarray:
+    """Linear-resample mono float32 audio from src_rate to STT_RATE (16k) for Whisper."""
+    if src_rate == STT_RATE or audio.size == 0:
+        return audio
+    n_out = int(round(len(audio) * STT_RATE / src_rate))
+    if n_out <= 0:
+        return audio
+    x_old = np.linspace(0.0, 1.0, num=len(audio), endpoint=False)
+    x_new = np.linspace(0.0, 1.0, num=n_out, endpoint=False)
+    return np.interp(x_new, x_old, audio).astype(np.float32)
 
 
 # ----------------------------------------------------------------------------
@@ -295,9 +405,17 @@ def main() -> None:
     stop = {"flag": False}
     signal.signal(signal.SIGINT, lambda *_: stop.update(flag=True))
 
+    global CAPTURE_RATE, FRAME_LEN
     try:
         import sounddevice as sd
-        stream = sd.InputStream(samplerate=SAMPLE_RATE, channels=1, dtype="float32", blocksize=FRAME_LEN)
+        dev_idx, cap_rate, dev_name = select_input_device()
+        CAPTURE_RATE = cap_rate
+        FRAME_LEN = _frame_len(CAPTURE_RATE)
+        print(f"\n  🎙  Input device: [{dev_idx}] {dev_name} @ {CAPTURE_RATE} Hz", flush=True)
+        stream = sd.InputStream(
+            samplerate=CAPTURE_RATE, channels=1, dtype="float32",
+            blocksize=FRAME_LEN, device=dev_idx,
+        )
         stream.start()
     except Exception as exc:  # Phase 6: mic unavailable
         print(f"\n❌ Microphone unavailable: {exc}")
@@ -323,7 +441,8 @@ def main() -> None:
             show_state(State.THINKING, "transcribing…")
             t0 = time.perf_counter()
             try:
-                user_text = transcribe(model, audio)
+                audio16 = resample_to_stt(audio, CAPTURE_RATE)   # 48k -> 16k for Whisper
+                user_text = transcribe(model, audio16)
             except Exception as exc:                # Phase 6
                 show_state(State.IDLE, f"STT error: {exc}")
                 continue
