@@ -1,5 +1,5 @@
 """
-Microphone level test — verify your input device actually captures audio.
+Microphone level test - verify your input device actually captures audio.
 
 Run:
     python voice_client/mic_level_test.py
@@ -40,7 +40,7 @@ def main() -> None:
     print(f"\nSelected device: [{idx}] {name} @ {rate} Hz")
 
     seconds = 4
-    print(f"\n🎤 Recording {seconds}s — SPEAK NOW…")
+    print(f"\n[mic] Recording {seconds}s - SPEAK NOW...")
     rec = sd.rec(int(seconds * rate), samplerate=rate, channels=1, dtype="float32", device=idx)
     sd.wait()
     rec = rec.reshape(-1)
@@ -48,9 +48,9 @@ def main() -> None:
     avg = float(np.mean(np.abs(rec))) if rec.size else 0.0
     print(f"\n  MAX={mx:.6f}  AVG={avg:.6f}")
     if mx > 0.02:
-        print("  ✅ PASS — mic is capturing your voice.")
+        print("  [OK] PASS - mic is capturing your voice.")
     else:
-        print("  ❌ LOW — mic level too low. Try a different device index in")
+        print("  [ERROR] LOW - mic level too low. Try a different device index in")
         print("     garvis_conversation.py (MIC_DEVICE / MIC_NAME_HINT).")
 
 
