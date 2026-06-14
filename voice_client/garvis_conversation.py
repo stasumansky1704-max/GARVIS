@@ -1,11 +1,17 @@
 """
 JARVIS Voice - Continuous Conversation Mode (Windows voice client)
 
-Capture architecture: sd.rec() BLOCKING CHUNKS (not InputStream).
-Reason: on this machine the only HyperX endpoint that actually captures audio is
-the WDM-KS one (device 21, peak ~0.07); the MME/DirectSound/WASAPI duplicates read
-near-silence. WDM-KS does NOT support the streaming InputStream API
-("Blocking API not supported"), so we record short blocking chunks with sd.rec().
+Capture architecture: sd.rec() BLOCKING CHUNKS.
+Note: sd.rec() opens a PortAudio InputStream internally - that is the ONLY way
+sounddevice captures audio; there is no InputStream-free path. The previous crash
+("Error opening InputStream / PaErrorCode -9996 Invalid device") was NOT a leftover
+streaming path - it was sd.rec() failing because the device INDEX was invalid.
+
+PortAudio indices are not stable (they shift on USB re-enumeration / reboot), so we
+NEVER hardcode an index for capture. We resolve the HyperX at runtime by NAME +
+WDM-KS host API (the only HyperX endpoint that actually captures on this machine,
+peak ~0.07; the MME/DirectSound/WASAPI duplicates read near-silence), validate it is
+openable with check_input_settings, and auto re-resolve if an index goes stale.
 
 Reuses the verified stack: faster-whisper (STT), pyttsx3 (TTS),
 POST /api/v1/runtime/command (Ollama-backed). Audio resampled to 16k for Whisper.
@@ -29,11 +35,14 @@ API_URL = "http://localhost:8000/api/v1/runtime/command"
 SESSION_ID = "windows-voice-conv"
 
 # --- Microphone ---
-MIC_DEVICE = 21                 # WDM-KS HyperX (the only endpoint that captures). None = auto
-MIC_NAME_HINT = "HyperX QuadCast"
-CAPTURE_RATE = 44100            # device 21 native rate
-STT_RATE = 16000                # Whisper wants 16k
-USABLE_PEAK = 0.02              # device must beat this while speaking
+# Device is resolved at RUNTIME by name + host API (see resolve_device). We do NOT
+# hardcode an index - indices drift and cause PaErrorCode -9996 Invalid device.
+MIC_NAME_HINT = "HyperX QuadCast"   # primary mic, matched by name
+PREFERRED_HOSTAPI = "WDM-KS"        # the only HyperX endpoint that captures on this box
+MIC_DEVICE = None                   # optional manual override (index); None = resolve by name
+CAPTURE_RATE = 44100                # HyperX native rate
+STT_RATE = 16000                    # Whisper wants 16k
+USABLE_PEAK = 0.02                  # device must beat this while speaking
 AUTO_DETECT_IF_SILENT = True
 
 # --- VAD (over rec chunks) ---
@@ -83,10 +92,22 @@ _OUTPUT_TOKENS = ("speaker", "output", "playback", "render", "loopback",
                   "stereo mix", "what u hear", "wave out", "spdif", "hdmi",
                   "display audio", "headphones")
 
+# Live capture target, resolved by name + host API (never a hardcoded index).
+# rec_chunk re-resolves into this if an index goes stale (PaErrorCode -9996).
+_ACTIVE = {"device": None, "rate": CAPTURE_RATE, "name": ""}
+
 
 def _is_output(name: str) -> bool:
     low = name.lower()
     return any(t in low for t in _OUTPUT_TOKENS)
+
+
+def _hostapi_name(hostapi_idx: int) -> str:
+    import sounddevice as sd
+    try:
+        return sd.query_hostapis()[hostapi_idx]["name"]
+    except Exception:
+        return ""
 
 
 def list_input_devices():
@@ -99,8 +120,18 @@ def list_input_devices():
     return out
 
 
-def rec_chunk(seconds: float, device, rate: int) -> np.ndarray:
-    """Blocking record of `seconds` from `device` at `rate`. Mono float32. WDM-KS-safe."""
+def _openable(device, rate: int) -> bool:
+    """True if PortAudio can actually open this device at this rate (no -9996)."""
+    import sounddevice as sd
+    try:
+        sd.check_input_settings(device=device, samplerate=rate,
+                                channels=1, dtype="float32")
+        return True
+    except Exception:
+        return False
+
+
+def _do_rec(seconds: float, device, rate: int) -> np.ndarray:
     import sounddevice as sd
     rec = sd.rec(int(seconds * rate), samplerate=rate, channels=1,
                  dtype="float32", device=device)
@@ -108,13 +139,36 @@ def rec_chunk(seconds: float, device, rate: int) -> np.ndarray:
     return rec.reshape(-1)
 
 
+def rec_chunk(seconds: float, device, rate: int) -> np.ndarray:
+    """
+    Blocking record of `seconds` from `device` at `rate` (mono float32).
+    sd.rec opens an InputStream internally; if the index has gone stale PortAudio
+    raises -9996 Invalid device. We catch that, re-resolve the mic by name/host API
+    into _ACTIVE, and retry once so the session self-heals instead of crashing.
+    """
+    import sounddevice as sd
+    try:
+        return _do_rec(seconds, device, rate)
+    except sd.PortAudioError as exc:
+        log("MIC_RERESOLVE", f"{exc} - re-resolving mic by name/host API")
+        i, r, n = select_device()
+        if i is None:
+            raise
+        _ACTIVE.update(device=i, rate=r, name=n)
+        return _do_rec(seconds, _ACTIVE["device"], _ACTIVE["rate"])
+
+
 def peak_of(a: np.ndarray) -> float:
     return float(np.max(np.abs(a))) if a.size else 0.0
 
 
 def measure_peak(device, rate: int, seconds: float = 0.6) -> float:
+    # Raw record (no self-heal) so per-device scan peaks are not redirected to
+    # the HyperX when a scanned index fails to open.
+    if not _openable(device, rate):
+        return 0.0
     try:
-        return peak_of(rec_chunk(seconds, device, rate))
+        return peak_of(_do_rec(seconds, device, rate))
     except Exception:
         return 0.0
 
@@ -134,28 +188,68 @@ def resample_to_stt(audio: np.ndarray, src_rate: int) -> np.ndarray:
 # Device selection + guided calibration
 # ----------------------------------------------------------------------------
 def select_device():
-    """Return (index, rate, name). Prefer MIC_DEVICE (21), else name hint, else default."""
+    """
+    Resolve the capture device at RUNTIME and return (index, rate, name).
+    Indices are NOT stable, so we rank candidates by name + host API and return the
+    first one PortAudio can actually open (check_input_settings) - never a raw index.
+
+    Priority:
+      1. MIC_DEVICE override (only if set AND openable)
+      2. HyperX (MIC_NAME_HINT) on the PREFERRED_HOSTAPI (WDM-KS) - openable
+      3. HyperX on any host API - openable
+      4. default input device - openable
+      5. first openable real input device
+    Populates _ACTIVE as a side effect.
+    """
     import sounddevice as sd
     devices = list_input_devices()
-    by_idx = {i: (i, n, sr) for i, n, sr in devices}
 
-    if MIC_DEVICE is not None and MIC_DEVICE in by_idx:
-        i, n, _ = by_idx[MIC_DEVICE]
-        return i, CAPTURE_RATE, n
-    if MIC_NAME_HINT:
+    def hostapi_of(idx: int) -> str:
+        try:
+            return _hostapi_name(sd.query_devices()[idx]["hostapi"])
+        except Exception:
+            return ""
+
+    def finish(i, rate, n):
+        _ACTIVE.update(device=i, rate=rate, name=n)
+        return i, rate, n
+
+    hint = (MIC_NAME_HINT or "").lower()
+    pref = (PREFERRED_HOSTAPI or "").lower()
+
+    # 1. explicit manual override
+    if MIC_DEVICE is not None:
         for i, n, sr in devices:
-            if MIC_NAME_HINT.lower() in n.lower():
-                return i, CAPTURE_RATE, n
+            if i == MIC_DEVICE and _openable(i, CAPTURE_RATE):
+                return finish(i, CAPTURE_RATE, n)
+
+    # 2. HyperX on preferred host API (WDM-KS) - the verified-good endpoint
+    if hint:
+        for i, n, sr in devices:
+            if hint in n.lower() and pref in hostapi_of(i).lower() \
+                    and _openable(i, CAPTURE_RATE):
+                return finish(i, CAPTURE_RATE, n)
+        # 3. HyperX on any host API
+        for i, n, sr in devices:
+            if hint in n.lower():
+                rate = CAPTURE_RATE if _openable(i, CAPTURE_RATE) else sr
+                if _openable(i, rate):
+                    return finish(i, rate, n)
+
+    # 4. system default input
     try:
         di = sd.default.device[0]
-        if di in by_idx:
-            i, n, sr = by_idx[di]
-            return i, sr, n
+        for i, n, sr in devices:
+            if i == di and _openable(i, sr):
+                return finish(i, sr, n)
     except Exception:
         pass
-    if devices:
-        i, n, sr = devices[0]
-        return i, sr, n
+
+    # 5. first openable input
+    for i, n, sr in devices:
+        if _openable(i, sr):
+            return finish(i, sr, n)
+
     return None, CAPTURE_RATE, "system default"
 
 
@@ -188,10 +282,12 @@ def guided_calibration(device, rate: int, name: str) -> tuple[int, int, str, flo
 # ----------------------------------------------------------------------------
 # VAD over rec chunks
 # ----------------------------------------------------------------------------
-def listen_utterance(device, rate: int, noise_floor: float):
+def listen_utterance(noise_floor: float):
     """
-    Record blocking chunks until speech starts, then until trailing silence.
-    Logs VAD_START / VAD_STOP. Returns audio (at `rate`) or None.
+    Record blocking chunks (from the live _ACTIVE device) until speech starts, then
+    until trailing silence. Reading _ACTIVE each chunk means a mid-utterance mic
+    re-resolve (index drift) propagates automatically. Logs VAD_START / VAD_STOP.
+    Returns audio (at the active capture rate) or None.
     """
     thresh = max(noise_floor, MIN_ABS_FLOOR) * START_ENERGY_MULT
     chunk_s = CHUNK_MS / 1000.0
@@ -203,7 +299,7 @@ def listen_utterance(device, rate: int, noise_floor: float):
     prev = None  # one chunk of preroll
 
     while True:
-        c = rec_chunk(chunk_s, device, rate)
+        c = rec_chunk(chunk_s, _ACTIVE["device"], _ACTIVE["rate"])
         e = float(np.sqrt(np.mean(c ** 2))) if c.size else 0.0
         speaking = e > thresh
 
@@ -336,9 +432,10 @@ def main() -> None:
 
     device, rate, name = select_device()
     if device is None:
-        print("[ERROR] no input device found"); sys.exit(1)
+        print("[ERROR] no openable input device found"); sys.exit(1)
 
     device, rate, name, peak = guided_calibration(device, rate, name)
+    _ACTIVE.update(device=device, rate=rate, name=name)  # sync after any auto-detect
     if peak < USABLE_PEAK:
         print(f"\n[WARN] selected mic peak {peak:.5f} < {USABLE_PEAK}. "
               f"Check the HyperX mute button / Windows input level, then rerun.")
@@ -358,7 +455,7 @@ def main() -> None:
     while not stop["flag"]:
         try:
             log("LISTENING", "waiting for speech...")
-            audio = listen_utterance(device, rate, noise_floor)
+            audio = listen_utterance(noise_floor)
             if audio is None:
                 time.sleep(COOLDOWN_S)
                 continue
@@ -366,7 +463,7 @@ def main() -> None:
             log("TRANSCRIBING")
             t0 = time.perf_counter()
             try:
-                user_text = transcribe(model, resample_to_stt(audio, rate))
+                user_text = transcribe(model, resample_to_stt(audio, _ACTIVE["rate"]))
             except Exception as exc:
                 log("STT_ERROR", str(exc)); continue
             stt_dt = time.perf_counter() - t0
