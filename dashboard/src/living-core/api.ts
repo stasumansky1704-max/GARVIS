@@ -16,7 +16,7 @@ export async function sendCommand(text: string, sessionId = "living-core"): Prom
     body: JSON.stringify({ text, source: "text", session_id: sessionId, metadata: {} }),
   });
   if (!res.ok) {
-    throw new Error(`GARVIS backend ${res.status}`);
+    throw new Error(`JARVIS backend ${res.status}`);
   }
   return res.json();
 }

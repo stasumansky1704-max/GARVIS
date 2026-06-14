@@ -492,7 +492,7 @@ def main() -> None:
             pass
 
     print("=" * 64)
-    print("  GARVIS - Continuous Conversation (rec-based capture)")
+    print("  JARVIS - Continuous Conversation (rec-based capture)")
     print("=" * 64)
 
     log("STATE", "loading Whisper...")

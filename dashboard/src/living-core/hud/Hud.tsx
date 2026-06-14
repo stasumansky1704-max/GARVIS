@@ -182,7 +182,7 @@ function CommandBar() {
       startSpeaking();
       window.setTimeout(() => stopSpeaking(), 1500 + Math.min(6000, answer.length * 45));
     } catch (e) {
-      setReply("Connection to GARVIS backend failed.");
+      setReply("Connection to JARVIS backend failed.");
     } finally {
       setBusy(false);
     }
