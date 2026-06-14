@@ -40,7 +40,7 @@ def main() -> None:
     ok = 0
     for i, line in enumerate(LINES, 1):
         print(f"\n[{i}/5]")
-        success = speak(None, line)
+        success = speak(line)
         ok += 1 if success else 0
         time.sleep(0.3)  # mimic the conversation loop's between-turn gap
     print("\n" + "=" * 56)

@@ -197,21 +197,38 @@ TTS_VOLUME = 1.0
 
 
 def make_tts():
-    """Kept for API compatibility; returns None (engine is created per-utterance)."""
+    """Kept for call-site compatibility; engine is created per-utterance now."""
     return None
+
+
+def tts_reset() -> None:
+    """
+    Reset the TTS subsystem. With a fresh-engine-per-call design there is no
+    persistent engine to drop, but Windows SAPI can leave a wedged COM apartment
+    after a failed runAndWait(); this re-initialises COM so the next engine is clean.
+    """
+    print("   [TTS_ENGINE_RESET]", flush=True)
+    try:
+        import pythoncom  # provided by pywin32, pulled in by pyttsx3 on Windows
+        pythoncom.CoUninitialize()
+        pythoncom.CoInitialize()
+    except Exception:
+        # pythoncom not present / not on Windows — fresh pyttsx3.init() is enough
+        pass
 
 
 def _speak_once(text: str) -> None:
     """
-    Speak ONE utterance with a FRESH pyttsx3 engine, then dispose it.
+    Speak ONE utterance with a FRESH pyttsx3 engine, then fully dispose it.
 
-    Why fresh each time: reusing one engine across repeated runAndWait() calls in
-    a loop reliably locks up SAPS5/pyttsx3 on Windows — the first utterance plays,
-    then every later runAndWait() silently no-ops (exactly the reported symptom).
-    A new init()/say()/runAndWait()/stop() per reply avoids the shared run-loop.
+    Why fresh each call: reusing one engine across repeated runAndWait() calls in
+    a loop reliably wedges SAPI5/pyttsx3 on Windows — the first utterance plays,
+    then every later runAndWait() silently no-ops (the exact reported symptom).
+    A new init()/say()/runAndWait()/stop() per reply avoids the shared run loop.
     """
     import pyttsx3
-    engine = pyttsx3.init()                 # fresh driver each call
+    print("   [TTS_INIT]", flush=True)
+    engine = pyttsx3.init()
     try:
         engine.setProperty("rate", TTS_RATE)
         engine.setProperty("volume", TTS_VOLUME)
@@ -225,23 +242,29 @@ def _speak_once(text: str) -> None:
         del engine
 
 
-def speak(_engine, text: str) -> bool:
+def speak(text: str) -> bool:
     """
-    Speak `text`, logging TTS_START / TTS_DONE / TTS_ERROR.
-    Returns True on success, False on failure (never raises — conversation continues).
-    `_engine` is ignored (engine is per-utterance); kept so call sites are unchanged.
+    Speak `text` reliably. Logs TTS_INIT / TTS_START / TTS_DONE / TTS_ERROR /
+    TTS_ENGINE_RESET. On failure: prints the exact exception, resets the engine,
+    retries ONCE, and never raises — the conversation always continues.
+    Returns True if spoken, False if both attempts failed.
     """
     if not text or not text.strip():
         return True
     preview = text[:60].replace("\n", " ")
-    print(f"   [TTS_START] {preview!r}", flush=True)
-    try:
-        _speak_once(text)
-        print("   [TTS_DONE]", flush=True)
-        return True
-    except Exception as exc:
-        print(f"   [TTS_ERROR] {type(exc).__name__}: {exc}", flush=True)
-        return False
+
+    for attempt in (1, 2):
+        print(f"   [TTS_START] (attempt {attempt}) {preview!r}", flush=True)
+        try:
+            _speak_once(text)
+            print("   [TTS_DONE]", flush=True)
+            return True
+        except Exception as exc:
+            print(f"   [TTS_ERROR] {type(exc).__name__}: {exc}", flush=True)
+            if attempt == 1:
+                tts_reset()          # recover, then one retry
+            # else: fall through, give up after 2nd failure
+    return False
 
 
 # ----------------------------------------------------------------------------
@@ -311,7 +334,7 @@ def main() -> None:
 
             print(f"\n  🗣️  You: {user_text}")
             if user_text.lower().strip(" .!?") in STOP_WORDS:
-                speak(tts, "Goodbye.")
+                speak("Goodbye.")
                 break
 
             # ---- RUNTIME + OLLAMA ----
@@ -320,11 +343,11 @@ def main() -> None:
                 reply, rt_dt = ask_garvis(conv, user_text)
             except requests.Timeout:                # Phase 6
                 show_state(State.IDLE, "runtime timeout, listening…")
-                speak(tts, "That took too long. Let's try again.")
+                speak("That took too long. Let us try again.")
                 continue
             except Exception as exc:                # Phase 6
                 show_state(State.IDLE, f"runtime error: {exc}")
-                speak(tts, "I could not reach my runtime.")
+                speak("I could not reach my runtime.")
                 continue
 
             # ---- SPEAK ----
@@ -332,7 +355,7 @@ def main() -> None:
             show_state(State.SPEAKING, "speaking…")
             t0 = time.perf_counter()
             try:
-                speak(tts, reply)
+                speak(reply)
             except Exception as exc:                # Phase 6
                 show_state(State.IDLE, f"TTS error: {exc}")
             tts_dt = time.perf_counter() - t0
