@@ -46,13 +46,18 @@ USABLE_PEAK = 0.02                  # device must beat this while speaking
 AUTO_DETECT_IF_SILENT = True
 
 # --- VAD (over rec chunks) ---
+# Hysteresis: a HIGH threshold to START an utterance (avoids false triggers), and a
+# LOWER threshold to KEEP accumulating (so normal speech after a loud onset is not
+# misread as silence). Acceptance is by VOICED time, not (total - silence).
 CHUNK_MS = 120                  # blocking record granularity
 SILENCE_TIMEOUT_S = 1.2         # end of turn after this trailing silence
-MIN_SPEECH_S = 0.4              # reject blips shorter than this
-MAX_LISTEN_S = 20.0            # max wait for speech to start
+MIN_SPEECH_S = 0.4              # reject blips with less than this voiced time
+MAX_LISTEN_S = 20.0             # max wait for speech to start
 MAX_UTTERANCE_S = 30.0
-START_ENERGY_MULT = 3.0
-MIN_ABS_FLOOR = 0.01           # absolute speech threshold floor
+START_ENERGY_MULT = 3.0         # start threshold = floor * this
+CONTINUE_ENERGY_MULT = 1.4      # continue threshold = floor * this (lower than start)
+MIN_ABS_FLOOR = 0.01            # absolute speech threshold floor
+MAX_NOISE_FLOOR = 0.05          # cap floor so an inflated calibration can't gate out speech
 COOLDOWN_S = 0.4
 
 WHISPER_MODEL = "base"
@@ -289,27 +294,34 @@ def listen_utterance(noise_floor: float):
     re-resolve (index drift) propagates automatically. Logs VAD_START / VAD_STOP.
     Returns audio (at the active capture rate) or None.
     """
-    thresh = max(noise_floor, MIN_ABS_FLOOR) * START_ENERGY_MULT
+    floor = min(max(noise_floor, MIN_ABS_FLOOR), MAX_NOISE_FLOOR)
+    start_thresh = floor * START_ENERGY_MULT
+    cont_thresh = max(floor * CONTINUE_ENERGY_MULT, MIN_ABS_FLOOR)
     chunk_s = CHUNK_MS / 1000.0
+
     collected = []
     started = False
-    silence = 0.0
-    waited = 0.0
-    total = 0.0
-    prev = None  # one chunk of preroll
+    silence = 0.0     # trailing silence since last voiced chunk
+    waited = 0.0      # time waited for speech to begin
+    voiced_s = 0.0    # accumulated VOICED time (what acceptance is based on)
+    total_s = 0.0     # all captured time once started
+    prev = None       # one chunk of preroll before the onset
 
     while True:
         c = rec_chunk(chunk_s, _ACTIVE["device"], _ACTIVE["rate"])
         e = float(np.sqrt(np.mean(c ** 2))) if c.size else 0.0
-        speaking = e > thresh
 
         if not started:
-            if speaking:
+            if e > start_thresh:
                 started = True
-                log("VAD_START", f"energy={e:.4f}")
-                if prev is not None:
+                log("VAD_START", f"energy={e:.4f} start_thr={start_thresh:.4f} "
+                                 f"cont_thr={cont_thresh:.4f}")
+                if prev is not None:           # keep one preroll chunk of context
                     collected.append(prev)
-                collected.append(c)
+                    total_s += chunk_s
+                collected.append(c)            # the onset chunk IS voiced
+                total_s += chunk_s
+                voiced_s += chunk_s
             else:
                 prev = c
                 waited += chunk_s
@@ -318,24 +330,26 @@ def listen_utterance(noise_floor: float):
                     return None
             continue
 
+        # accumulating: always append, classify with the LOWER continue threshold
         collected.append(c)
-        total += chunk_s
-        if speaking:
+        total_s += chunk_s
+        if e > cont_thresh:
+            voiced_s += chunk_s
             silence = 0.0
         else:
             silence += chunk_s
             if silence >= SILENCE_TIMEOUT_S:
-                log("VAD_STOP", "silence")
+                log("VAD_STOP", f"silence (voiced={voiced_s:.2f}s total={total_s:.2f}s)")
                 break
-        if total >= MAX_UTTERANCE_S:
-            log("VAD_STOP", "max utterance")
+        if total_s >= MAX_UTTERANCE_S:
+            log("VAD_STOP", f"max utterance (voiced={voiced_s:.2f}s)")
             break
 
     audio = np.concatenate(collected) if collected else np.zeros(0, dtype=np.float32)
-    speech_dur = max(0.0, total - silence)
-    if speech_dur < MIN_SPEECH_S:
-        log("VAD_STOP", f"too short ({speech_dur:.2f}s) - rejected")
+    if voiced_s < MIN_SPEECH_S:
+        log("VAD_STOP", f"too short (voiced {voiced_s:.2f}s < {MIN_SPEECH_S}s) - rejected")
         return None
+    log("VAD_OK", f"{audio.size} samples voiced={voiced_s:.2f}s total={total_s:.2f}s")
     return audio
 
 
