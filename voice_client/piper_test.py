@@ -20,14 +20,14 @@ import sys
 try:
     from garvis_conversation import (
         PIPER_EXE, TTS_VOICE, TTS_ENGINE, PIPER_LENGTH_SCALE,
-        piper_available, speak_piper, speak_pyttsx3, speak, _is_hebrew,
+        piper_available, speak_piper, speak_pyttsx3, speak, _is_hebrew, _is_cyrillic,
     )
 except ImportError:
     import os
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     from garvis_conversation import (
         PIPER_EXE, TTS_VOICE, TTS_ENGINE, PIPER_LENGTH_SCALE,
-        piper_available, speak_piper, speak_pyttsx3, speak, _is_hebrew,
+        piper_available, speak_piper, speak_pyttsx3, speak, _is_hebrew, _is_cyrillic,
     )
 
 
@@ -69,12 +69,18 @@ def main() -> None:
     speak(he)
     print()
 
-    # 3. pyttsx3 fallback path directly
-    print("[3] pyttsx3 fallback path directly")
+    # 3. Russian via Piper RU voice (may fail on Python 3.14 -> pyttsx3 fallback)
+    ru = "Здравствуйте, Стас. Я ваш локальный помощник. Всё работает нормально."
+    print(f"[3] Russian via dispatcher (Cyrillic -> Piper ru): is_cyrillic={_is_cyrillic(ru)}")
+    speak(ru)
+    print()
+
+    # 4. pyttsx3 fallback path directly
+    print("[4] pyttsx3 fallback path directly")
     speak_pyttsx3("This is the pyttsx3 fallback voice.")
     print()
-    print("Done. If you heard #1 in a natural calm voice and #2/#3 in the SAPI voice,")
-    print("Piper is working with pyttsx3 fallback intact.")
+    print("Done. #1 English (Piper), #2 Hebrew (pyttsx3), #3 Russian (Piper ru if the")
+    print("phonemizer works, else fallback), #4 pyttsx3. Fallbacks keep the loop alive.")
 
 
 if __name__ == "__main__":

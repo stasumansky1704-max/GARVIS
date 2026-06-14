@@ -25,9 +25,12 @@ VOICE_DIR = os.path.join(HERE, "piper_voices")
 BASE = "https://huggingface.co/rhasspy/piper-voices/resolve/main"
 
 EN_VOICE = "en_US-lessac-medium"
-EN_FILES = {
+RU_VOICE = "ru_RU-dmitri-medium"
+VOICE_FILES = {
     f"{EN_VOICE}.onnx": f"{BASE}/en/en_US/lessac/medium/{EN_VOICE}.onnx",
     f"{EN_VOICE}.onnx.json": f"{BASE}/en/en_US/lessac/medium/{EN_VOICE}.onnx.json",
+    f"{RU_VOICE}.onnx": f"{BASE}/ru/ru_RU/dmitri/medium/{RU_VOICE}.onnx",
+    f"{RU_VOICE}.onnx.json": f"{BASE}/ru/ru_RU/dmitri/medium/{RU_VOICE}.onnx.json",
 }
 
 
@@ -64,8 +67,8 @@ def main() -> None:
         print("    then re-run this script.")
 
     os.makedirs(VOICE_DIR, exist_ok=True)
-    print(f"[2] English voice model -> {VOICE_DIR}")
-    for name, url in EN_FILES.items():
+    print(f"[2] Voice models (English + Russian) -> {VOICE_DIR}")
+    for name, url in VOICE_FILES.items():
         dest = os.path.join(VOICE_DIR, name)
         if os.path.exists(dest) and os.path.getsize(dest) > 1024:
             print(f"    {name}: already present ({os.path.getsize(dest)} bytes)")
@@ -74,6 +77,10 @@ def main() -> None:
 
     print("[3] Hebrew voice: Piper has NO he_IL voice in the official catalog.")
     print("    Hebrew replies are spoken by pyttsx3 (SAPI5) in the conversation client.")
+    print("[4] Russian: model downloaded. NOTE - on Python 3.14 the bundled espeak")
+    print("    phonemizer currently fails for Russian (no piper-phonemize wheel), so")
+    print("    spoken Russian may be unavailable until a working phonemizer is present.")
+    print("    Russian STT (Whisper) and Russian LLM replies work regardless.")
     print()
     print("Done. Test with:  python voice_client/piper_test.py")
 
