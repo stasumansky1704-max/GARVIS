@@ -113,7 +113,9 @@ class RuntimeBus:
                 payload={"model": self.executor.model},
             ))
 
-            response_text = await self.executor.execute(command.text, context=command.metadata)
+            # pass source so the executor can apply the voice-mode profile (Phase 3)
+            exec_context = {**(command.metadata or {}), "source": command.source}
+            response_text = await self.executor.execute(command.text, context=exec_context)
 
             result = RuntimeResult(
                 command_id=command.command_id,

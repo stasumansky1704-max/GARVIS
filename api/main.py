@@ -26,6 +26,10 @@ from api.routers import (
     audit,
     analytics,
     status,
+    runtime,
+    voice,
+    projects,
+    mission_control,
 )
 from api.websocket import manager, handle_websocket
 
@@ -145,6 +149,26 @@ app.include_router(
     collaboration.router,
     prefix="/api/v1/collaboration",
     tags=["collaboration"],
+)
+app.include_router(
+    runtime.router,
+    prefix="/api/v1/runtime",
+    tags=["runtime"],
+)
+app.include_router(
+    voice.router,
+    prefix="/api/v1/voice",
+    tags=["voice"],
+)
+app.include_router(
+    projects.router,
+    prefix="/api/v1/projects",
+    tags=["projects"],
+)
+app.include_router(
+    mission_control.router,
+    prefix="/api/v1/mission-control",
+    tags=["mission-control"],
 )
 
 

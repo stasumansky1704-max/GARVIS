@@ -31,12 +31,18 @@ services:
     container_name: garvis_ollama
     hostname: garvis-ollama
     restart: unless-stopped
+    # GPU passthrough — host has an NVIDIA GPU + docker nvidia runtime.
+    # This is the dominant voice-latency fix (CPU ~0.73s/tok -> GPU ~0.05-0.1s/tok).
+    gpus: all
+    environment:
+      OLLAMA_KEEP_ALIVE: ${OLLAMA_KEEP_ALIVE:-30m}
     volumes:
       - garvis_ollama_data:/root/.ollama
     ports:
       - "11434:11434"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      # ollama image has no curl/wget — use the bundled ollama CLI instead.
+      test: ["CMD", "ollama", "ps"]
       interval: 10s
       timeout: 5s
       retries: 10
