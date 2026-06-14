@@ -1,233 +1,453 @@
 """
-GARVIS Voice — Continuous Conversation Mode (Sprint 1.0)
+JARVIS Voice - Continuous Conversation Mode (Windows voice client)
 
-Reuses the existing, verified stack — nothing rebuilt:
-  - faster-whisper (STT)            : already installed & working
-  - sounddevice (mic I/O)           : already installed & working
-  - pyttsx3 (TTS)                   : already installed & working
-  - POST /api/v1/runtime/command    : verified working (Ollama-backed)
+Capture architecture: sd.rec() BLOCKING CHUNKS.
+Note: sd.rec() opens a PortAudio InputStream internally - that is the ONLY way
+sounddevice captures audio; there is no InputStream-free path. The previous crash
+("Error opening InputStream / PaErrorCode -9996 Invalid device") was NOT a leftover
+streaming path - it was sd.rec() failing because the device INDEX was invalid.
 
-Adds ONLY conversation quality:
-  Phase 2  energy-based Voice Activity Detection (no fixed 5s window, no new deps)
-  Phase 3  continuous loop — listening resumes automatically after each answer
-  Phase 4  persistent runtime session_id + last-turn context (model loaded once)
-  Phase 5  per-stage latency timing
-  Phase 6  graceful error recovery (no crashes, no manual restart)
-  Phase 7  voice-state indicators: IDLE / LISTENING / THINKING / SPEAKING
+PortAudio indices are not stable (they shift on USB re-enumeration / reboot), so we
+NEVER hardcode an index for capture. We resolve the HyperX at runtime by NAME +
+WDM-KS host API (the only HyperX endpoint that actually captures on this machine,
+peak ~0.07; the MME/DirectSound/WASAPI duplicates read near-silence), validate it is
+openable with check_input_settings, and auto re-resolve if an index goes stale.
 
-Run on the Windows host (where the mic + deps live):
-    python voice_client/garvis_conversation.py
-Quit any time with Ctrl+C, or say "goodbye" / "exit".
+Reuses the verified stack: faster-whisper (STT), pyttsx3 (TTS),
+POST /api/v1/runtime/command (Ollama-backed). Audio resampled to 16k for Whisper.
+
+Logs: MIC_DEVICE / MIC_PEAK / VAD_START / VAD_STOP / TRANSCRIBING / TTS_START / TTS_DONE.
+
+Run on Windows:  python voice_client/garvis_conversation.py
+Say "goodbye" / "exit" / "stop" / "quit" (or Ctrl+C) to end.
 """
 from __future__ import annotations
 
 import sys
 import time
-import queue
 import signal
 from dataclasses import dataclass, field
 
 import numpy as np
 import requests
 
-# Hardware/heavy deps are imported lazily inside the functions that use them.
-# This lets the module load for headless logic tests and makes each component
-# fail gracefully (Phase 6) instead of crashing the whole program at import.
-
-# ----------------------------------------------------------------------------
-# Config (all tunable; sensible defaults)
-# ----------------------------------------------------------------------------
 API_URL = "http://localhost:8000/api/v1/runtime/command"
-SESSION_ID = "windows-voice-conv"          # Phase 4: stable session across turns
-SAMPLE_RATE = 16000
-FRAME_MS = 30                              # VAD analysis frame
-FRAME_LEN = SAMPLE_RATE * FRAME_MS // 1000
+SESSION_ID = "windows-voice-conv"
 
-# Phase 2 — VAD tuning
-SILENCE_TIMEOUT_S = 1.0                    # stop after this much trailing silence
-MIN_SPEECH_S = 0.4                         # ignore blips shorter than this
-MAX_UTTERANCE_S = 30.0                     # hard safety cap
-START_ENERGY_MULT = 3.0                    # speech must exceed noise floor * this
-PREROLL_FRAMES = 8                         # keep audio just before speech onset
+# ============================================================================
+# TUNABLES  (all overridable via environment variables)
+# ============================================================================
+import os
 
-WHISPER_MODEL = "base"
-WHISPER_DEVICE = "cpu"
-WHISPER_COMPUTE = "int8"
+def _env_f(name, default):  # float env helper
+    try: return float(os.getenv(name, str(default)))
+    except (TypeError, ValueError): return default
+
+def _env_b(name, default):  # bool env helper
+    return os.getenv(name, str(default)).strip().lower() in ("1", "true", "yes", "on")
+
+# Print per-chunk energy/peak only when DEBUG_VOICE=true (quiet by default).
+DEBUG_VOICE = _env_b("DEBUG_VOICE", False)
+
+# --- Microphone ---
+# Device is resolved at RUNTIME by name + host API (see resolve_device). We do NOT
+# hardcode an index - indices drift and cause PaErrorCode -9996 Invalid device.
+MIC_NAME_HINT = "HyperX QuadCast"   # primary mic, matched by name
+PREFERRED_HOSTAPI = "WDM-KS"        # the only HyperX endpoint that captures on this box
+MIC_DEVICE = None                   # optional manual override (index); None = resolve by name
+CAPTURE_RATE = 44100                # HyperX native rate
+STT_RATE = 16000                    # Whisper wants 16k
+USABLE_PEAK = _env_f("USABLE_PEAK", 0.015)   # device must beat this while speaking
+AUTO_DETECT_IF_SILENT = True
+# Software gain applied to EVERY captured chunk (helps quiet 20-30 cm speech reach
+# STT and the peak gate). Signal is clipped to [-1, 1]. 1.0 = no gain.
+MIC_GAIN = _env_f("MIC_GAIN", 2.0)
+
+# --- VAD (over rec chunks) ---
+# Hysteresis: a HIGH threshold to START an utterance (avoids false triggers), and a
+# LOWER threshold to KEEP accumulating (so normal speech after a loud onset is not
+# misread as silence). Acceptance is by VOICED time, not (total - silence).
+# Tuned looser for 20-30 cm desk distance (catch quieter onsets and word tails).
+CHUNK_MS = 100                              # blocking record granularity (finer)
+SILENCE_TIMEOUT_S = _env_f("SILENCE_TIMEOUT_S", 1.0)   # end of turn after trailing silence
+MIN_SPEECH_S = _env_f("MIN_SPEECH_S", 0.3)             # accept short commands ("stop"/"כן")
+MAX_LISTEN_S = 30.0                         # max wait for speech to start
+MAX_UTTERANCE_S = 30.0
+START_ENERGY_MULT = _env_f("START_ENERGY_MULT", 2.5)      # start threshold = floor * this
+CONTINUE_ENERGY_MULT = _env_f("CONTINUE_ENERGY_MULT", 1.2)  # continue threshold = floor * this
+MIN_ABS_FLOOR = _env_f("MIN_ABS_FLOOR", 0.008)           # absolute speech threshold floor
+MAX_NOISE_FLOOR = 0.05          # cap floor so an inflated calibration can't gate out speech
+COOLDOWN_S = 0.4
+
+# --- STT (faster-whisper) ---
+# "small" is markedly better than "base" for Hebrew and Hebrew/English mixed speech
+# (the reported missed-words problem). Override with GARVIS_WHISPER_MODEL=base for
+# lower latency if needed. Downloaded once on first use.
+WHISPER_MODEL = os.getenv("GARVIS_WHISPER_MODEL", "small")
+WHISPER_DEVICE = os.getenv("GARVIS_WHISPER_DEVICE", "cpu")
+WHISPER_COMPUTE = os.getenv("GARVIS_WHISPER_COMPUTE", "int8")
+# Language: empty => auto-detect per utterance (handles he/en switching). Force with
+# GARVIS_WHISPER_LANG=he or =en if auto-detect is unreliable for short commands.
+WHISPER_LANGUAGE = os.getenv("GARVIS_WHISPER_LANG", "").strip() or None
+WHISPER_BEAM = int(os.getenv("GARVIS_WHISPER_BEAM", "5"))
 
 HTTP_TIMEOUT_S = 90
-STOP_WORDS = {"goodbye", "exit", "quit", "stop listening", "shut down"}
+STOP_WORDS = {"goodbye", "exit", "stop", "quit", "stop listening", "shut down",
+              "ביי", "להתראות", "תפסיק", "עצור"}
+
+TTS_RATE = int(os.getenv("TTS_RATE", "175"))
+TTS_VOLUME = 1.0
+
+
+def log(tag: str, msg: str = "") -> None:
+    print(f"[{tag}] {msg}", flush=True)
 
 
 # ----------------------------------------------------------------------------
-# Phase 7 — voice-state indicator (terminal; mirrors dashboard LISTENING/THINKING/SPEAKING/IDLE)
-# ----------------------------------------------------------------------------
-class State:
-    IDLE = "IDLE"
-    LISTENING = "LISTENING"
-    THINKING = "THINKING"
-    SPEAKING = "SPEAKING"
-
-
-_GLYPH = {
-    State.IDLE: "·",
-    State.LISTENING: "🎤",
-    State.THINKING: "🧠",
-    State.SPEAKING: "🔊",
-}
-
-
-def show_state(state: str, detail: str = "") -> None:
-    print(f"\r[{_GLYPH.get(state,'')} {state:<9}] {detail:<60}", end="", flush=True)
-
-
-# ----------------------------------------------------------------------------
-# Phase 4 — conversation/session state
+# Session state
 # ----------------------------------------------------------------------------
 @dataclass
 class Conversation:
     session_id: str = SESSION_ID
-    turns: list[tuple[str, str]] = field(default_factory=list)  # (user, garvis)
+    turns: list = field(default_factory=list)
 
-    def add(self, user: str, garvis: str) -> None:
-        self.turns.append((user, garvis))
+    def add(self, user: str, jarvis: str) -> None:
+        self.turns.append((user, jarvis))
 
     @property
-    def last(self) -> tuple[str, str] | None:
+    def last(self):
         return self.turns[-1] if self.turns else None
 
 
 # ----------------------------------------------------------------------------
-# Phase 2 — VAD capture (energy-based, pure numpy; replaces the fixed 5s window)
+# Audio helpers (sd.rec blocking)
 # ----------------------------------------------------------------------------
-MIN_ABS_FLOOR = 0.005   # absolute floor so a silent room can't make the threshold ~0
-                        # and so TTS tail / fan noise can't false-trigger.
+_OUTPUT_TOKENS = ("speaker", "output", "playback", "render", "loopback",
+                  "stereo mix", "what u hear", "wave out", "spdif", "hdmi",
+                  "display audio", "headphones")
+
+# Live capture target, resolved by name + host API (never a hardcoded index).
+# rec_chunk re-resolves into this if an index goes stale (PaErrorCode -9996).
+_ACTIVE = {"device": None, "rate": CAPTURE_RATE, "name": ""}
 
 
-def calibrate_noise_floor(stream, frames: int = 15) -> float:
-    """Sample ambient noise to set an adaptive speech threshold (with abs floor)."""
-    energies = []
-    for _ in range(frames):
-        block, _ = stream.read(FRAME_LEN)
-        energies.append(float(np.sqrt(np.mean(block.astype(np.float32) ** 2))))
-    floor = float(np.median(energies)) if energies else MIN_ABS_FLOOR
-    return max(floor, MIN_ABS_FLOOR)
+def _is_output(name: str) -> bool:
+    low = name.lower()
+    return any(t in low for t in _OUTPUT_TOKENS)
 
 
-def listen_utterance(stream, noise_floor: float) -> np.ndarray | None:
-    """
-    Record one utterance using VAD:
-      - wait for speech (energy > floor * START_ENERGY_MULT)
-      - keep recording while speech continues
-      - stop after SILENCE_TIMEOUT_S of trailing silence
-      - return None if utterance shorter than MIN_SPEECH_S
-    """
-    # adaptive threshold, but never below a usable absolute minimum
-    speech_thresh = max(noise_floor, MIN_ABS_FLOOR) * START_ENERGY_MULT
-    preroll: list[np.ndarray] = []
-    collected: list[np.ndarray] = []
-    started = False
-    silence_run = 0.0
-    total = 0.0
+def _hostapi_name(hostapi_idx: int) -> str:
+    import sounddevice as sd
+    try:
+        return sd.query_hostapis()[hostapi_idx]["name"]
+    except Exception:
+        return ""
 
-    show_state(State.LISTENING, "waiting for speech…")
-    while True:
-        block, _ = stream.read(FRAME_LEN)
-        mono = block.reshape(-1).astype(np.float32)
-        energy = float(np.sqrt(np.mean(mono ** 2)))
-        is_speech = energy > speech_thresh
 
-        if not started:
-            preroll.append(mono)
-            if len(preroll) > PREROLL_FRAMES:
-                preroll.pop(0)
-            if is_speech:
-                started = True
-                collected.extend(preroll)   # keep the lead-in so first word isn't clipped
-                collected.append(mono)
-                show_state(State.LISTENING, "speech detected…")
-            continue
+def list_input_devices():
+    """[(index, name, default_rate)] for real input devices (no outputs/loopback)."""
+    import sounddevice as sd
+    out = []
+    for i, d in enumerate(sd.query_devices()):
+        if d.get("max_input_channels", 0) > 0 and not _is_output(d["name"]):
+            out.append((i, d["name"], int(d.get("default_samplerate", 44100))))
+    return out
 
-        collected.append(mono)
-        total += FRAME_MS / 1000.0
-        if is_speech:
-            silence_run = 0.0
-        else:
-            silence_run += FRAME_MS / 1000.0
-            if silence_run >= SILENCE_TIMEOUT_S:
-                break
-        if total >= MAX_UTTERANCE_S:
-            break
 
-    audio = np.concatenate(collected) if collected else np.zeros(0, dtype=np.float32)
-    speech_dur = max(0.0, total - silence_run)
-    if speech_dur < MIN_SPEECH_S:
-        return None
+def _openable(device, rate: int) -> bool:
+    """True if PortAudio can actually open this device at this rate (no -9996)."""
+    import sounddevice as sd
+    try:
+        sd.check_input_settings(device=device, samplerate=rate,
+                                channels=1, dtype="float32")
+        return True
+    except Exception:
+        return False
+
+
+def _do_rec(seconds: float, device, rate: int) -> np.ndarray:
+    import sounddevice as sd
+    rec = sd.rec(int(seconds * rate), samplerate=rate, channels=1,
+                 dtype="float32", device=device)
+    sd.wait()
+    audio = rec.reshape(-1)
+    if MIC_GAIN != 1.0 and audio.size:
+        audio = np.clip(audio * MIC_GAIN, -1.0, 1.0)  # software gain for quiet/far speech
     return audio
 
 
+def rec_chunk(seconds: float, device, rate: int) -> np.ndarray:
+    """
+    Blocking record of `seconds` from `device` at `rate` (mono float32).
+    sd.rec opens an InputStream internally; if the index has gone stale PortAudio
+    raises -9996 Invalid device. We catch that, re-resolve the mic by name/host API
+    into _ACTIVE, and retry once so the session self-heals instead of crashing.
+    """
+    import sounddevice as sd
+    try:
+        return _do_rec(seconds, device, rate)
+    except sd.PortAudioError as exc:
+        log("MIC_RERESOLVE", f"{exc} - re-resolving mic by name/host API")
+        i, r, n = select_device()
+        if i is None:
+            raise
+        _ACTIVE.update(device=i, rate=r, name=n)
+        return _do_rec(seconds, _ACTIVE["device"], _ACTIVE["rate"])
+
+
+def peak_of(a: np.ndarray) -> float:
+    return float(np.max(np.abs(a))) if a.size else 0.0
+
+
+def measure_peak(device, rate: int, seconds: float = 0.6) -> float:
+    # Raw record (no self-heal) so per-device scan peaks are not redirected to
+    # the HyperX when a scanned index fails to open.
+    if not _openable(device, rate):
+        return 0.0
+    try:
+        return peak_of(_do_rec(seconds, device, rate))
+    except Exception:
+        return 0.0
+
+
+def resample_to_stt(audio: np.ndarray, src_rate: int) -> np.ndarray:
+    if src_rate == STT_RATE or audio.size == 0:
+        return audio
+    n = int(round(len(audio) * STT_RATE / src_rate))
+    if n <= 0:
+        return audio
+    xo = np.linspace(0.0, 1.0, num=len(audio), endpoint=False)
+    xn = np.linspace(0.0, 1.0, num=n, endpoint=False)
+    return np.interp(xn, xo, audio).astype(np.float32)
+
+
 # ----------------------------------------------------------------------------
-# STT / Runtime / TTS — reuse existing working components
+# Device selection + guided calibration
+# ----------------------------------------------------------------------------
+def select_device():
+    """
+    Resolve the capture device at RUNTIME and return (index, rate, name).
+    Indices are NOT stable, so we rank candidates by name + host API and return the
+    first one PortAudio can actually open (check_input_settings) - never a raw index.
+
+    Priority:
+      1. MIC_DEVICE override (only if set AND openable)
+      2. HyperX (MIC_NAME_HINT) on the PREFERRED_HOSTAPI (WDM-KS) - openable
+      3. HyperX on any host API - openable
+      4. default input device - openable
+      5. first openable real input device
+    Populates _ACTIVE as a side effect.
+    """
+    import sounddevice as sd
+    devices = list_input_devices()
+
+    def hostapi_of(idx: int) -> str:
+        try:
+            return _hostapi_name(sd.query_devices()[idx]["hostapi"])
+        except Exception:
+            return ""
+
+    def finish(i, rate, n):
+        _ACTIVE.update(device=i, rate=rate, name=n)
+        return i, rate, n
+
+    hint = (MIC_NAME_HINT or "").lower()
+    pref = (PREFERRED_HOSTAPI or "").lower()
+
+    # 1. explicit manual override
+    if MIC_DEVICE is not None:
+        for i, n, sr in devices:
+            if i == MIC_DEVICE and _openable(i, CAPTURE_RATE):
+                return finish(i, CAPTURE_RATE, n)
+
+    # 2. HyperX on preferred host API (WDM-KS) - the verified-good endpoint
+    if hint:
+        for i, n, sr in devices:
+            if hint in n.lower() and pref in hostapi_of(i).lower() \
+                    and _openable(i, CAPTURE_RATE):
+                return finish(i, CAPTURE_RATE, n)
+        # 3. HyperX on any host API
+        for i, n, sr in devices:
+            if hint in n.lower():
+                rate = CAPTURE_RATE if _openable(i, CAPTURE_RATE) else sr
+                if _openable(i, rate):
+                    return finish(i, rate, n)
+
+    # 4. system default input
+    try:
+        di = sd.default.device[0]
+        for i, n, sr in devices:
+            if i == di and _openable(i, sr):
+                return finish(i, sr, n)
+    except Exception:
+        pass
+
+    # 5. first openable input
+    for i, n, sr in devices:
+        if _openable(i, sr):
+            return finish(i, sr, n)
+
+    return None, CAPTURE_RATE, "system default"
+
+
+def guided_calibration(device, rate: int, name: str) -> tuple[int, int, str, float]:
+    """
+    Ask the user to speak, measure peak. If the chosen device is silent and
+    AUTO_DETECT_IF_SILENT, scan all input devices WHILE the user speaks and pick
+    the loudest usable one. Returns (device, rate, name, peak).
+    """
+    log("MIC_DEVICE", f"[{device}] {name} @ {rate} Hz")
+    print("\n  Calibration: please SPEAK normally for 3 seconds...", flush=True)
+    time.sleep(0.3)
+    peak = measure_peak(device, rate, seconds=3.0)
+    log("MIC_PEAK", f"{peak:.5f} (need > {USABLE_PEAK})")
+    if peak >= USABLE_PEAK or not AUTO_DETECT_IF_SILENT:
+        return device, rate, name, peak
+
+    print(f"\n  '{name}' too quiet. Scanning input devices - keep SPEAKING...", flush=True)
+    best = (device, rate, name, peak)
+    for i, n, sr in list_input_devices():
+        for try_rate in {sr, CAPTURE_RATE, 48000}:
+            p = measure_peak(i, try_rate, seconds=1.0)
+            log("  scan", f"[{i}] {n[:30]:<30} @{try_rate} peak={p:.5f}")
+            if p > best[3]:
+                best = (i, try_rate, n, p)
+    log("MIC_DEVICE", f"auto-selected [{best[0]}] {best[2]} @ {best[1]} Hz peak={best[3]:.5f}")
+    return best
+
+
+# ----------------------------------------------------------------------------
+# VAD over rec chunks
+# ----------------------------------------------------------------------------
+def listen_utterance(noise_floor: float):
+    """
+    Record blocking chunks (from the live _ACTIVE device) until speech starts, then
+    until trailing silence. Reading _ACTIVE each chunk means a mid-utterance mic
+    re-resolve (index drift) propagates automatically. Logs VAD_START / VAD_STOP.
+    Returns audio (at the active capture rate) or None.
+    """
+    floor = min(max(noise_floor, MIN_ABS_FLOOR), MAX_NOISE_FLOOR)
+    start_thresh = floor * START_ENERGY_MULT
+    cont_thresh = max(floor * CONTINUE_ENERGY_MULT, MIN_ABS_FLOOR)
+    chunk_s = CHUNK_MS / 1000.0
+
+    collected = []
+    started = False
+    silence = 0.0     # trailing silence since last voiced chunk
+    waited = 0.0      # time waited for speech to begin
+    voiced_s = 0.0    # accumulated VOICED time (what acceptance is based on)
+    total_s = 0.0     # all captured time once started
+    prev = None       # one chunk of preroll before the onset
+
+    while True:
+        c = rec_chunk(chunk_s, _ACTIVE["device"], _ACTIVE["rate"])
+        e = float(np.sqrt(np.mean(c ** 2))) if c.size else 0.0
+        if DEBUG_VOICE:
+            log("VAD_DBG", f"energy={e:.4f} peak={peak_of(c):.4f} "
+                           f"start_thr={start_thresh:.4f} cont_thr={cont_thresh:.4f} "
+                           f"{'SPEAK' if (e > (cont_thresh if started else start_thresh)) else 'sil'}")
+
+        if not started:
+            if e > start_thresh:
+                started = True
+                log("VAD_START", f"energy={e:.4f} start_thr={start_thresh:.4f} "
+                                 f"cont_thr={cont_thresh:.4f}")
+                if prev is not None:           # keep one preroll chunk of context
+                    collected.append(prev)
+                    total_s += chunk_s
+                collected.append(c)            # the onset chunk IS voiced
+                total_s += chunk_s
+                voiced_s += chunk_s
+            else:
+                prev = c
+                waited += chunk_s
+                if waited >= MAX_LISTEN_S:
+                    log("VAD_STOP", "timeout (no speech)")
+                    return None
+            continue
+
+        # accumulating: always append, classify with the LOWER continue threshold
+        collected.append(c)
+        total_s += chunk_s
+        if e > cont_thresh:
+            voiced_s += chunk_s
+            silence = 0.0
+        else:
+            silence += chunk_s
+            if silence >= SILENCE_TIMEOUT_S:
+                log("VAD_STOP", f"silence (voiced={voiced_s:.2f}s total={total_s:.2f}s)")
+                break
+        if total_s >= MAX_UTTERANCE_S:
+            log("VAD_STOP", f"max utterance (voiced={voiced_s:.2f}s)")
+            break
+
+    audio = np.concatenate(collected) if collected else np.zeros(0, dtype=np.float32)
+    if voiced_s < MIN_SPEECH_S:
+        log("VAD_STOP", f"too short (voiced {voiced_s:.2f}s < {MIN_SPEECH_S}s) - rejected")
+        return None
+    log("VAD_OK", f"{audio.size} samples voiced={voiced_s:.2f}s total={total_s:.2f}s")
+    return audio
+
+
+def calibrate_noise_floor(device, rate: int) -> float:
+    a = rec_chunk(0.5, device, rate)
+    return max(float(np.sqrt(np.mean(a ** 2))) if a.size else 0.0, MIN_ABS_FLOOR)
+
+
+# ----------------------------------------------------------------------------
+# STT / Runtime
 # ----------------------------------------------------------------------------
 def load_stt():
     from faster_whisper import WhisperModel
     return WhisperModel(WHISPER_MODEL, device=WHISPER_DEVICE, compute_type=WHISPER_COMPUTE)
 
 
-def transcribe(model, audio: np.ndarray) -> str:
-    segments, _ = model.transcribe(audio, vad_filter=True, condition_on_previous_text=False)
-    return " ".join(s.text.strip() for s in segments).strip()
-
-
-def ask_garvis(conv: Conversation, text: str) -> tuple[str, float]:
-    """POST to the existing runtime command endpoint. Returns (reply, latency_s)."""
-    t0 = time.perf_counter()
-    r = requests.post(
-        API_URL,
-        json={"text": text, "source": "voice", "session_id": conv.session_id, "metadata": {}},
-        timeout=HTTP_TIMEOUT_S,
+def transcribe(model, audio16: np.ndarray) -> str:
+    # vad_filter=False on purpose: our own VAD already segmented the utterance, and
+    # Whisper's internal VAD tends to trim leading/trailing words (the missed-words
+    # problem). language=None auto-detects per utterance so he/en both work.
+    segments, info = model.transcribe(
+        audio16,
+        language=WHISPER_LANGUAGE,
+        beam_size=WHISPER_BEAM,
+        vad_filter=False,
+        condition_on_previous_text=False,
     )
+    text = " ".join(s.text.strip() for s in segments).strip()
+    if DEBUG_VOICE:
+        log("STT_LANG", f"{getattr(info, 'language', '?')} "
+                        f"p={getattr(info, 'language_probability', 0.0):.2f}")
+    return text
+
+
+def ask_jarvis(conv: Conversation, text: str):
+    t0 = time.perf_counter()
+    r = requests.post(API_URL, json={"text": text, "source": "voice",
+                                     "session_id": conv.session_id, "metadata": {}},
+                      timeout=HTTP_TIMEOUT_S)
     dt = time.perf_counter() - t0
     r.raise_for_status()
-    data = r.json()
-    return (data.get("response_text") or "I did not get a response."), dt
+    return (r.json().get("response_text") or "I did not get a response."), dt
 
 
-TTS_RATE = 170
-TTS_VOLUME = 1.0
+def is_stop_word(text: str) -> bool:
+    return text.lower().strip(" .!?,") in STOP_WORDS
 
 
-def make_tts():
-    """Kept for call-site compatibility; engine is created per-utterance now."""
-    return None
-
-
+# ----------------------------------------------------------------------------
+# TTS (fresh engine per utterance; reset + retry; never raises)
+# ----------------------------------------------------------------------------
 def tts_reset() -> None:
-    """
-    Reset the TTS subsystem. With a fresh-engine-per-call design there is no
-    persistent engine to drop, but Windows SAPI can leave a wedged COM apartment
-    after a failed runAndWait(); this re-initialises COM so the next engine is clean.
-    """
-    print("   [TTS_ENGINE_RESET]", flush=True)
+    log("TTS_RESET")
     try:
-        import pythoncom  # provided by pywin32, pulled in by pyttsx3 on Windows
-        pythoncom.CoUninitialize()
-        pythoncom.CoInitialize()
+        import pythoncom
+        pythoncom.CoUninitialize(); pythoncom.CoInitialize()
     except Exception:
-        # pythoncom not present / not on Windows — fresh pyttsx3.init() is enough
         pass
 
 
 def _speak_once(text: str) -> None:
-    """
-    Speak ONE utterance with a FRESH pyttsx3 engine, then fully dispose it.
-
-    Why fresh each call: reusing one engine across repeated runAndWait() calls in
-    a loop reliably wedges SAPI5/pyttsx3 on Windows — the first utterance plays,
-    then every later runAndWait() silently no-ops (the exact reported symptom).
-    A new init()/say()/runAndWait()/stop() per reply avoids the shared run loop.
-    """
     import pyttsx3
-    print("   [TTS_INIT]", flush=True)
     engine = pyttsx3.init()
     try:
         engine.setProperty("rate", TTS_RATE)
@@ -243,149 +463,112 @@ def _speak_once(text: str) -> None:
 
 
 def speak(text: str) -> bool:
-    """
-    Speak `text` reliably. Logs TTS_INIT / TTS_START / TTS_DONE / TTS_ERROR /
-    TTS_ENGINE_RESET. On failure: prints the exact exception, resets the engine,
-    retries ONCE, and never raises — the conversation always continues.
-    Returns True if spoken, False if both attempts failed.
-    """
     if not text or not text.strip():
         return True
     preview = text[:60].replace("\n", " ")
-
     for attempt in (1, 2):
-        print(f"   [TTS_START] (attempt {attempt}) {preview!r}", flush=True)
+        log("TTS_START", f"(attempt {attempt}) {preview!r}")
         try:
             _speak_once(text)
-            print("   [TTS_DONE]", flush=True)
+            log("TTS_DONE")
             return True
         except Exception as exc:
-            print(f"   [TTS_ERROR] {type(exc).__name__}: {exc}", flush=True)
+            log("TTS_ERROR", f"{type(exc).__name__}: {exc}")
             if attempt == 1:
-                tts_reset()          # recover, then one retry
-            # else: fall through, give up after 2nd failure
+                tts_reset()
     return False
 
 
 # ----------------------------------------------------------------------------
-# Main continuous loop (Phase 3) with error recovery (Phase 6) + latency (Phase 5)
+# Main loop
 # ----------------------------------------------------------------------------
 def main() -> None:
+    # Make stdout/stderr UTF-8 so Hebrew transcriptions/replies print without
+    # crashing on a cp1252 Windows console.
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
+
     print("=" * 64)
-    print("  JARVIS — Continuous Conversation Mode")
+    print("  JARVIS - Continuous Conversation (rec-based capture)")
     print("=" * 64)
 
-    # one-time inits (Phase 4: model loaded ONCE, reused every turn)
-    show_state(State.IDLE, "loading Whisper…")
+    log("STATE", "loading Whisper...")
     try:
         model = load_stt()
-    except Exception as exc:  # Phase 6
-        print(f"\n❌ Could not load STT model: {exc}")
-        sys.exit(1)
+    except Exception as exc:
+        print(f"[ERROR] STT load failed: {exc}"); sys.exit(1)
+
+    device, rate, name = select_device()
+    if device is None:
+        print("[ERROR] no openable input device found"); sys.exit(1)
+
+    device, rate, name, peak = guided_calibration(device, rate, name)
+    _ACTIVE.update(device=device, rate=rate, name=name)  # sync after any auto-detect
+    if peak < USABLE_PEAK:
+        print(f"\n[WARN] selected mic peak {peak:.5f} < {USABLE_PEAK}. "
+              f"Check the HyperX mute button / Windows input level, then rerun.")
+        # continue anyway - user may speak louder
 
     try:
-        tts = make_tts()
-    except Exception as exc:  # Phase 6
-        print(f"\n❌ Could not init TTS: {exc}")
-        sys.exit(1)
+        noise_floor = calibrate_noise_floor(device, rate)
+    except Exception:
+        noise_floor = MIN_ABS_FLOOR
+    log("STATE", f"ready - noise floor {noise_floor:.4f} - say 'goodbye' to exit")
 
     conv = Conversation()
-
-    # graceful Ctrl+C
     stop = {"flag": False}
     signal.signal(signal.SIGINT, lambda *_: stop.update(flag=True))
-
-    try:
-        import sounddevice as sd
-        stream = sd.InputStream(samplerate=SAMPLE_RATE, channels=1, dtype="float32", blocksize=FRAME_LEN)
-        stream.start()
-    except Exception as exc:  # Phase 6: mic unavailable
-        print(f"\n❌ Microphone unavailable: {exc}")
-        sys.exit(1)
-
-    show_state(State.IDLE, "calibrating mic…")
-    try:
-        noise_floor = calibrate_noise_floor(stream)
-    except Exception:
-        noise_floor = 1e-3
-    print(f"\n  Noise floor ~{noise_floor:.4f} · say 'goodbye' to exit.\n")
 
     turn = 0
     while not stop["flag"]:
         try:
-            # ---- LISTEN (Phase 2 VAD) ----
-            audio = listen_utterance(stream, noise_floor)
-            if audio is None:                       # Phase 6: no speech
-                show_state(State.IDLE, "no speech, still listening…")
+            log("LISTENING", "waiting for speech...")
+            audio = listen_utterance(noise_floor)
+            if audio is None:
+                time.sleep(COOLDOWN_S)
                 continue
 
-            # ---- STT ----
-            show_state(State.THINKING, "transcribing…")
+            log("TRANSCRIBING")
             t0 = time.perf_counter()
             try:
-                user_text = transcribe(model, audio)
-            except Exception as exc:                # Phase 6
-                show_state(State.IDLE, f"STT error: {exc}")
-                continue
+                user_text = transcribe(model, resample_to_stt(audio, _ACTIVE["rate"]))
+            except Exception as exc:
+                log("STT_ERROR", str(exc)); continue
             stt_dt = time.perf_counter() - t0
             if not user_text:
-                show_state(State.IDLE, "empty transcript, listening…")
-                continue
+                log("TRANSCRIBING", "empty"); time.sleep(COOLDOWN_S); continue
 
-            print(f"\n  🗣️  You: {user_text}")
-            if user_text.lower().strip(" .!?") in STOP_WORDS:
+            print(f"  You: {user_text}")
+            if is_stop_word(user_text):
                 speak("Goodbye.")
                 break
 
-            # ---- RUNTIME + OLLAMA ----
-            show_state(State.THINKING, "JARVIS is thinking…")
+            log("THINKING", "JARVIS is thinking...")
             try:
-                reply, rt_dt = ask_garvis(conv, user_text)
-            except requests.Timeout:                # Phase 6
-                show_state(State.IDLE, "runtime timeout, listening…")
-                speak("That took too long. Let us try again.")
-                continue
-            except Exception as exc:                # Phase 6
-                show_state(State.IDLE, f"runtime error: {exc}")
-                speak("I could not reach my runtime.")
-                continue
+                reply, rt_dt = ask_jarvis(conv, user_text)
+            except requests.Timeout:
+                log("RUNTIME_TIMEOUT"); speak("That took too long. Let us try again."); continue
+            except Exception as exc:
+                log("RUNTIME_ERROR", str(exc)); speak("I could not reach my runtime."); continue
 
-            # ---- SPEAK ----
-            print(f"  🤖 JARVIS: {reply}")
-            show_state(State.SPEAKING, "speaking…")
+            print(f"  JARVIS: {reply}")
             t0 = time.perf_counter()
-            try:
-                speak(reply)
-            except Exception as exc:                # Phase 6
-                show_state(State.IDLE, f"TTS error: {exc}")
+            speak(reply)
             tts_dt = time.perf_counter() - t0
 
-            conv.add(user_text, reply)              # Phase 4
+            conv.add(user_text, reply)
             turn += 1
-            print(f"     ⏱  stt {stt_dt:.1f}s · runtime {rt_dt:.1f}s · tts {tts_dt:.1f}s · turn #{turn}\n")
+            print(f"     [timing] stt {stt_dt:.1f}s | runtime {rt_dt:.1f}s | tts {tts_dt:.1f}s | turn #{turn}")
+            time.sleep(COOLDOWN_S)
 
-            # ---- settle + re-calibrate so the loop reliably hears the NEXT turn ----
-            # (fixes "spoke once then stopped": TTS tail can bleed into the mic and
-            #  the room level can drift; re-adapt the noise floor each turn.)
-            time.sleep(0.4)
-            try:
-                # drain any buffered audio from the speaker bleed
-                for _ in range(int(0.3 / (FRAME_MS / 1000))):
-                    stream.read(FRAME_LEN)
-                noise_floor = calibrate_noise_floor(stream, frames=10)
-            except Exception:
-                pass
-            show_state(State.IDLE, "listening resumes…")  # Phase 3: auto back to listen
-
-        except Exception as exc:                    # Phase 6: never crash the loop
-            show_state(State.IDLE, f"recovered from: {exc}")
+        except Exception as exc:
+            log("ERROR_RECOVERY", f"{type(exc).__name__}: {exc}")
             time.sleep(0.5)
 
-    try:
-        stream.stop(); stream.close()
-    except Exception:
-        pass
-    print(f"\n\n  Conversation ended — {turn} turn(s).")
+    print(f"\n  Conversation ended - {turn} turn(s).")
 
 
 if __name__ == "__main__":

@@ -66,7 +66,7 @@ const Header: React.FC<HeaderProps> = ({ currentState, alertCount, connectionSta
             textTransform: "uppercase",
           }}
         >
-          GARVIS
+          JARVIS
         </span>
         <span style={{ color: "#444466", fontSize: 11 }}>|</span>
         <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "#8888aa", textTransform: "uppercase", letterSpacing: 1.5 }}>
