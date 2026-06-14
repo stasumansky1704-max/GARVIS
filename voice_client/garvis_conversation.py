@@ -80,10 +80,11 @@ MAX_NOISE_FLOOR = 0.05          # cap floor so an inflated calibration can't gat
 COOLDOWN_S = 0.4
 
 # --- STT (faster-whisper) ---
-# "small" is markedly better than "base" for Hebrew and Hebrew/English mixed speech
-# (the reported missed-words problem). Override with GARVIS_WHISPER_MODEL=base for
-# lower latency if needed. Downloaded once on first use.
-WHISPER_MODEL = os.getenv("GARVIS_WHISPER_MODEL", "small")
+# Default to the KNOWN-GOOD config (base/cpu/int8) - this is the exact config the
+# standalone test loads in seconds. "small" caused a startup hang on this machine
+# (heavier load + faster-whisper HF revision check on the named model), so it is NOT
+# the default. You may still opt into it with GARVIS_WHISPER_MODEL=small once verified.
+WHISPER_MODEL = os.getenv("GARVIS_WHISPER_MODEL", "base")
 WHISPER_DEVICE = os.getenv("GARVIS_WHISPER_DEVICE", "cpu")
 WHISPER_COMPUTE = os.getenv("GARVIS_WHISPER_COMPUTE", "int8")
 # Language: empty => auto-detect per utterance (handles he/en switching). Force with
@@ -430,7 +431,12 @@ def calibrate_noise_floor(device, rate: int) -> float:
 # ----------------------------------------------------------------------------
 def load_stt():
     from faster_whisper import WhisperModel
-    return WhisperModel(WHISPER_MODEL, device=WHISPER_DEVICE, compute_type=WHISPER_COMPUTE)
+    # Print the EXACT config before loading so a hang/mismatch is obvious.
+    log("STATE", f"loading Whisper model={WHISPER_MODEL!r} device={WHISPER_DEVICE!r} "
+                 f"compute_type={WHISPER_COMPUTE!r} ...")
+    model = WhisperModel(WHISPER_MODEL, device=WHISPER_DEVICE, compute_type=WHISPER_COMPUTE)
+    log("STATE", "Whisper loaded")
+    return model
 
 
 def transcribe(model, audio16: np.ndarray) -> str:
@@ -642,6 +648,17 @@ def main() -> None:
     print("=" * 64)
     print("  JARVIS - Continuous Conversation (rec-based capture)")
     print("=" * 64)
+
+    # 1) Load Whisper FIRST and confirm it before any Piper or microphone init.
+    try:
+        model = load_stt()
+    except Exception as exc:
+        import traceback
+        log("STATE", f"Whisper load FAILED: {type(exc).__name__}: {exc}")
+        traceback.print_exc()
+        sys.exit(1)
+
+    # 2) Only after Whisper is confirmed loaded: log runtime/TTS and init the mic.
     log("RUNTIME_URL", API_URL)   # audit: which runtime URL this client calls
     if TTS_ENGINE == "piper" and piper_available():
         ru = "yes" if os.path.exists(TTS_VOICE_RU) else "no"
@@ -650,12 +667,6 @@ def main() -> None:
     else:
         reason = "" if TTS_ENGINE != "piper" else " (piper.exe or voice model missing)"
         log("TTS_ENGINE", f"pyttsx3{reason}")
-
-    log("STATE", "loading Whisper...")
-    try:
-        model = load_stt()
-    except Exception as exc:
-        print(f"[ERROR] STT load failed: {exc}"); sys.exit(1)
 
     device, rate, name = select_device()
     if device is None:
