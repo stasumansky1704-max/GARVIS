@@ -99,14 +99,18 @@ class Conversation:
 # ----------------------------------------------------------------------------
 # Phase 2 — VAD capture (energy-based, pure numpy; replaces the fixed 5s window)
 # ----------------------------------------------------------------------------
-def calibrate_noise_floor(stream, frames: int = 20) -> float:
-    """Sample ambient noise for ~0.6s to set an adaptive speech threshold."""
+MIN_ABS_FLOOR = 0.005   # absolute floor so a silent room can't make the threshold ~0
+                        # and so TTS tail / fan noise can't false-trigger.
+
+
+def calibrate_noise_floor(stream, frames: int = 15) -> float:
+    """Sample ambient noise to set an adaptive speech threshold (with abs floor)."""
     energies = []
     for _ in range(frames):
         block, _ = stream.read(FRAME_LEN)
         energies.append(float(np.sqrt(np.mean(block.astype(np.float32) ** 2))))
-    floor = float(np.median(energies)) if energies else 1e-4
-    return max(floor, 1e-4)
+    floor = float(np.median(energies)) if energies else MIN_ABS_FLOOR
+    return max(floor, MIN_ABS_FLOOR)
 
 
 def listen_utterance(stream, noise_floor: float) -> np.ndarray | None:
@@ -117,7 +121,8 @@ def listen_utterance(stream, noise_floor: float) -> np.ndarray | None:
       - stop after SILENCE_TIMEOUT_S of trailing silence
       - return None if utterance shorter than MIN_SPEECH_S
     """
-    speech_thresh = noise_floor * START_ENERGY_MULT
+    # adaptive threshold, but never below a usable absolute minimum
+    speech_thresh = max(noise_floor, MIN_ABS_FLOOR) * START_ENERGY_MULT
     preroll: list[np.ndarray] = []
     collected: list[np.ndarray] = []
     started = False
@@ -187,17 +192,56 @@ def ask_garvis(conv: Conversation, text: str) -> tuple[str, float]:
     return (data.get("response_text") or "I did not get a response."), dt
 
 
+TTS_RATE = 170
+TTS_VOLUME = 1.0
+
+
 def make_tts():
+    """Kept for API compatibility; returns None (engine is created per-utterance)."""
+    return None
+
+
+def _speak_once(text: str) -> None:
+    """
+    Speak ONE utterance with a FRESH pyttsx3 engine, then dispose it.
+
+    Why fresh each time: reusing one engine across repeated runAndWait() calls in
+    a loop reliably locks up SAPS5/pyttsx3 on Windows — the first utterance plays,
+    then every later runAndWait() silently no-ops (exactly the reported symptom).
+    A new init()/say()/runAndWait()/stop() per reply avoids the shared run-loop.
+    """
     import pyttsx3
-    engine = pyttsx3.init()
-    engine.setProperty("rate", 170)
-    engine.setProperty("volume", 1.0)
-    return engine
+    engine = pyttsx3.init()                 # fresh driver each call
+    try:
+        engine.setProperty("rate", TTS_RATE)
+        engine.setProperty("volume", TTS_VOLUME)
+        engine.say(text)
+        engine.runAndWait()
+    finally:
+        try:
+            engine.stop()
+        except Exception:
+            pass
+        del engine
 
 
-def speak(engine, text: str) -> None:
-    engine.say(text)
-    engine.runAndWait()
+def speak(_engine, text: str) -> bool:
+    """
+    Speak `text`, logging TTS_START / TTS_DONE / TTS_ERROR.
+    Returns True on success, False on failure (never raises — conversation continues).
+    `_engine` is ignored (engine is per-utterance); kept so call sites are unchanged.
+    """
+    if not text or not text.strip():
+        return True
+    preview = text[:60].replace("\n", " ")
+    print(f"   [TTS_START] {preview!r}", flush=True)
+    try:
+        _speak_once(text)
+        print("   [TTS_DONE]", flush=True)
+        return True
+    except Exception as exc:
+        print(f"   [TTS_ERROR] {type(exc).__name__}: {exc}", flush=True)
+        return False
 
 
 # ----------------------------------------------------------------------------
@@ -205,7 +249,7 @@ def speak(engine, text: str) -> None:
 # ----------------------------------------------------------------------------
 def main() -> None:
     print("=" * 64)
-    print("  GARVIS — Continuous Conversation Mode")
+    print("  JARVIS — Continuous Conversation Mode")
     print("=" * 64)
 
     # one-time inits (Phase 4: model loaded ONCE, reused every turn)
@@ -271,7 +315,7 @@ def main() -> None:
                 break
 
             # ---- RUNTIME + OLLAMA ----
-            show_state(State.THINKING, "GARVIS is thinking…")
+            show_state(State.THINKING, "JARVIS is thinking…")
             try:
                 reply, rt_dt = ask_garvis(conv, user_text)
             except requests.Timeout:                # Phase 6
@@ -284,7 +328,7 @@ def main() -> None:
                 continue
 
             # ---- SPEAK ----
-            print(f"  🤖 GARVIS: {reply}")
+            print(f"  🤖 JARVIS: {reply}")
             show_state(State.SPEAKING, "speaking…")
             t0 = time.perf_counter()
             try:
@@ -296,6 +340,18 @@ def main() -> None:
             conv.add(user_text, reply)              # Phase 4
             turn += 1
             print(f"     ⏱  stt {stt_dt:.1f}s · runtime {rt_dt:.1f}s · tts {tts_dt:.1f}s · turn #{turn}\n")
+
+            # ---- settle + re-calibrate so the loop reliably hears the NEXT turn ----
+            # (fixes "spoke once then stopped": TTS tail can bleed into the mic and
+            #  the room level can drift; re-adapt the noise floor each turn.)
+            time.sleep(0.4)
+            try:
+                # drain any buffered audio from the speaker bleed
+                for _ in range(int(0.3 / (FRAME_MS / 1000))):
+                    stream.read(FRAME_LEN)
+                noise_floor = calibrate_noise_floor(stream, frames=10)
+            except Exception:
+                pass
             show_state(State.IDLE, "listening resumes…")  # Phase 3: auto back to listen
 
         except Exception as exc:                    # Phase 6: never crash the loop
