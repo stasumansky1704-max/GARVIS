@@ -19,3 +19,7 @@ reference-repos/
 # Piper TTS voice models / artifacts (downloaded via voice_client/piper_setup.py)
 voice_client/piper_voices/
 *.onnx
+
+# Premium voice POC artifacts (audio output + downloaded STT models - never commit)
+voice_client/poc_out/
+voice_client/vosk-model/
