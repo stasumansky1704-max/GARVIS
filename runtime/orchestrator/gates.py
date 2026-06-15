@@ -55,10 +55,21 @@ class SafetyGate:
 
 
 class ApprovalGate:
-    """Human-in-the-loop gate (stub). Real impl persists pending approvals + waits."""
+    """
+    Human-in-the-loop gate. MVP = manual mode: a task that requires approval runs only if
+    its id is in `approved`; default-deny otherwise. Future impl persists pending
+    approvals + waits on mission_control.
+    """
+
+    def __init__(self, approved: set[str] | None = None):
+        self.approved: set[str] = set(approved or [])
 
     def requires_approval(self, task: TaskSpec, safety_class: SafetyClass) -> bool:
         return task.needs_approval or safety_class in APPROVAL_REQUIRED_CLASSES
 
-    def request(self, task: TaskSpec) -> GateDecision:  # stub: default-deny until wired
-        raise NotImplementedError("ApprovalGate.request: wire to mission_control approval")
+    def decide(self, task: TaskSpec, safety_class: SafetyClass) -> GateDecision:
+        if not self.requires_approval(task, safety_class):
+            return GateDecision(True, "no approval required")
+        if task.id in self.approved:
+            return GateDecision(True, "explicitly approved")
+        return GateDecision(False, "awaiting human approval")
