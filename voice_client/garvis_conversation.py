@@ -1,22 +1,18 @@
 """
 JARVIS Voice - Continuous Conversation Mode (Windows voice client)
 
-Capture architecture: sd.rec() BLOCKING CHUNKS.
-Note: sd.rec() opens a PortAudio InputStream internally - that is the ONLY way
-sounddevice captures audio; there is no InputStream-free path. The previous crash
-("Error opening InputStream / PaErrorCode -9996 Invalid device") was NOT a leftover
-streaming path - it was sd.rec() failing because the device INDEX was invalid.
+Capture architecture: ONE PERSISTENT sd.InputStream (callback) -> bounded ring buffer.
+SAFETY: WDM-KS is excluded and there is no per-chunk recording. Per-chunk WDM-KS
+streaming previously triggered kernel BugCheck 0x0000010D (WDF_VIOLATION); see
+voice_client/WINDOWS_AUDIO_CAPTURE_REMEDIATION.md. The stream is opened once at
+startup on an audio-engine-routed backend (WASAPI -> DirectSound -> MME, auto-fallback)
+and the VAD consumer reads fixed windows from the ring buffer - no stream churn.
 
-PortAudio indices are not stable (they shift on USB re-enumeration / reboot), so we
-NEVER hardcode an index for capture. We resolve the HyperX at runtime by NAME +
-WDM-KS host API (the only HyperX endpoint that actually captures on this machine,
-peak ~0.07; the MME/DirectSound/WASAPI duplicates read near-silence), validate it is
-openable with check_input_settings, and auto re-resolve if an index goes stale.
-
-Reuses the verified stack: faster-whisper (STT), pyttsx3 (TTS),
+Reuses the verified stack: faster-whisper (STT), Piper/pyttsx3 (TTS),
 POST /api/v1/runtime/command (Ollama-backed). Audio resampled to 16k for Whisper.
 
-Logs: MIC_DEVICE / MIC_PEAK / VAD_START / VAD_STOP / TRANSCRIBING / TTS_START / TTS_DONE.
+Logs: CAPTURE_BACKEND / CAPTURE_DEVICE / CAPTURE_RATE / CAPTURE_PEAK / VAD_START /
+VAD_STOP / TRANSCRIBING / TTS_START / TTS_DONE.
 
 Run on Windows:  python voice_client/garvis_conversation.py
 Say "goodbye" / "exit" / "stop" / "quit" (or Ctrl+C) to end.
@@ -49,18 +45,23 @@ def _env_b(name, default):  # bool env helper
 # Print per-chunk energy/peak only when DEBUG_VOICE=true (quiet by default).
 DEBUG_VOICE = _env_b("DEBUG_VOICE", False)
 
-# --- Microphone ---
-# Device is resolved at RUNTIME by name + host API (see resolve_device). We do NOT
-# hardcode an index - indices drift and cause PaErrorCode -9996 Invalid device.
+# --- Microphone (SAFE persistent capture) ---
+# WDM-KS is EXCLUDED on purpose: per-chunk WDM-KS streaming triggered kernel BugCheck
+# 0x0000010D (WDF_VIOLATION). See voice_client/WINDOWS_AUDIO_CAPTURE_REMEDIATION.md.
+# We open ONE persistent sd.InputStream on an audio-engine-routed backend and read
+# from a ring buffer - never sd.rec, never per-chunk open/close, never WDM-KS.
 MIC_NAME_HINT = "HyperX QuadCast"   # primary mic, matched by name
-PREFERRED_HOSTAPI = "WDM-KS"        # the only HyperX endpoint that captures on this box
-MIC_DEVICE = None                   # optional manual override (index); None = resolve by name
-CAPTURE_RATE = 44100                # HyperX native rate
-STT_RATE = 16000                    # Whisper wants 16k
+# Backend preference (auto-fallback in this order). CAPTURE_BACKEND env can force one
+# of: wasapi | directsound | mme. Empty = auto.
+CAPTURE_BACKEND_PREFERENCE = ("Windows WASAPI", "Windows DirectSound", "MME")
+EXCLUDED_HOSTAPIS = ("WDM-KS",)     # NEVER use these for capture
+CAPTURE_BACKEND_FORCE = os.getenv("CAPTURE_BACKEND", "").strip().lower()
+DEFAULT_RATE = 48000               # fallback rate if a device's default is unusable
+STT_RATE = 16000                   # Whisper wants 16k
 USABLE_PEAK = _env_f("USABLE_PEAK", 0.015)   # device must beat this while speaking
-AUTO_DETECT_IF_SILENT = True
-# Software gain applied to EVERY captured chunk (helps quiet 20-30 cm speech reach
-# STT and the peak gate). Signal is clipped to [-1, 1]. 1.0 = no gain.
+RING_BUFFER_SECONDS = 6.0          # bound the persistent capture buffer (memory cap)
+# Software gain applied to captured audio (helps quiet 20-30 cm speech reach STT and
+# the peak gate). Signal is clipped to [-1, 1]. 1.0 = no gain.
 MIC_GAIN = _env_f("MIC_GAIN", 2.0)
 
 # --- VAD (over rec chunks) ---
@@ -152,15 +153,14 @@ class Conversation:
 
 
 # ----------------------------------------------------------------------------
-# Audio helpers (sd.rec blocking)
+# Audio helpers + persistent capture (sd.InputStream callback; NEVER sd.rec/WDM-KS)
 # ----------------------------------------------------------------------------
+import threading
+from collections import deque
+
 _OUTPUT_TOKENS = ("speaker", "output", "playback", "render", "loopback",
                   "stereo mix", "what u hear", "wave out", "spdif", "hdmi",
                   "display audio", "headphones")
-
-# Live capture target, resolved by name + host API (never a hardcoded index).
-# rec_chunk re-resolves into this if an index goes stale (PaErrorCode -9996).
-_ACTIVE = {"device": None, "rate": CAPTURE_RATE, "name": ""}
 
 
 def _is_output(name: str) -> bool:
@@ -176,18 +176,38 @@ def _hostapi_name(hostapi_idx: int) -> str:
         return ""
 
 
+def _is_excluded_hostapi(api_name: str) -> bool:
+    low = (api_name or "").lower()
+    return any(x.lower() in low for x in EXCLUDED_HOSTAPIS)
+
+
+def _backend_label(api_name: str) -> str:
+    low = (api_name or "").lower()
+    if "wasapi" in low:
+        return "WASAPI"
+    if "directsound" in low:
+        return "DirectSound"
+    if low == "mme" or "mme" in low:
+        return "MME"
+    return api_name or "?"
+
+
 def list_input_devices():
-    """[(index, name, default_rate)] for real input devices (no outputs/loopback)."""
+    """[(index, name, default_rate, hostapi_name)] real inputs. WDM-KS EXCLUDED."""
     import sounddevice as sd
     out = []
     for i, d in enumerate(sd.query_devices()):
-        if d.get("max_input_channels", 0) > 0 and not _is_output(d["name"]):
-            out.append((i, d["name"], int(d.get("default_samplerate", 44100))))
+        if d.get("max_input_channels", 0) <= 0 or _is_output(d["name"]):
+            continue
+        api = _hostapi_name(d.get("hostapi", -1))
+        if _is_excluded_hostapi(api):          # never list / use WDM-KS for capture
+            continue
+        out.append((i, d["name"], int(d.get("default_samplerate", 44100)), api))
     return out
 
 
 def _openable(device, rate: int) -> bool:
-    """True if PortAudio can actually open this device at this rate (no -9996)."""
+    """True if PortAudio can open this device at this rate."""
     import sounddevice as sd
     try:
         sd.check_input_settings(device=device, samplerate=rate,
@@ -197,49 +217,8 @@ def _openable(device, rate: int) -> bool:
         return False
 
 
-def _do_rec(seconds: float, device, rate: int) -> np.ndarray:
-    import sounddevice as sd
-    rec = sd.rec(int(seconds * rate), samplerate=rate, channels=1,
-                 dtype="float32", device=device)
-    sd.wait()
-    audio = rec.reshape(-1)
-    if MIC_GAIN != 1.0 and audio.size:
-        audio = np.clip(audio * MIC_GAIN, -1.0, 1.0)  # software gain for quiet/far speech
-    return audio
-
-
-def rec_chunk(seconds: float, device, rate: int) -> np.ndarray:
-    """
-    Blocking record of `seconds` from `device` at `rate` (mono float32).
-    sd.rec opens an InputStream internally; if the index has gone stale PortAudio
-    raises -9996 Invalid device. We catch that, re-resolve the mic by name/host API
-    into _ACTIVE, and retry once so the session self-heals instead of crashing.
-    """
-    import sounddevice as sd
-    try:
-        return _do_rec(seconds, device, rate)
-    except sd.PortAudioError as exc:
-        log("MIC_RERESOLVE", f"{exc} - re-resolving mic by name/host API")
-        i, r, n = select_device()
-        if i is None:
-            raise
-        _ACTIVE.update(device=i, rate=r, name=n)
-        return _do_rec(seconds, _ACTIVE["device"], _ACTIVE["rate"])
-
-
 def peak_of(a: np.ndarray) -> float:
     return float(np.max(np.abs(a))) if a.size else 0.0
-
-
-def measure_peak(device, rate: int, seconds: float = 0.6) -> float:
-    # Raw record (no self-heal) so per-device scan peaks are not redirected to
-    # the HyperX when a scanned index fails to open.
-    if not _openable(device, rate):
-        return 0.0
-    try:
-        return peak_of(_do_rec(seconds, device, rate))
-    except Exception:
-        return 0.0
 
 
 def resample_to_stt(audio: np.ndarray, src_rate: int) -> np.ndarray:
@@ -253,110 +232,171 @@ def resample_to_stt(audio: np.ndarray, src_rate: int) -> np.ndarray:
     return np.interp(xn, xo, audio).astype(np.float32)
 
 
-# ----------------------------------------------------------------------------
-# Device selection + guided calibration
-# ----------------------------------------------------------------------------
-def select_device():
+class Capture:
     """
-    Resolve the capture device at RUNTIME and return (index, rate, name).
-    Indices are NOT stable, so we rank candidates by name + host API and return the
-    first one PortAudio can actually open (check_input_settings) - never a raw index.
-
-    Priority:
-      1. MIC_DEVICE override (only if set AND openable)
-      2. HyperX (MIC_NAME_HINT) on the PREFERRED_HOSTAPI (WDM-KS) - openable
-      3. HyperX on any host API - openable
-      4. default input device - openable
-      5. first openable real input device
-    Populates _ACTIVE as a side effect.
+    One PERSISTENT sd.InputStream (callback) feeding a bounded ring buffer.
+    No sd.rec, no per-chunk open/close, no WDM-KS. The callback only enqueues
+    frames; consumers pull windows via read(). read() applies MIC_GAIN.
     """
-    import sounddevice as sd
-    devices = list_input_devices()
 
-    def hostapi_of(idx: int) -> str:
+    def __init__(self, device, rate, name, backend):
+        self.device = device
+        self.rate = int(rate)
+        self.name = name
+        self.backend = backend
+        self._buf = deque()
+        self._count = 0
+        self._lock = threading.Lock()
+        self._max = int(self.rate * RING_BUFFER_SECONDS)
+        self._stream = None
+
+    def _cb(self, indata, frames, time_info, status):  # runs on audio thread - keep fast
         try:
-            return _hostapi_name(sd.query_devices()[idx]["hostapi"])
+            data = indata[:, 0].copy() if indata.ndim > 1 else indata.copy()
         except Exception:
-            return ""
+            return
+        with self._lock:
+            self._buf.append(data)
+            self._count += len(data)
+            while self._count > self._max and self._buf:   # bound memory: drop oldest
+                self._count -= len(self._buf.popleft())
 
-    def finish(i, rate, n):
-        _ACTIVE.update(device=i, rate=rate, name=n)
-        return i, rate, n
+    def start(self):
+        import sounddevice as sd
+        self._stream = sd.InputStream(samplerate=self.rate, channels=1, dtype="float32",
+                                      device=self.device, blocksize=0, callback=self._cb)
+        self._stream.start()
 
+    def drain(self):
+        with self._lock:
+            self._buf.clear()
+            self._count = 0
+
+    def read(self, seconds: float) -> np.ndarray:
+        """Return ~seconds of float32 audio (gained) from the buffer. Blocks until
+        enough samples or a short timeout. Never raises."""
+        target = max(1, int(seconds * self.rate))
+        deadline = time.time() + seconds + 1.0
+        audio = np.zeros(0, dtype=np.float32)
+        while True:
+            with self._lock:
+                if self._count >= target:
+                    out, need = [], target
+                    while need > 0 and self._buf:
+                        a = self._buf[0]
+                        if len(a) <= need:
+                            out.append(a); need -= len(a); self._count -= len(a); self._buf.popleft()
+                        else:
+                            out.append(a[:need]); self._buf[0] = a[need:]
+                            self._count -= need; need = 0
+                    audio = np.concatenate(out) if out else audio
+                    break
+            if time.time() > deadline:
+                with self._lock:
+                    if self._buf:
+                        audio = np.concatenate(list(self._buf))
+                        self._buf.clear(); self._count = 0
+                break
+            time.sleep(0.005)
+        if MIC_GAIN != 1.0 and audio.size:
+            audio = np.clip(audio * MIC_GAIN, -1.0, 1.0)
+        return audio
+
+    def peak(self, seconds: float = 1.0) -> float:
+        return peak_of(self.read(seconds))
+
+    def stop(self):
+        try:
+            if self._stream is not None:
+                self._stream.stop(); self._stream.close()
+        except Exception:
+            pass
+        self._stream = None
+
+
+# ----------------------------------------------------------------------------
+# Safe backend selection (WDM-KS excluded) + persistent capture open
+# ----------------------------------------------------------------------------
+def select_capture_candidates():
+    """
+    Ordered safe (non-WDM-KS) input candidates: (index, name, rate, hostapi).
+    Ranked by backend preference (WASAPI -> DirectSound -> MME), HyperX name first
+    within each backend. CAPTURE_BACKEND env can force a single backend.
+    """
+    devices = list_input_devices()                 # already WDM-KS-excluded
     hint = (MIC_NAME_HINT or "").lower()
-    pref = (PREFERRED_HOSTAPI or "").lower()
+    prefs = list(CAPTURE_BACKEND_PREFERENCE)
+    if CAPTURE_BACKEND_FORCE:                       # force one backend if requested
+        prefs = [p for p in prefs if CAPTURE_BACKEND_FORCE in p.lower()] or prefs
 
-    # 1. explicit manual override
-    if MIC_DEVICE is not None:
-        for i, n, sr in devices:
-            if i == MIC_DEVICE and _openable(i, CAPTURE_RATE):
-                return finish(i, CAPTURE_RATE, n)
+    ranked = []
+    for pref in prefs:
+        p = pref.lower()
+        named = [(i, n, sr, api) for (i, n, sr, api) in devices
+                 if p in api.lower() and hint and hint in n.lower()]
+        other = [(i, n, sr, api) for (i, n, sr, api) in devices
+                 if p in api.lower() and (i, n, sr, api) not in named]
+        ranked.extend(named + other)
 
-    # 2. HyperX on preferred host API (WDM-KS) - the verified-good endpoint
-    if hint:
-        for i, n, sr in devices:
-            if hint in n.lower() and pref in hostapi_of(i).lower() \
-                    and _openable(i, CAPTURE_RATE):
-                return finish(i, CAPTURE_RATE, n)
-        # 3. HyperX on any host API
-        for i, n, sr in devices:
-            if hint in n.lower():
-                rate = CAPTURE_RATE if _openable(i, CAPTURE_RATE) else sr
-                if _openable(i, rate):
-                    return finish(i, rate, n)
-
-    # 4. system default input
-    try:
-        di = sd.default.device[0]
-        for i, n, sr in devices:
-            if i == di and _openable(i, sr):
-                return finish(i, sr, n)
-    except Exception:
-        pass
-
-    # 5. first openable input
-    for i, n, sr in devices:
-        if _openable(i, sr):
-            return finish(i, sr, n)
-
-    return None, CAPTURE_RATE, "system default"
+    seen, out = set(), []                           # de-dup, preserve order
+    for c in ranked:
+        if c[0] not in seen:
+            seen.add(c[0]); out.append(c)
+    return out
 
 
-def guided_calibration(device, rate: int, name: str) -> tuple[int, int, str, float]:
+def open_capture():
     """
-    Ask the user to speak, measure peak. If the chosen device is silent and
-    AUTO_DETECT_IF_SILENT, scan all input devices WHILE the user speaks and pick
-    the loudest usable one. Returns (device, rate, name, peak).
+    Open ONE persistent stream on the best safe backend. Try candidates in order;
+    accept the first with a usable peak, else keep the strongest as fallback.
+    Returns (Capture, peak) or (None, 0.0). NEVER WDM-KS, NEVER sd.rec.
     """
-    log("MIC_DEVICE", f"[{device}] {name} @ {rate} Hz")
-    print("\n  Calibration: please SPEAK normally for 3 seconds...", flush=True)
-    time.sleep(0.3)
-    peak = measure_peak(device, rate, seconds=3.0)
-    log("MIC_PEAK", f"{peak:.5f} (need > {USABLE_PEAK})")
-    if peak >= USABLE_PEAK or not AUTO_DETECT_IF_SILENT:
-        return device, rate, name, peak
+    candidates = select_capture_candidates()
+    if not candidates:
+        return None, 0.0
 
-    print(f"\n  '{name}' too quiet. Scanning input devices - keep SPEAKING...", flush=True)
-    best = (device, rate, name, peak)
-    for i, n, sr in list_input_devices():
-        for try_rate in {sr, CAPTURE_RATE, 48000}:
-            p = measure_peak(i, try_rate, seconds=1.0)
-            log("  scan", f"[{i}] {n[:30]:<30} @{try_rate} peak={p:.5f}")
-            if p > best[3]:
-                best = (i, try_rate, n, p)
-    log("MIC_DEVICE", f"auto-selected [{best[0]}] {best[2]} @ {best[1]} Hz peak={best[3]:.5f}")
-    return best
+    best = None  # (peak, index, name, rate, backend)
+    for i, n, sr, api in candidates:
+        rate = sr if _openable(i, sr) else next((r for r in (DEFAULT_RATE, 44100, 16000)
+                                                 if _openable(i, r)), None)
+        if rate is None:
+            continue
+        backend = _backend_label(api)
+        cap = Capture(i, rate, n, backend)
+        try:
+            cap.start()
+        except Exception as exc:
+            log("CAPTURE_TRY", f"[{i}] {n[:26]} {backend} open failed: {type(exc).__name__}")
+            cap.stop(); continue
+        time.sleep(0.3)                              # let the stream prime
+        pk = cap.peak(seconds=1.0)
+        log("CAPTURE_TRY", f"[{i}] {n[:26]} {backend} @ {rate}Hz peak={pk:.5f}")
+        if pk >= USABLE_PEAK:
+            cap.drain()
+            return cap, pk
+        cap.stop()
+        if best is None or pk > best[0]:
+            best = (pk, i, n, rate, backend)
+
+    if best is not None:                            # nothing beat the gate; reopen strongest
+        _, i, n, rate, backend = best
+        cap = Capture(i, rate, n, backend)
+        try:
+            cap.start(); cap.drain()
+            return cap, best[0]
+        except Exception:
+            return None, 0.0
+    return None, 0.0
 
 
 # ----------------------------------------------------------------------------
 # VAD over rec chunks
 # ----------------------------------------------------------------------------
-def listen_utterance(noise_floor: float):
+def listen_utterance(capture, noise_floor: float):
     """
-    Record blocking chunks (from the live _ACTIVE device) until speech starts, then
-    until trailing silence. Reading _ACTIVE each chunk means a mid-utterance mic
-    re-resolve (index drift) propagates automatically. Logs VAD_START / VAD_STOP.
-    Returns audio (at the active capture rate) or None.
+    Consume fixed windows from the PERSISTENT capture buffer until speech starts,
+    then until trailing silence. No stream open/close happens here - the stream was
+    opened once at startup. Logs VAD_START / VAD_STOP. Returns audio or None.
     """
     floor = min(max(noise_floor, MIN_ABS_FLOOR), MAX_NOISE_FLOOR)
     start_thresh = floor * START_ENERGY_MULT
@@ -372,7 +412,7 @@ def listen_utterance(noise_floor: float):
     prev = None       # one chunk of preroll before the onset
 
     while True:
-        c = rec_chunk(chunk_s, _ACTIVE["device"], _ACTIVE["rate"])
+        c = capture.read(chunk_s)
         e = float(np.sqrt(np.mean(c ** 2))) if c.size else 0.0
         if DEBUG_VOICE:
             log("VAD_DBG", f"energy={e:.4f} peak={peak_of(c):.4f} "
@@ -421,8 +461,8 @@ def listen_utterance(noise_floor: float):
     return audio
 
 
-def calibrate_noise_floor(device, rate: int) -> float:
-    a = rec_chunk(0.5, device, rate)
+def calibrate_noise_floor(capture) -> float:
+    a = capture.read(0.5)
     return max(float(np.sqrt(np.mean(a ** 2))) if a.size else 0.0, MIN_ABS_FLOOR)
 
 
@@ -646,7 +686,7 @@ def main() -> None:
             pass
 
     print("=" * 64)
-    print("  JARVIS - Continuous Conversation (rec-based capture)")
+    print("  JARVIS - Continuous Conversation (safe persistent capture)")
     print("=" * 64)
 
     # 1) Load Whisper FIRST and confirm it before any Piper or microphone init.
@@ -658,7 +698,7 @@ def main() -> None:
         traceback.print_exc()
         sys.exit(1)
 
-    # 2) Only after Whisper is confirmed loaded: log runtime/TTS and init the mic.
+    # 2) Only after Whisper is confirmed loaded: log runtime/TTS and open the mic.
     log("RUNTIME_URL", API_URL)   # audit: which runtime URL this client calls
     if TTS_ENGINE == "piper" and piper_available():
         ru = "yes" if os.path.exists(TTS_VOICE_RU) else "no"
@@ -668,21 +708,23 @@ def main() -> None:
         reason = "" if TTS_ENGINE != "piper" else " (piper.exe or voice model missing)"
         log("TTS_ENGINE", f"pyttsx3{reason}")
 
-    device, rate, name = select_device()
-    if device is None:
-        print("[ERROR] no openable input device found"); sys.exit(1)
-
-    device, rate, name, peak = guided_calibration(device, rate, name)
-    _ACTIVE.update(device=device, rate=rate, name=name)  # sync after any auto-detect
+    # 3) Open ONE persistent capture stream (WASAPI->DirectSound->MME; WDM-KS excluded).
+    capture, peak = open_capture()
+    if capture is None:
+        print("[ERROR] no safe (non-WDM-KS) input device could be opened"); sys.exit(1)
+    log("CAPTURE_BACKEND", capture.backend)
+    log("CAPTURE_DEVICE", f"[{capture.device}] {capture.name}")
+    log("CAPTURE_RATE", f"{capture.rate} Hz")
+    log("CAPTURE_PEAK", f"{peak:.5f} (need > {USABLE_PEAK})")
     if peak < USABLE_PEAK:
-        print(f"\n[WARN] selected mic peak {peak:.5f} < {USABLE_PEAK}. "
-              f"Check the HyperX mute button / Windows input level, then rerun.")
-        # continue anyway - user may speak louder
+        print(f"\n[WARN] capture peak {peak:.5f} < {USABLE_PEAK}. Check the HyperX mute "
+              f"button / Windows input level; speak a little louder.")
 
     try:
-        noise_floor = calibrate_noise_floor(device, rate)
+        noise_floor = calibrate_noise_floor(capture)
     except Exception:
         noise_floor = MIN_ABS_FLOOR
+    capture.drain()
     log("STATE", f"ready - noise floor {noise_floor:.4f} - say 'goodbye' to exit")
 
     conv = Conversation()
@@ -693,7 +735,7 @@ def main() -> None:
     while not stop["flag"]:
         try:
             log("LISTENING", "waiting for speech...")
-            audio = listen_utterance(noise_floor)
+            audio = listen_utterance(capture, noise_floor)
             if audio is None:
                 time.sleep(COOLDOWN_S)
                 continue
@@ -701,7 +743,7 @@ def main() -> None:
             log("TRANSCRIBING")
             t0 = time.perf_counter()
             try:
-                user_text = transcribe(model, resample_to_stt(audio, _ACTIVE["rate"]))
+                user_text = transcribe(model, resample_to_stt(audio, capture.rate))
             except Exception as exc:
                 log("STT_ERROR", str(exc)); continue
             stt_dt = time.perf_counter() - t0
@@ -745,6 +787,7 @@ def main() -> None:
             log("ERROR_RECOVERY", f"{type(exc).__name__}: {exc}")
             time.sleep(0.5)
 
+    capture.stop()   # close the single persistent stream once, on exit
     print(f"\n  Conversation ended - {turn} turn(s).")
 
 
