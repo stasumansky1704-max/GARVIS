@@ -25,8 +25,11 @@ Do **not** hardcode or commit the key; do **not** commit generated audio.
 
 ## Safe mic capture status
 - ✅ Safe capture runs **without crash**, **WDM-KS excluded**, bounded ≤10s.
-- ✅ **Device selection fixed**: `safe_mic_test.py` now selects by **name (HyperX)**, not the
-  loudest-idle device.
+- ✅ **Device selection fixed in the test** (`safe_mic_test.py`): selects by **name (HyperX)**.
+- ✅ **Device selection fixed in the CLIENT** (`garvis_conversation.open_capture`): the
+  loudest-idle fallback was replaced with a **name-first** fallback (prefers a
+  MIC_NAME_HINT/`GARVIS_MIC_NAME` match, default "HyperX") so idle calibration no longer
+  picks the Intel mic array. Covered by `tests/test_capture_selection.py` (4/4).
 - ⚠️ **Level unverified with speech**: headless idle peak on HyperX/WASAPI ≈ 0.0008
   (< 0.015). Whether speaking clears the threshold must be confirmed manually.
 

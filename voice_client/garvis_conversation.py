@@ -50,7 +50,10 @@ DEBUG_VOICE = _env_b("DEBUG_VOICE", False)
 # 0x0000010D (WDF_VIOLATION). See voice_client/WINDOWS_AUDIO_CAPTURE_REMEDIATION.md.
 # We open ONE persistent sd.InputStream on an audio-engine-routed backend and read
 # from a ring buffer - never sd.rec, never per-chunk open/close, never WDM-KS.
-MIC_NAME_HINT = "HyperX QuadCast"   # primary mic, matched by name
+# Preferred mic matched by NAME substring (default HyperX). Override: GARVIS_MIC_NAME.
+# Name-first selection is what makes idle calibration pick the HyperX instead of the
+# loudest-idle device (e.g. the Intel mic array).
+MIC_NAME_HINT = os.getenv("GARVIS_MIC_NAME", "HyperX").strip()
 # Backend preference (auto-fallback in this order). CAPTURE_BACKEND env can force one
 # of: wasapi | directsound | mme. Empty = auto.
 CAPTURE_BACKEND_PREFERENCE = ("Windows WASAPI", "Windows DirectSound", "MME")
@@ -347,15 +350,21 @@ def select_capture_candidates():
 
 def open_capture():
     """
-    Open ONE persistent stream on the best safe backend. Try candidates in order;
-    accept the first with a usable peak, else keep the strongest as fallback.
+    Open ONE persistent stream on the best safe backend.
+
+    Candidates come name-first (HyperX) per backend (WASAPI->DirectSound->MME), WDM-KS
+    excluded. If any candidate beats USABLE_PEAK during the prime window (someone is
+    speaking), use it immediately. Otherwise fall back to the FIRST openable candidate,
+    PREFERRING one whose name matches MIC_NAME_HINT - NOT the loudest-idle device. This
+    fixes idle calibration picking the Intel mic array over a silent-at-idle HyperX.
     Returns (Capture, peak) or (None, 0.0). NEVER WDM-KS, NEVER sd.rec.
     """
     candidates = select_capture_candidates()
     if not candidates:
         return None, 0.0
 
-    best = None  # (peak, index, name, rate, backend)
+    hint = (MIC_NAME_HINT or "").lower()
+    fallback = None  # (peak, index, name, rate, backend, name_matched)
     for i, n, sr, api in candidates:
         rate = sr if _openable(i, sr) else next((r for r in (DEFAULT_RATE, 44100, 16000)
                                                  if _openable(i, r)), None)
@@ -371,19 +380,24 @@ def open_capture():
         time.sleep(0.3)                              # let the stream prime
         pk = cap.peak(seconds=1.0)
         log("CAPTURE_TRY", f"[{i}] {n[:26]} {backend} @ {rate}Hz peak={pk:.5f}")
-        if pk >= USABLE_PEAK:
+        if pk >= USABLE_PEAK:                        # someone is speaking -> use it now
             cap.drain()
             return cap, pk
         cap.stop()
-        if best is None or pk > best[0]:
-            best = (pk, i, n, rate, backend)
+        matched = bool(hint and hint in n.lower())
+        cand = (pk, i, n, rate, backend, matched)
+        # Fallback preference: first openable, but UPGRADE to a name-matched candidate.
+        if fallback is None or (matched and not fallback[5]):
+            fallback = cand
 
-    if best is not None:                            # nothing beat the gate; reopen strongest
-        _, i, n, rate, backend = best
+    if fallback is not None:                         # name-first (not loudest-idle)
+        pk, i, n, rate, backend, matched = fallback
+        log("CAPTURE_FALLBACK", f"[{i}] {n[:26]} {backend} "
+                                f"({'name-matched' if matched else 'first openable'}) idle_peak={pk:.5f}")
         cap = Capture(i, rate, n, backend)
         try:
             cap.start(); cap.drain()
-            return cap, best[0]
+            return cap, pk
         except Exception:
             return None, 0.0
     return None, 0.0
