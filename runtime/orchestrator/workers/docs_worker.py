@@ -23,6 +23,16 @@ class DocsWorker(Worker):
     )
 
     def run(self, task: TaskSpec) -> Envelope:
-        # Real impl (T13): draft doc content from task.inputs, write to a branch, open a
-        # DRAFT PR via the GitHub worker. Never writes to main; never merges.
-        raise NotImplementedError("DocsWorker.run: implement per docs/GARVIS_NEXT_30_TASKS.md T13")
+        # MVP DRY-RUN: describe the write without performing any external action (no file
+        # write, no PR). Real impl (T13) writes to a branch + opens a DRAFT PR via the
+        # GitHub worker; never main, never merge.
+        from ..models import Status
+        title = task.inputs.get("title", "untitled")
+        return Envelope(
+            task_id=task.id,
+            status=Status.DONE,
+            result={"action": "would_write_doc", "title": title,
+                    "delivery": "branch + DRAFT PR"},
+            artifacts=[f"docs/{title}.md (planned)"],
+            logs=["DocsWorker dry-run: no file written, no PR opened (inert MVP)"],
+        )
