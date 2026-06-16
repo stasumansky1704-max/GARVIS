@@ -1,0 +1,32 @@
+{
+  "_note": "NON-SECRET voice routing config. Voice IDs are identifiers, not secrets. The ElevenLabs API key comes ONLY from the environment variable ELEVENLABS_API_KEY and is NEVER stored or committed here.",
+  "phase": "0",
+  "stt": {
+    "provider": "faster-whisper",
+    "local": true,
+    "note": "he/ru/en; capture via safe persistent WASAPI (HyperX, WDM-KS excluded)"
+  },
+  "tts": {
+    "en": {
+      "provider": "elevenlabs",
+      "voice_id": "lUTamkMw7gOzZbFIwmq4",
+      "model": "eleven_multilingual_v2",
+      "voice_id_env_override": "GARVIS_ELEVENLABS_EN_VOICE_ID"
+    },
+    "ru": {
+      "provider": "elevenlabs",
+      "voice_id": "rQOBu7YxCDxGiFdTm28w",
+      "model": "eleven_multilingual_v2",
+      "voice_id_env_override": "GARVIS_ELEVENLABS_RU_VOICE_ID"
+    },
+    "he": {
+      "provider": "pending",
+      "reason": "ElevenLabs Hebrew is unacceptable (gibberish, including the cloned Hebrew voice). Route Hebrew to a dedicated Hebrew TTS provider later.",
+      "interim_fallback": "pyttsx3 only if a Hebrew SAPI voice is installed; otherwise Hebrew TTS is unavailable until a provider is chosen"
+    }
+  },
+  "secrets": {
+    "elevenlabs_api_key_env": "ELEVENLABS_API_KEY",
+    "policy": "key read from env only; never stored, printed, or committed"
+  }
+}
