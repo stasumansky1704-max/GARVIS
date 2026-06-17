@@ -26,6 +26,41 @@ def daily_brief(history, memory) -> str:
     return "\n".join(lines) + "\n"
 
 
+def daily_brief_full(history, memory, goals=None, queue=None) -> str:
+    """Daily brief enriched with active goals (priority-ordered) and due queue items."""
+    text = daily_brief(history, memory)
+    extra = []
+    if goals is not None:
+        active = goals.prioritized()[:8]
+        extra += ["", "## Active goals (by priority)",
+                  *([f"- P{g.get('priority',3)} [{g.get('progress',0)}%] {g['text'][:55]}"
+                     for g in active] or ["- (none)"])]
+    if queue is not None:
+        due = queue.prioritized_due()[:8]
+        extra += ["", "## Due research queue",
+                  *([f"- {q['goal'][:60]}" for q in due] or ["- (none)"])]
+    return text.rstrip() + "\n" + "\n".join(extra) + "\n"
+
+
+def weekly_brief(history, memory, goals=None) -> str:
+    """Weekly summary: run throughput + status mix + goal completion metrics + key rules."""
+    runs = history.list()
+    by_status: dict[str, int] = {}
+    for r in runs:
+        by_status[r.get("status", "?")] = by_status.get(r.get("status", "?"), 0) + 1
+    lines = [f"# GARVIS weekly brief - {time.strftime('%Y-%m-%d')}", "",
+             f"## Throughput", f"- total runs recorded: {len(runs)}",
+             *[f"- {k}: {v}" for k, v in sorted(by_status.items())]]
+    if goals is not None:
+        m = goals.metrics()
+        lines += ["", "## Goals",
+                  f"- total: {m.get('total', 0)}  done: {m.get('done', 0)}  "
+                  f"completion: {m.get('completion_rate', 0)}"]
+    rules = memory.list("rule")
+    lines += ["", "## Standing rules", *([f"- {r['text']}" for r in rules[:8]] or ["- (none)"])]
+    return "\n".join(lines) + "\n"
+
+
 def review_run(history, memory, run_id: str, rating: str, note: str = "") -> dict:
     rec = history.get(run_id)
     goal = rec["goal"] if rec else "(unknown run)"

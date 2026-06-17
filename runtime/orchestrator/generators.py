@@ -49,12 +49,17 @@ def change_proposal(goal: str, findings: list[dict]) -> str:
     ])
 
 
-def draft_pr_content(title: str, body: str = "", findings: list[dict] | None = None) -> dict:
+def draft_pr_content(title: str, body: str = "", findings: list[dict] | None = None,
+                     artifact_link: str | None = None) -> dict:
     sections = [("Summary", body or f"Draft changes for: {title}")]
     if findings:
         sections.append(("Research basis",
                          "\n".join(f"- {f.get('title','')} {f.get('url','')}"
                                    for f in findings[:8])))
+    if artifact_link:
+        sections.append(("Artifact", f"Local research artifact: `{artifact_link}`"))
+    sections.append(("Safety", "- Draft only (not for merge as-is)\n- main is never modified\n"
+                               "- Reversible: close PR + delete the throwaway branch"))
     sections.append(("Checklist", "- [ ] Reviewed\n- [ ] Tests pass\n- [ ] No secrets"))
     return {
         "title": f"draft: {title}",

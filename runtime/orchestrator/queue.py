@@ -38,15 +38,33 @@ class ResearchQueue:
                         pass
         return out
 
-    def enqueue(self, goal: str, due: str | None = None) -> str:
+    def enqueue(self, goal: str, due: str | None = None, priority: int = 3,
+                max_retries: int = 2) -> str:
         qid = uuid.uuid4().hex[:10]
         self._append({"id": qid, "ts": time.strftime("%Y-%m-%dT%H:%M:%S"),
-                      "goal": goal, "status": "pending", "due": due})
+                      "goal": goal, "status": "pending", "due": due,
+                      "priority": int(priority), "attempts": 0,
+                      "max_retries": int(max_retries), "errors": []})
         return qid
 
     def mark_done(self, qid: str, run_id: str | None = None) -> None:
         self._append({"id": qid, "status": "done", "run_id": run_id,
                       "ts": time.strftime("%Y-%m-%dT%H:%M:%S")})
+
+    def mark_failed(self, qid: str, error: str) -> dict:
+        """Capture a failure; re-queue for retry until max_retries, then mark 'failed'.
+        Returns the resulting state {status, attempts, will_retry}."""
+        cur = next((q for q in self.list() if q["id"] == qid), None)
+        if not cur:
+            return {"status": "unknown", "will_retry": False}
+        attempts = int(cur.get("attempts", 0)) + 1
+        errors = list(cur.get("errors", [])) + [error]
+        will_retry = attempts <= int(cur.get("max_retries", 2))
+        self._append({"id": qid, "ts": time.strftime("%Y-%m-%dT%H:%M:%S"),
+                      "status": "pending" if will_retry else "failed",
+                      "attempts": attempts, "errors": errors})
+        return {"status": "pending" if will_retry else "failed",
+                "attempts": attempts, "will_retry": will_retry}
 
     def list(self) -> list[dict]:
         latest: dict[str, dict] = {}
@@ -57,6 +75,19 @@ class ResearchQueue:
     def pending(self) -> list[dict]:
         return [q for q in self.list() if q.get("status") == "pending"]
 
+    def failed(self) -> list[dict]:
+        return [q for q in self.list() if q.get("status") == "failed"]
+
     def due_now(self) -> list[dict]:
         now = time.strftime("%Y-%m-%dT%H:%M:%S")
         return [q for q in self.pending() if not q.get("due") or q["due"] <= now]
+
+    def prioritized_due(self) -> list[dict]:
+        """Due items ordered by priority (1=highest) then due date - the run order."""
+        return sorted(self.due_now(),
+                      key=lambda q: (q.get("priority", 3), q.get("due") or "9999"))
+
+    def dry_run(self) -> list[dict]:
+        """Show what would run now WITHOUT executing anything (safe scheduler foundation)."""
+        return [{"id": q["id"], "goal": q["goal"], "priority": q.get("priority", 3),
+                 "attempts": q.get("attempts", 0)} for q in self.prioritized_due()]
