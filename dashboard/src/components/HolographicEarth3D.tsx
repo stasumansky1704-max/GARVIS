@@ -165,43 +165,66 @@ function LightBeam({ ai = 0 }: { ai?: number }) {
   );
 }
 
-// --- Dot-grid energy platform beneath the globe ---
-function EnergyPlatform({ ai = 0 }: { ai?: number }) {
-  const ref = useRef<THREE.Points>(null);
-  const positions = useMemo(() => {
-    const step = 0.16;
-    const half = 3.0;
-    const pts: number[] = [];
-    for (let x = -half; x <= half; x += step) {
-      for (let z = -half; z <= half; z += step) {
-        if (Math.sqrt(x * x + z * z) <= half) pts.push(x, 0, z);
-      }
-    }
-    return new Float32Array(pts);
-  }, []);
+// --- Glowing hexagon-grid floor beneath the globe (perspective tech floor) ---
+const HEX_VERT = `
+  varying vec2 vUv;
+  void main() {
+    vUv = uv;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  }
+`;
+const HEX_FRAG = `
+  uniform float uTime; uniform vec3 uColor; uniform float uIntensity;
+  varying vec2 vUv;
+  float hexDist(vec2 p){ p = abs(p); return max(dot(p, normalize(vec2(1.0, 1.7320508))), p.x); }
+  vec2 hexCell(vec2 uv){
+    vec2 r = vec2(1.0, 1.7320508); vec2 h = r * 0.5;
+    vec2 a = mod(uv, r) - h;
+    vec2 b = mod(uv - h, r) - h;
+    return dot(a, a) < dot(b, b) ? a : b;
+  }
+  void main(){
+    vec2 uv = (vUv - 0.5) * 34.0;            // hex density
+    vec2 gv = hexCell(uv);
+    float d = hexDist(gv);
+    float edge = smoothstep(0.44, 0.50, d);  // thin bright cell border
+    float fill = smoothstep(0.50, 0.28, d) * 0.05;
+    float dist = distance(vUv, vec2(0.5)) * 2.0;
+    float fade = 1.0 - smoothstep(0.40, 0.95, dist);   // melt into the dark
+    float pulse = 0.82 + 0.18 * sin(uTime * 1.4 - dist * 7.0);
+    float a = (edge + fill) * fade * pulse * uIntensity;
+    gl_FragColor = vec4(uColor * (edge * 1.5 + fill * 0.6), a);
+  }
+`;
 
+function HexFloor({ ai = 0 }: { ai?: number }) {
+  const material = useMemo(
+    () =>
+      new THREE.ShaderMaterial({
+        uniforms: {
+          uTime: { value: 0 },
+          uColor: { value: new THREE.Color("#33b8ff") },
+          uIntensity: { value: 1.0 },
+        },
+        vertexShader: HEX_VERT,
+        fragmentShader: HEX_FRAG,
+        transparent: true,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+      }),
+    []
+  );
+  useEffect(() => () => material.dispose(), [material]);
   useFrame(({ clock }) => {
-    if (ref.current) {
-      const m = ref.current.material as THREE.PointsMaterial;
-      m.opacity = 0.35 + (0.5 + 0.5 * Math.sin(clock.getElapsedTime() * 1.6)) * (0.2 + ai * 0.2);
-    }
+    material.uniforms.uTime.value = clock.getElapsedTime();
+    material.uniforms.uIntensity.value = 1.0 + ai * 0.6;
   });
-
   return (
-    <points ref={ref} position={[0, -2.75, 0]}>
-      <bufferGeometry>
-        <bufferAttribute attach="attributes-position" args={[positions, 3]} />
-      </bufferGeometry>
-      <pointsMaterial
-        color="#28c8ff"
-        size={0.05}
-        sizeAttenuation
-        transparent
-        opacity={0.5}
-        blending={THREE.AdditiveBlending}
-        depthWrite={false}
-      />
-    </points>
+    <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -2.5, 0]}>
+      <planeGeometry args={[46, 46, 1, 1]} />
+      <primitive object={material} attach="material" />
+    </mesh>
   );
 }
 
@@ -278,7 +301,7 @@ function EarthScene({ audioIntensity = 0 }: EarthProps) {
       </Suspense>
       <ParticleShell ai={audioIntensity} />
       <LightBeam ai={audioIntensity} />
-      <EnergyPlatform ai={audioIntensity} />
+      <HexFloor ai={audioIntensity} />
       <CityMarkers ai={audioIntensity} />
       <ArcLines ai={audioIntensity} />
 
