@@ -1,13 +1,19 @@
 import { useEffect, useState } from "react";
-import JarvisCore3D from "./components/JarvisCore3D";
 import HolographicEarth3D from "./components/HolographicEarth3D";
 import LivingCore from "./living-core/LivingCore";
+import StatusBadge from "./components/StatusBadge";
+import {
+  FACTORIES,
+  INTEL_LAYERS,
+  factoriesSummary,
+  intelSummary,
+} from "./data/missionControl";
 
 type Page = "home" | "workflows" | "intelligence" | "settings";
 
 const pageTitles: Record<Page, string> = {
   home: "HOME",
-  workflows: "WORKFLOWS",
+  workflows: "FACTORIES",
   intelligence: "INTELLIGENCE HUB",
   settings: "SETTINGS",
 };
@@ -84,22 +90,36 @@ function HomePage({ audioIntensity: _audioIntensity }: { audioIntensity: number 
 function WorkflowsPage() {
   return (
     <section className="page-screen">
-      <PageHeader title="WORKFLOWS" subtitle="Projects, missions, automations and operational workflows" />
+      <PageHeader title="FACTORIES" subtitle={factoriesSummary()} />
 
-      <div className="empty-panel">
-        <div className="empty-icon">⚡</div>
-        <h2>No active workflows yet</h2>
-        <p>
-          Workflows will appear here only when real workflows are created or connected.
-          No fake production data.
-        </p>
-        <button className="primary-button">CREATE WORKFLOW</button>
+      <div className="factory-grid">
+        {FACTORIES.map((f) => (
+          <article className="factory-card" key={f.id}>
+            <div className="factory-card-top">
+              <span className="factory-glyph" aria-hidden>{f.glyph}</span>
+              <StatusBadge status={f.status} />
+            </div>
+            <h3>{f.name}</h3>
+            <p>{f.summary}</p>
+          </article>
+        ))}
       </div>
+
+      <p className="surface-note">
+        Business factories only. Internal engine capabilities (research, loop, run-due,
+        review, schedule) are not user workflows and are intentionally hidden. No factory
+        shows “Active” until it is wired to a real capability.
+      </p>
     </section>
   );
 }
 
 function IntelligencePage({ audioIntensity }: { audioIntensity: number }) {
+  // The holographic Earth is the hero. Layer cards sit in side rails so they never
+  // block the globe (cybernetic command-center framing, not a dashboard grid).
+  const left = INTEL_LAYERS.slice(0, 3);
+  const right = INTEL_LAYERS.slice(3);
+
   return (
     <section className="intel-screen">
       <div className="earth-stage">
@@ -107,38 +127,37 @@ function IntelligencePage({ audioIntensity }: { audioIntensity: number }) {
       </div>
 
       <div className="intel-overlay">
-        <PageHeader
-          title="INTELLIGENCE HUB"
-          subtitle="World events, markets, sports, wrestling and live global awareness"
-        />
+        <header className="intel-header">
+          <h1>INTELLIGENCE HUB</h1>
+          <p>{intelSummary()}</p>
+        </header>
 
-        <div className="intel-layout">
-          <div className="intel-panel">
-            <h3>WORLD EVENTS</h3>
-            <p>Feed not connected.</p>
-            <span>Connect news source / event API</span>
+        <div className="intel-rails">
+          <div className="intel-rail intel-rail--left">
+            {left.map((l) => <IntelCard key={l.id} layer={l} />)}
           </div>
-
-          <div className="intel-panel">
-            <h3>STOCK MARKET</h3>
-            <p>Market feed not connected.</p>
-            <span>Connect index, stock and crypto feeds</span>
-          </div>
-
-          <div className="intel-panel">
-            <h3>SPORTS / WRESTLING</h3>
-            <p>Sports feed not connected.</p>
-            <span>WWE, AEW, UFC, NBA, football and major events</span>
-          </div>
-
-          <div className="intel-panel">
-            <h3>REVENUE</h3>
-            <p>Revenue source not connected.</p>
-            <span>Stripe / PayPal / custom endpoint later</span>
+          <div className="intel-rail intel-rail--right">
+            {right.map((l) => <IntelCard key={l.id} layer={l} />)}
           </div>
         </div>
       </div>
     </section>
+  );
+}
+
+function IntelCard({ layer }: { layer: (typeof INTEL_LAYERS)[number] }) {
+  return (
+    <article className="intel-card">
+      <div className="intel-card-top">
+        <span className="intel-glyph" aria-hidden>{layer.glyph}</span>
+        <span className="intel-card-title">{layer.name}</span>
+        <StatusBadge status={layer.connection} />
+      </div>
+      <p>{layer.summary}</p>
+      <div className="intel-card-foot">
+        <StatusBadge status={layer.maturity} />
+      </div>
+    </article>
   );
 }
 
