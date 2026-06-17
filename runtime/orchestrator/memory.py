@@ -40,6 +40,7 @@ def is_protected(rec: dict) -> bool:
 class MemoryStore:
     def __init__(self, path: str | None = None):
         self.path = path or _DEFAULT
+        self.links_path = self.path + ".links"
         os.makedirs(os.path.dirname(self.path), exist_ok=True)
 
     def add(self, layer: str, text: str, tags=None, meta=None, confidence: float = 1.0,
@@ -317,6 +318,103 @@ class MemoryStore:
                     seen.add(t)
                     terms.append(t)
         return terms[:limit]
+
+    # ---- graph layer (relationships + clustering): smarter, connected memory ----
+    def link(self, a: str, b: str, rel: str = "related") -> bool:
+        """Create a typed relationship between two memories (graph edge). Both must exist."""
+        ids = {r["id"] for r in self.all()}
+        if a not in ids or b not in ids or a == b:
+            return False
+        with open(self.links_path, "a", encoding="utf-8") as f:
+            f.write(json.dumps({"a": a, "b": b, "rel": rel,
+                                "ts": time.strftime("%Y-%m-%dT%H:%M:%S")}) + "\n")
+        return True
+
+    def links(self) -> list[dict]:
+        if not os.path.exists(self.links_path):
+            return []
+        out = []
+        with open(self.links_path, encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if line:
+                    try:
+                        out.append(json.loads(line))
+                    except Exception:
+                        pass
+        return out
+
+    def related(self, mid: str) -> list[dict]:
+        """Memories directly linked to mid (either direction)."""
+        neighbors = set()
+        for e in self.links():
+            if e["a"] == mid:
+                neighbors.add(e["b"])
+            elif e["b"] == mid:
+                neighbors.add(e["a"])
+        return [r for r in self.all() if r["id"] in neighbors]
+
+    def auto_link(self, threshold: float = 0.5) -> int:
+        """Automatically connect memories with high token overlap (builds the graph).
+        Returns the number of new edges created. Idempotent-ish (skips existing pairs)."""
+        recs = self.all()
+        existing = {frozenset((e["a"], e["b"])) for e in self.links()}
+        created = 0
+        for i in range(len(recs)):
+            ti = _tokens(recs[i]["text"])
+            for j in range(i + 1, len(recs)):
+                pair = frozenset((recs[i]["id"], recs[j]["id"]))
+                if pair in existing or recs[i]["id"] == recs[j]["id"]:
+                    continue
+                tj = _tokens(recs[j]["text"])
+                if not ti or not tj:
+                    continue
+                sim = len(ti & tj) / len(ti | tj)
+                if sim >= threshold:
+                    self.link(recs[i]["id"], recs[j]["id"], rel="auto")
+                    existing.add(pair)
+                    created += 1
+        return created
+
+    def topics(self, min_size: int = 2) -> list[dict]:
+        """Cluster memories into topics via connected components over shared significant
+        tokens. Returns [{topic: <top terms>, ids: [...], size: n}] for clusters >= min_size."""
+        recs = self.all()
+        toks = {r["id"]: _tokens(r["text"]) for r in recs}
+        parent = {r["id"]: r["id"] for r in recs}
+
+        def find(x):
+            while parent[x] != x:
+                parent[x] = parent[parent[x]]
+                x = parent[x]
+            return x
+
+        def union(x, y):
+            parent[find(x)] = find(y)
+
+        ids = list(toks)
+        for i in range(len(ids)):
+            for j in range(i + 1, len(ids)):
+                if toks[ids[i]] & toks[ids[j]]:
+                    union(ids[i], ids[j])
+        groups: dict[str, list[str]] = {}
+        for mid in ids:
+            groups.setdefault(find(mid), []).append(mid)
+        out = []
+        for members in groups.values():
+            if len(members) < min_size:
+                continue
+            counter: dict[str, int] = {}
+            for m in members:
+                for t in toks[m]:
+                    counter[t] = counter.get(t, 0) + 1
+            top = sorted(counter, key=lambda t: -counter[t])[:3]
+            out.append({"topic": " ".join(top), "ids": members, "size": len(members)})
+        return sorted(out, key=lambda g: -g["size"])
+
+    def graph_stats(self) -> dict:
+        return {"nodes": len(self.all()), "edges": len(self.links()),
+                "topics": len(self.topics())}
 
     def planner_context(self, goal: str, limit: int = 8) -> dict:
         return {

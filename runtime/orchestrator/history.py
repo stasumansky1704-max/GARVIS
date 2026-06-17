@@ -65,3 +65,27 @@ class RunHistory:
             if rec.get("id") == run_id:
                 found = rec
         return found
+
+    def search(self, query: str, limit: int = 20) -> list[dict]:
+        """Find runs whose goal/summary contains all query terms (case-insensitive)."""
+        terms = [t for t in query.lower().split() if t]
+        out = []
+        for r in self.list():
+            hay = (r.get("goal", "") + " " + r.get("result_summary", "")).lower()
+            if all(t in hay for t in terms):
+                out.append(r)
+        return out[-limit:]
+
+    def filter(self, status: str) -> list[dict]:
+        """Runs with a given status (done/failed/blocked/...)."""
+        return [r for r in self.list() if r.get("status") == status]
+
+    def stats(self) -> dict:
+        """Aggregate run stats: totals by status + success rate."""
+        runs = self.list()
+        by: dict[str, int] = {}
+        for r in runs:
+            by[r.get("status", "?")] = by.get(r.get("status", "?"), 0) + 1
+        total = len(runs)
+        return {"total": total, "by_status": by,
+                "success_rate": round(by.get("done", 0) / total, 3) if total else 0.0}

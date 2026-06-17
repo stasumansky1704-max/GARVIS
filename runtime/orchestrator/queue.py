@@ -39,13 +39,19 @@ class ResearchQueue:
         return out
 
     def enqueue(self, goal: str, due: str | None = None, priority: int = 3,
-                max_retries: int = 2) -> str:
+                max_retries: int = 2, deps: list | None = None) -> str:
         qid = uuid.uuid4().hex[:10]
         self._append({"id": qid, "ts": time.strftime("%Y-%m-%dT%H:%M:%S"),
                       "goal": goal, "status": "pending", "due": due,
                       "priority": int(priority), "attempts": 0,
-                      "max_retries": int(max_retries), "errors": []})
+                      "max_retries": int(max_retries), "errors": [],
+                      "deps": list(deps or [])})
         return qid
+
+    def deps_satisfied(self, item: dict) -> bool:
+        """True when all of an item's dependency queue-ids are done."""
+        done = {q["id"] for q in self.list() if q.get("status") == "done"}
+        return all(d in done for d in (item.get("deps") or []))
 
     def mark_done(self, qid: str, run_id: str | None = None) -> None:
         self._append({"id": qid, "status": "done", "run_id": run_id,
@@ -91,7 +97,8 @@ class ResearchQueue:
 
     def due_now(self) -> list[dict]:
         now = time.strftime("%Y-%m-%dT%H:%M:%S")
-        return [q for q in self.pending() if not q.get("due") or q["due"] <= now]
+        return [q for q in self.pending()
+                if (not q.get("due") or q["due"] <= now) and self.deps_satisfied(q)]
 
     def prioritized_due(self) -> list[dict]:
         """Due items ordered by priority (1=highest) then due date - the run order."""

@@ -228,7 +228,7 @@ def discover_orchestrator_tests() -> list[str]:
              "test_draftpr_workflow", "test_github_hardening", "test_memory_evolution",
              "test_goals_queue_scheduler", "test_ops_commands", "test_user_workflows",
              "test_self_evolution", "test_quality_autonomy", "test_autonomy_loop",
-             "test_scheduled_autonomy")
+             "test_scheduled_autonomy", "test_mega_evolution")
     return [os.path.join("tests", n + ".py") for n in names
             if os.path.exists(os.path.join(tdir, n + ".py"))]
 
@@ -273,6 +273,55 @@ def _run_test_suites(exclude: tuple[str, ...] = ()) -> dict:
             except Exception as exc:
                 failures.append(f"{name}.{fn.__name__}: {type(exc).__name__}")
     return {"passed": passed, "total": total, "failures": failures}
+
+
+_PRE_PUSH_HOOK = """#!/bin/sh
+# GARVIS orchestrator pre-push gate - runs ci-check, blocks push on failure.
+# Installed by: python runtime/orchestrator/cli.py ci-install
+echo "[garvis] running orchestrator ci-check before push..."
+python runtime/orchestrator/cli.py ci-check || {
+    echo "[garvis] ci-check FAILED - push aborted"; exit 1;
+}
+"""
+
+
+def install_git_hook(hooks_dir: str | None = None) -> dict:
+    """Install a pre-push hook that runs ci-check (tests become automatic on every push).
+    Lives under .git/hooks (NOT version-controlled), so no GitHub `workflow` scope needed."""
+    hooks_dir = hooks_dir or os.path.join(REPO_ROOT, ".git", "hooks")
+    if not os.path.isdir(hooks_dir):
+        return {"installed": False, "reason": f"hooks dir not found: {hooks_dir}"}
+    path = os.path.join(hooks_dir, "pre-push")
+    try:
+        with open(path, "w", encoding="utf-8", newline="\n") as f:
+            f.write(_PRE_PUSH_HOOK)
+        try:
+            os.chmod(path, 0o755)
+        except Exception:
+            pass
+    except Exception as exc:
+        return {"installed": False, "reason": str(exc)}
+    return {"installed": True, "path": path, "runs": "ci-check on every git push"}
+
+
+def install_ci_workflow(force: bool = False) -> dict:
+    """Copy the CI definition into .github/workflows/ (activates GitHub Actions). Pushing it
+    still requires a token with `workflow` scope; this only stages the file locally."""
+    src = os.path.join(_DIR, "ci", "orchestrator.yml")
+    dst_dir = os.path.join(REPO_ROOT, ".github", "workflows")
+    dst = os.path.join(dst_dir, "orchestrator.yml")
+    if not os.path.exists(src):
+        return {"installed": False, "reason": "ci/orchestrator.yml not found"}
+    if os.path.exists(dst) and not force:
+        return {"installed": False, "reason": "already present (use force=True to overwrite)"}
+    try:
+        os.makedirs(dst_dir, exist_ok=True)
+        import shutil
+        shutil.copyfile(src, dst)
+    except Exception as exc:
+        return {"installed": False, "reason": str(exc)}
+    return {"installed": True, "path": os.path.relpath(dst, REPO_ROOT),
+            "note": "commit/push needs a token with GitHub 'workflow' scope"}
 
 
 def ci_check(run_tests: bool = True) -> dict:
