@@ -44,9 +44,9 @@ function latLonToVec3(lat: number, lon: number, radius: number): THREE.Vector3 {
 // --- Textured, glowing Earth (real continents from earth.jpg, holographic cyan grade) ---
 function TexturedEarth({ ai = 0 }: { ai?: number }) {
   const ref = useRef<THREE.Group>(null);
-  const texture = useLoader(THREE.TextureLoader, "/textures/earth.jpg");
+  const texture = useLoader(THREE.TextureLoader, "/textures/earth.png");
   texture.colorSpace = THREE.SRGBColorSpace;
-  texture.anisotropy = 4;
+  texture.anisotropy = 8;
 
   useFrame(({ clock }) => {
     if (ref.current) ref.current.rotation.y = clock.getElapsedTime() * 0.06;
@@ -216,23 +216,6 @@ function EnergyPlatform({ ai = 0 }: { ai?: number }) {
   );
 }
 
-function EquatorRing({ ai = 0 }: { ai?: number }) {
-  const ref = useRef<THREE.Group>(null);
-  useFrame(({ clock }) => {
-    if (!ref.current) return;
-    ref.current.rotation.z = Math.sin(clock.getElapsedTime() * 0.4) * 0.04;
-    ref.current.rotation.x = Math.sin(clock.getElapsedTime() * 0.25) * 0.03;
-  });
-  return (
-    <group ref={ref}>
-      <mesh rotation={[Math.PI / 2, 0, 0]}>
-        <torusGeometry args={[EARTH_R * 1.4, 0.008, 8, 120]} />
-        <meshBasicMaterial color="#00e5ff" transparent opacity={0.3 + ai * 0.2} blending={THREE.AdditiveBlending} />
-      </mesh>
-    </group>
-  );
-}
-
 function CityMarkers({ ai = 0 }: { ai?: number }) {
   const groupRef = useRef<THREE.Group>(null);
   useFrame(({ clock }) => {
@@ -306,7 +289,6 @@ function EarthScene({ audioIntensity = 0 }: EarthProps) {
       <AtmosphereShell ai={audioIntensity} />
       <LightBeam ai={audioIntensity} />
       <EnergyPlatform ai={audioIntensity} />
-      <EquatorRing ai={audioIntensity} />
       <CityMarkers ai={audioIntensity} />
       <ArcLines ai={audioIntensity} />
 
