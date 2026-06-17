@@ -1,0 +1,166 @@
+"""
+Self-learning - GARVIS analyzes its OWN run history + audit log and turns recurring
+problems into durable lessons (memory) and actionable recommendations.
+
+This closes a real feedback loop:
+- analyze_failures        : failed-run rate + common error families
+- analyze_empty_results   : runs that found nothing + a concrete broader-query suggestion
+- analyze_weak_plans      : runs that completed but produced little/no signal
+- analyze_blocked         : blocked tasks + reasons (from audit)
+- analyze_denials         : approval denials (from audit)
+- recommend               : structured, machine-usable improvement suggestions (not docs)
+- learn                   : writes deduped lessons into memory so future planning improves
+
+All functions are read-only except learn(), which only appends to the memory store.
+"""
+from __future__ import annotations
+
+from .research_quality import broaden_query, extract_terms
+
+# Project tokens whose presence in an empty-result goal is a learnable signal.
+_PROJECT_TOKENS = ("garvis", "jarvis", "alphaflow")
+
+
+def _summary_is_empty(rec: dict) -> bool:
+    s = (rec.get("result_summary") or "").lower()
+    return (not s) or ("no results found" in s) or ("no findings" in s) or s.startswith("0 ")
+
+
+def analyze_failures(history) -> dict:
+    runs = history.list()
+    failed = [r for r in runs if r.get("status") in ("failed", "blocked")]
+    families: dict[str, int] = {}
+    for r in failed:
+        for t in r.get("tasks", []):
+            err = (t.get("error") or "").lower()
+            if not err:
+                continue
+            fam = ("approval" if "approval" in err else
+                   "safety" if "safety" in err else
+                   "network" if ("http" in err or "url" in err or "timeout" in err) else
+                   "rate_limit" if "rate limit" in err else
+                   "missing_input" if "missing" in err else "other")
+            families[fam] = families.get(fam, 0) + 1
+    total = len(runs)
+    return {"total": total, "failed": len(failed),
+            "failure_rate": round(len(failed) / total, 3) if total else 0.0,
+            "error_families": families}
+
+
+def analyze_empty_results(history) -> dict:
+    runs = history.list()
+    empty = [r for r in runs if r.get("status") == "done" and _summary_is_empty(r)]
+    items = []
+    for r in empty:
+        goal = r.get("goal", "")
+        items.append({"id": r.get("id"), "goal": goal,
+                      "suggested_query": broaden_query(goal) or " ".join(extract_terms(goal)),
+                      "has_project_token": any(t in goal.lower() for t in _PROJECT_TOKENS)})
+    return {"empty_runs": len(empty), "items": items,
+            "with_project_tokens": sum(1 for i in items if i["has_project_token"])}
+
+
+def analyze_weak_plans(history) -> dict:
+    """Runs that completed but produced little signal (single/zero-task or empty summary)."""
+    runs = history.list()
+    weak = []
+    for r in runs:
+        if r.get("status") != "done":
+            continue
+        tasks = r.get("tasks", [])
+        done_tasks = [t for t in tasks if t.get("status") == "done"]
+        if _summary_is_empty(r) or (tasks and len(done_tasks) <= 1):
+            weak.append({"id": r.get("id"), "goal": r.get("goal", ""),
+                         "done_tasks": len(done_tasks)})
+    return {"weak_runs": len(weak), "items": weak}
+
+
+def analyze_blocked(audit) -> dict:
+    events = [e for e in audit.list() if e.get("kind") == "task_blocked"]
+    reasons: dict[str, int] = {}
+    for e in events:
+        err = (e.get("error") or "unknown").split(":")[0].strip().lower()
+        reasons[err] = reasons.get(err, 0) + 1
+    return {"blocked_tasks": len(events), "reasons": reasons}
+
+
+def analyze_denials(audit) -> dict:
+    denied = [e for e in audit.list()
+              if e.get("kind") in ("task_blocked", "draft_pr_blocked_empty")
+              and "approval" in (e.get("error", "") + e.get("kind", "")).lower()]
+    return {"approval_denials": len(denied)}
+
+
+def recommend(history, audit) -> list[dict]:
+    """Structured, actionable recommendations derived from observed patterns."""
+    recs = []
+    fails = analyze_failures(history)
+    empties = analyze_empty_results(history)
+    weak = analyze_weak_plans(history)
+    blocked = analyze_blocked(audit)
+    if empties["with_project_tokens"]:
+        recs.append({"area": "research", "severity": "high",
+                     "finding": f"{empties['with_project_tokens']} empty run(s) had "
+                                f"project-specific tokens in the goal",
+                     "action": "strip project tokens before searching (decompose_smart already "
+                               "does this; ensure all research paths use it)"})
+    if fails["error_families"].get("network", 0) >= 2:
+        recs.append({"area": "reliability", "severity": "medium",
+                     "finding": "repeated network errors",
+                     "action": "increase retries/backoff and broaden source fallback"})
+    if fails["failure_rate"] > 0.3 and fails["total"] >= 3:
+        recs.append({"area": "reliability", "severity": "high",
+                     "finding": f"failure rate {fails['failure_rate']}",
+                     "action": "inspect error_families; add targeted recovery"})
+    if weak["weak_runs"] >= 2:
+        recs.append({"area": "planning", "severity": "medium",
+                     "finding": f"{weak['weak_runs']} weak run(s) with little signal",
+                     "action": "increase decomposition breadth / enable broadening retry"})
+    if blocked["blocked_tasks"] >= 3:
+        recs.append({"area": "autonomy", "severity": "low",
+                     "finding": f"{blocked['blocked_tasks']} blocked tasks",
+                     "action": "review approval gating and dependency ordering"})
+    return recs
+
+
+def learn(history, audit, memory) -> list[str]:
+    """Write deduped lessons into memory (feedback loop). Returns the lessons written."""
+    existing = {m["text"] for m in memory.list()}
+    written = []
+
+    def _remember(layer, text, tags):
+        if text not in existing:
+            memory.add(layer, text, tags=tags, source="self-learned")
+            existing.add(text)
+            written.append(text)
+
+    empties = analyze_empty_results(history)
+    if empties["with_project_tokens"]:
+        _remember("rule",
+                  "strip project-specific tokens (e.g. GARVIS) from research queries; "
+                  "they cause empty results", ["self-learned", "research"])
+    for it in empties["items"][:5]:
+        if it["suggested_query"]:
+            _remember("decision",
+                      f"for goal '{it['goal'][:60]}' prefer broader query "
+                      f"'{it['suggested_query']}'", ["self-learned", "query"])
+
+    fails = analyze_failures(history)
+    if fails["error_families"].get("network", 0) >= 2:
+        _remember("rule", "research is network-sensitive; retry with broadened queries and "
+                          "fall back across sources", ["self-learned", "reliability"])
+    for rec in recommend(history, audit):
+        _remember("decision",
+                  f"[{rec['area']}] {rec['finding']} -> {rec['action']}",
+                  ["self-learned", rec["area"]])
+    return written
+
+
+def insights(history, audit) -> dict:
+    """One-call snapshot of everything self-learning observed."""
+    return {"failures": analyze_failures(history),
+            "empty_results": analyze_empty_results(history),
+            "weak_plans": analyze_weak_plans(history),
+            "blocked": analyze_blocked(audit),
+            "denials": analyze_denials(audit),
+            "recommendations": recommend(history, audit)}

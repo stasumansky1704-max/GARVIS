@@ -42,6 +42,8 @@ from orchestrator.queue import ResearchQueue
 from orchestrator.brief import daily_brief, daily_brief_full, weekly_brief, review_run
 from orchestrator import scheduler
 from orchestrator import ops
+from orchestrator import selflearn
+from orchestrator import planning
 from orchestrator.workers.github_worker import GitHubReadWorker, GitHubDraftPRWorker
 
 
@@ -64,7 +66,8 @@ def cmd_research(goal, with_doc, approvals, cfg):
         return 3
     orch, hist, audit, art = build(cfg)
     budget = RunBudget.from_config(cfg)
-    n_research = max(1, budget.max_tasks - (1 if with_doc else 0))
+    n_cap = max(1, budget.max_tasks - (1 if with_doc else 0))
+    n_research = min(n_cap, planning.recommended_task_count(goal, n_cap))  # size to complexity
     subs = decompose(goal, n_research)
     fb = [TaskSpec(id=f"r{i}", worker="research", intent=s, inputs={"query": s})
           for i, s in enumerate(subs)]
@@ -168,6 +171,12 @@ def cmd_memory(rest, cfg):
     if sub == "compress":
         n = mem.compress()
         print("removed duplicates:", n, "| valid:", mem.validate_compression()["valid"]); return 0
+    if sub == "consolidate":
+        print("merged near-duplicates:", mem.consolidate()); return 0
+    if sub == "decay":
+        print("decayed (old/unused):", mem.decay()); return 0
+    if sub == "promote" and len(rest) >= 2:
+        print("promoted:", mem.promote(rest[1])); return 0
     if sub == "inspect":
         for k, v in mem.inspect().items():
             print(f"  {k}: {v}")
@@ -495,6 +504,28 @@ def cmd_workflow(rest, cfg):
     return 0
 
 
+def cmd_insights(cfg):
+    """Show what GARVIS has learned about its own runs (failures/empty/weak/blocked)."""
+    mem, _, _, hist = _stores(cfg)
+    audit = AuditLog(os.path.join(cfgmod.history_dir(cfg), "audit.jsonl"))
+    import json as _j
+    print(_j.dumps(selflearn.insights(hist, audit), ensure_ascii=False, indent=2, default=str))
+    return 0
+
+
+def cmd_learn(cfg):
+    """Analyze own history+audit and write deduped lessons into memory (feedback loop)."""
+    mem, _, _, hist = _stores(cfg)
+    audit = AuditLog(os.path.join(cfgmod.history_dir(cfg), "audit.jsonl"))
+    lessons = selflearn.learn(hist, audit, mem)
+    if not lessons:
+        print("  no new lessons (already learned or nothing to learn)"); return 0
+    print(f"  learned {len(lessons)} lesson(s):")
+    for t in lessons:
+        print("   -", t)
+    return 0
+
+
 def cmd_verify(cfg):
     """Run all safety regression checks (isolation, no-WDM-KS, no-sd.rec, gitignored, config)."""
     res = ops.verify()
@@ -600,6 +631,10 @@ def main(argv):
         return cmd_config(rest, cfg)
     if cmd == "workflow":
         return cmd_workflow(rest, cfg)
+    if cmd == "insights":
+        return cmd_insights(cfg)
+    if cmd == "learn":
+        return cmd_learn(cfg)
     if cmd == "review":
         return cmd_review(rest, cfg)
     if cmd == "github":

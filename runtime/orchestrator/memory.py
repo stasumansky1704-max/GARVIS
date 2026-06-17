@@ -86,15 +86,25 @@ class MemoryStore:
                 return r
         return None
 
-    def relevance(self, rec: dict, q: set) -> float:
-        """Retrieval ranking score: term overlap weighted by importance + confidence + uses."""
+    def _age_days(self, rec: dict, now_ts: float | None = None) -> float:
+        try:
+            created = time.mktime(time.strptime(rec["ts"][:19], "%Y-%m-%dT%H:%M:%S"))
+        except Exception:
+            return 0.0
+        now = now_ts if now_ts is not None else time.time()
+        return max(0.0, (now - created) / 86400.0)
+
+    def relevance(self, rec: dict, q: set, now_ts: float | None = None) -> float:
+        """Retrieval ranking: term overlap weighted by importance, confidence, use-count, and
+        recency (newer memories rank slightly higher; old unused ones fade)."""
         overlap = len(q & _tokens(rec["text"] + " " + " ".join(rec.get("tags", []))))
         if not overlap:
             return 0.0
         imp = float(rec.get("importance", 0.5))
         conf = float(rec.get("confidence", 1.0))
         uses = min(0.3, 0.05 * int(rec.get("uses", 0)))
-        return round(overlap * (0.6 + 0.4 * imp) * (0.7 + 0.3 * conf) + uses, 4)
+        recency = max(0.0, 1.0 - self._age_days(rec, now_ts) / 365.0) * 0.15
+        return round(overlap * (0.6 + 0.4 * imp) * (0.7 + 0.3 * conf) + uses + recency, 4)
 
     def search(self, query: str, layer: str | None = None, limit: int = 10,
                include_archived: bool = False) -> list[dict]:
@@ -165,6 +175,70 @@ class MemoryStore:
             return {"deleted": False, "reason": "deletion requires approve=True"}
         self._rewrite([r for r in self.all() if r["id"] != mid])
         return {"deleted": True, "id": mid}
+
+    def consolidate(self, threshold: float = 0.8) -> int:
+        """Merge near-duplicate memories in the same layer (token-overlap >= threshold).
+        Keeps the highest-importance record, sums use-counts. Returns memories removed.
+        Protected safety rules are never merged away."""
+        recs = self.all()
+        keep: list[dict] = []
+        removed = 0
+        for r in recs:
+            merged = False
+            rt = _tokens(r["text"])
+            for k in keep:
+                if k["layer"] != r["layer"] or is_protected(k) or is_protected(r):
+                    continue
+                kt = _tokens(k["text"])
+                if not rt or not kt:
+                    continue
+                sim = len(rt & kt) / len(rt | kt)
+                if sim >= threshold:
+                    if float(r.get("importance", 0.5)) > float(k.get("importance", 0.5)):
+                        k["text"] = r["text"]
+                        k["importance"] = r["importance"]
+                    k["uses"] = int(k.get("uses", 0)) + int(r.get("uses", 0))
+                    merged = True
+                    removed += 1
+                    break
+            if not merged:
+                keep.append(r)
+        if removed:
+            self._rewrite(keep)
+        return removed
+
+    def promote(self, mid: str) -> bool:
+        """Lifecycle: promote a run-layer memory to a decision (durable) once it has proven
+        useful. No-op for non-run layers."""
+        recs = self.all()
+        hit = False
+        for r in recs:
+            if r["id"] == mid and r["layer"] == "run":
+                r["layer"] = "decision"
+                r["importance"] = round(min(1.0, float(r.get("importance", 0.3)) + 0.3), 4)
+                r.setdefault("tags", []).append("promoted")
+                hit = True
+        if hit:
+            self._rewrite(recs)
+        return hit
+
+    def decay(self, rate: float = 0.05, now_ts: float | None = None,
+              floor: float = 0.1) -> int:
+        """Lifecycle: reduce importance of old, unused, non-protected memories. Returns the
+        number decayed. Anything older than 30 days with zero uses loses `rate` importance."""
+        recs = self.all()
+        n = 0
+        for r in recs:
+            if is_protected(r) or int(r.get("uses", 0)) > 0:
+                continue
+            if self._age_days(r, now_ts) > 30:
+                new = round(max(floor, float(r.get("importance", 0.5)) - rate), 4)
+                if new != r.get("importance"):
+                    r["importance"] = new
+                    n += 1
+        if n:
+            self._rewrite(recs)
+        return n
 
     def find_duplicates(self) -> list[list[str]]:
         """Groups of memory ids that share (layer, normalized text)."""
