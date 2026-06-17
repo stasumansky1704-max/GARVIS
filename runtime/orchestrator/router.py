@@ -9,11 +9,16 @@ import time
 from typing import TYPE_CHECKING
 
 from .gates import SafetyGate, ApprovalGate
-from .models import Plan, Envelope, Status
+from .models import Plan, Envelope, Status, SafetyClass
 from .registry import WorkerRegistry
 
 if TYPE_CHECKING:
     from .workers.base import Worker
+
+# Worker dispatch priority: reads first (cheap/safe), writes/external later.
+_PRIORITY = {SafetyClass.READ: 0, SafetyClass.WRITE: 1,
+             SafetyClass.EXTERNAL: 2, SafetyClass.DANGEROUS: 3}
+_READ_RETRIES = 3                                # idempotent READ workers retry on failure
 
 
 class TaskRouter:
@@ -37,10 +42,17 @@ class TaskRouter:
         worker = workers.get(task.worker)
         if worker is None:
             return Envelope(task.id, Status.FAILED, error=f"no worker impl for {task.worker!r}")
-        try:
-            return worker.run(task)
-        except Exception as exc:                 # never let a worker crash the run
-            return Envelope(task.id, Status.FAILED, error=f"{type(exc).__name__}: {exc}")
+        attempts = _READ_RETRIES if spec.safety_class == SafetyClass.READ else 1
+        last = None
+        for _ in range(attempts):                # retry idempotent READ workers on failure
+            try:
+                env = worker.run(task)
+            except Exception as exc:             # never let a worker crash the run
+                env = Envelope(task.id, Status.FAILED, error=f"{type(exc).__name__}: {exc}")
+            if env.status != Status.FAILED:
+                return env
+            last = env
+        return last
 
     def dispatch(self, plan: Plan, workers: dict[str, "Worker"],
                  approvals: set[str] | None = None, max_seconds: float | None = None,
@@ -67,9 +79,10 @@ class TaskRouter:
                 self.kill = True                 # time budget exceeded -> stop dispatch
                 break
             progressed = False
-            for task in list(remaining):
-                if not all(d in done for d in task.deps):
-                    continue                     # deps not satisfied yet
+            ready = [t for t in remaining if all(d in done for d in t.deps)]
+            ready.sort(key=lambda t: _PRIORITY.get(             # reads before writes
+                getattr(self.registry.get(t.worker), "safety_class", SafetyClass.WRITE), 1))
+            for task in ready:
                 _emit("task_started", task)
                 env = self._run_one(task, workers)
                 results[task.id] = env

@@ -100,12 +100,14 @@ class Orchestrator:
         return self._execute(run_id, goal, plan, approvals, history, budget, audit)
 
     def run_goal(self, goal, planner=None, fallback_tasks=None, approvals=None,
-                 history=None, budget: RunBudget | None = None, audit=None) -> Run:
+                 history=None, budget: RunBudget | None = None, audit=None,
+                 memory_context: dict | None = None) -> Run:
         run_id = uuid.uuid4().hex[:12]
         plan: Plan
         if planner is not None and hasattr(planner, "plan"):
             try:
-                plan = planner.plan(run_id, goal, fallback_tasks=fallback_tasks)
+                plan = planner.plan(run_id, goal, memory=memory_context,
+                                    fallback_tasks=fallback_tasks)
             except TypeError:
                 plan = self.planner.plan(run_id, goal, fallback_tasks or [])
         else:
