@@ -38,12 +38,20 @@ class GoalRegistry:
         return out
 
     def add(self, text: str, priority: int = 3, due: str | None = None,
-            tags=None, deps=None) -> str:
+            tags=None, deps=None, rewrite_fn=None) -> str:
+        original = None
+        if rewrite_fn is not None:                     # durable self-learned rewrite default
+            eff = rewrite_fn(text)
+            if eff and eff != text:
+                original, text = text, eff
         gid = uuid.uuid4().hex[:10]
-        self._append({"id": gid, "ts": time.strftime("%Y-%m-%dT%H:%M:%S"),
-                      "text": text, "status": "open", "runs": [],
-                      "priority": int(priority), "due": due, "tags": list(tags or []),
-                      "deps": list(deps or []), "blockers": [], "progress": 0})
+        rec = {"id": gid, "ts": time.strftime("%Y-%m-%dT%H:%M:%S"),
+               "text": text, "status": "open", "runs": [],
+               "priority": int(priority), "due": due, "tags": list(tags or []),
+               "deps": list(deps or []), "blockers": [], "progress": 0}
+        if original is not None:
+            rec["original_text"] = original
+        self._append(rec)
         return gid
 
     def set_status(self, gid: str, status: str, run_id: str | None = None) -> bool:

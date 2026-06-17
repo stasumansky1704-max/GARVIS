@@ -416,6 +416,36 @@ class MemoryStore:
         return {"nodes": len(self.all()), "edges": len(self.links()),
                 "topics": len(self.topics())}
 
+    def graph_terms(self, goal: str, limit: int = 6) -> list[str]:
+        """Graph-aware query terms: pull terms from memories LINKED to the goal's most
+        relevant memory, plus terms from topics that match the goal. Surfaces connected
+        prior knowledge the flat search would miss."""
+        seen = set(_tokens(goal))
+        terms: list[str] = []
+
+        def _take(text):
+            for t in _tokens(text):
+                if t not in seen:
+                    seen.add(t)
+                    terms.append(t)
+
+        top = self.search(goal, limit=1)
+        if top:
+            for r in self.related(top[0]["id"]):           # graph neighbors
+                _take(r["text"])
+        goal_toks = set(_tokens(goal))
+        for tp in self.topics():                           # topic clusters touching the goal
+            if goal_toks & set(tp["topic"].split()):
+                _take(tp["topic"])
+        return terms[:limit]
+
+    def related_context(self, goal: str, limit: int = 5) -> list[str]:
+        """Texts of memories graph-linked to the goal's most relevant memory."""
+        top = self.search(goal, limit=1)
+        if not top:
+            return []
+        return [r["text"] for r in self.related(top[0]["id"])][:limit]
+
     def planner_context(self, goal: str, limit: int = 8) -> dict:
         return {
             "rules": [r["text"] for r in self.list("rule") if not r.get("archived")],
@@ -424,6 +454,9 @@ class MemoryStore:
                           if not r.get("archived")][:limit],
             "relevant": [r["text"] for r in self.search(goal, limit=limit)],
             "suggested_terms": self.suggest_query_terms(goal),
+            "graph_terms": self.graph_terms(goal),         # graph-aware
+            "related": self.related_context(goal),         # graph neighbors
+            "topics": [t["topic"] for t in self.topics()][:5],
         }
 
 

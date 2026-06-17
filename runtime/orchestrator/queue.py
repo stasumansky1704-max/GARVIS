@@ -39,13 +39,22 @@ class ResearchQueue:
         return out
 
     def enqueue(self, goal: str, due: str | None = None, priority: int = 3,
-                max_retries: int = 2, deps: list | None = None) -> str:
+                max_retries: int = 2, deps: list | None = None, rewrite_fn=None) -> str:
+        original = None
+        if rewrite_fn is not None:                     # durable self-learned rewrite default
+            eff = rewrite_fn(goal)
+            if eff and eff != goal:
+                original, goal = goal, eff
         qid = uuid.uuid4().hex[:10]
-        self._append({"id": qid, "ts": time.strftime("%Y-%m-%dT%H:%M:%S"),
-                      "goal": goal, "status": "pending", "due": due,
-                      "priority": int(priority), "attempts": 0,
-                      "max_retries": int(max_retries), "errors": [],
-                      "deps": list(deps or [])})
+        rec = {"id": qid, "ts": time.strftime("%Y-%m-%dT%H:%M:%S"),
+               "goal": goal, "status": "pending", "due": due,
+               "priority": int(priority), "attempts": 0,
+               "max_retries": int(max_retries), "errors": [],
+               "deps": list(deps or [])}
+        if original is not None:
+            rec["original_goal"] = original
+            rec["rewritten_goal"] = goal
+        self._append(rec)
         return qid
 
     def deps_satisfied(self, item: dict) -> bool:

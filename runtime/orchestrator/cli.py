@@ -28,7 +28,7 @@ from orchestrator.registry import WorkerRegistry
 from orchestrator.history import RunHistory
 from orchestrator.audit import AuditLog
 from orchestrator.report import generate_report
-from orchestrator.decompose import decompose, decompose_smart
+from orchestrator.decompose import decompose, decompose_smart, decompose_graph
 from orchestrator.llm_planner import LLMPlanner
 from orchestrator import draftpr
 from orchestrator.workers.research_worker import ResearchWorker
@@ -78,7 +78,7 @@ def cmd_research(goal, with_doc, approvals, cfg):
     budget = RunBudget.from_config(cfg)
     n_cap = max(1, budget.max_tasks - (1 if with_doc else 0))
     n_research = min(n_cap, planning.recommended_task_count(goal, n_cap))  # size to complexity
-    subs = decompose_smart(eff, n_research)
+    subs = decompose_graph(eff, mem0, n_research)         # graph-aware decomposition
     fb = [TaskSpec(id=f"r{i}", worker="research", intent=s, inputs={"query": s})
           for i, s in enumerate(subs)]
     if with_doc:
@@ -227,10 +227,11 @@ def cmd_memory(rest, cfg):
 
 
 def cmd_goal(rest, cfg):
-    _, goals, _, _ = _stores(cfg)
+    mem, goals, _, _ = _stores(cfg)
     sub = rest[0] if rest else "list"
     if sub == "add" and len(rest) >= 2:
-        print("goal:", goals.add(" ".join(rest[1:]))); return 0
+        rw = lambda g: selflearn.rewrite_query(g, mem)    # durable self-learned rewrite default
+        print("goal:", goals.add(" ".join(rest[1:]), rewrite_fn=rw)); return 0
     if sub == "status" and len(rest) >= 3:
         print("ok" if goals.set_status(rest[1], rest[2]) else "not found"); return 0
     if sub == "priority" and len(rest) >= 3:
@@ -256,10 +257,11 @@ def cmd_goal(rest, cfg):
 
 
 def cmd_queue(rest, cfg):
-    _, _, q, _ = _stores(cfg)
+    mem, _, q, _ = _stores(cfg)
     sub = rest[0] if rest else "list"
     if sub == "add" and len(rest) >= 2:
-        print("queued:", q.enqueue(" ".join(rest[1:]))); return 0
+        rw = lambda g: selflearn.rewrite_query(g, mem)    # durable self-learned rewrite default
+        print("queued:", q.enqueue(" ".join(rest[1:]), rewrite_fn=rw)); return 0
     if sub == "dry-run":
         for p in q.dry_run():
             print(f"  P{p['priority']} {p['id']}  attempts={p['attempts']}  {p['goal'][:50]}")
@@ -577,7 +579,7 @@ def _safe_research_runner(cfg, hist, audit, mem):
         budget = RunBudget.from_config(cfg)
         n = min(budget.max_tasks, planning.recommended_task_count(eff, budget.max_tasks))
         fb = [TaskSpec(id=f"r{i}", worker="research", intent=s, inputs={"query": s})
-              for i, s in enumerate(decompose_smart(eff, n))]
+              for i, s in enumerate(decompose_graph(eff, mem, n))]   # graph-aware
         run = orch.run_goal(goal, planner=None, fallback_tasks=fb, history=hist,
                             budget=budget, audit=audit, memory_context=mem.planner_context(goal))
         record_run(mem, run)
@@ -748,6 +750,11 @@ def cmd_loop(approve, max_cycles, interval, cfg):
         return {"reviewed": out.get("reviewed"), "lessons": len(out.get("lessons", [])),
                 "ran": len(out.get("run_due", {}).get("ran", []))}
 
+    if approve:                                          # schedule-driven: enqueue due first
+        sched = ScheduleStore(os.path.join(cfgmod.history_dir(cfg), "schedules.jsonl"))
+        se = autonomy.enqueue_due_schedules(sched, queue, audit)
+        if se["enqueued"]:
+            print(f"  enqueued {se['enqueued']} due schedule(s) before loop")
     out = autonomy.run_loop(cycle_fn, max_cycles=max_cycles, interval=interval,
                             execute=approve, disabled_fn=is_disabled, audit=audit,
                             sleep_fn=_time.sleep)

@@ -37,6 +37,28 @@ def decompose(goal: str, max_tasks: int = 5) -> list[str]:
     return out[:n]
 
 
+def decompose_graph(goal: str, memory, max_tasks: int = 5) -> list[str]:
+    """Graph-aware decomposition: smart queries PLUS a query enriched with terms drawn from
+    graph-linked memories / matching topics (memory.graph_terms). Falls back to
+    decompose_smart when the graph adds nothing."""
+    base = decompose_smart(goal, max_tasks)
+    if memory is None:
+        return base
+    try:
+        gterms = memory.graph_terms(goal)
+    except Exception:
+        gterms = []
+    if not gterms:
+        return base
+    enriched = (" ".join(extract_terms(goal)) + " " + " ".join(gterms[:3])).strip()
+    out, seen = [], set()
+    for q in [enriched] + base:                       # graph-enriched query first
+        if q and q.lower() not in seen:
+            seen.add(q.lower())
+            out.append(q)
+    return out[:max(1, int(max_tasks))]
+
+
 def decompose_smart(goal: str, max_tasks: int = 5) -> list[str]:
     """Niche-friendly decomposition: cleaned query + broader keyword variants + a facet.
 
