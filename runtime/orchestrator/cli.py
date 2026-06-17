@@ -45,6 +45,7 @@ from orchestrator import ops
 from orchestrator import selflearn
 from orchestrator import planning
 from orchestrator import monitor
+from orchestrator import autonomy
 from orchestrator.brief import auto_review
 from orchestrator.workers.github_worker import GitHubReadWorker, GitHubDraftPRWorker
 
@@ -67,10 +68,14 @@ def cmd_research(goal, with_doc, approvals, cfg):
         print("[DISABLED] GARVIS_ORCHESTRATOR_DISABLED is set - refusing to run.")
         return 3
     orch, hist, audit, art = build(cfg)
+    mem0 = MemoryStore(os.path.join(cfgmod.history_dir(cfg), "memory.jsonl"))
+    eff = selflearn.rewrite_query(goal, mem0)            # apply self-learned lessons first
+    if eff and eff.lower() != goal.lower():
+        print(f"  [self-learned] rewrote query -> '{eff}'")
     budget = RunBudget.from_config(cfg)
     n_cap = max(1, budget.max_tasks - (1 if with_doc else 0))
     n_research = min(n_cap, planning.recommended_task_count(goal, n_cap))  # size to complexity
-    subs = decompose(goal, n_research)
+    subs = decompose_smart(eff, n_research)
     fb = [TaskSpec(id=f"r{i}", worker="research", intent=s, inputs={"query": s})
           for i, s in enumerate(subs)]
     if with_doc:
@@ -259,11 +264,7 @@ def cmd_brief(rest, cfg):
     if rest and rest[0] == "weekly":
         text = weekly_brief(hist, mem, goals); path = os.path.join(art, "weekly-brief.md")
     else:
-        text = daily_brief_full(hist, mem, goals, q)
-        recs = selflearn.recommend(hist, audit)          # self-learning section
-        if recs:
-            text = text.rstrip() + "\n\n## Self-learning recommendations\n" + \
-                   "\n".join(f"- [{r['area']}] {r['finding']} -> {r['action']}" for r in recs) + "\n"
+        text = daily_brief_full(hist, mem, goals, q, audit)   # full: failed/lessons/insights/actions
         path = os.path.join(art, "daily-brief.md")
     open(path, "w", encoding="utf-8").write(text)
     print(text)
@@ -380,7 +381,9 @@ def cmd_draft_pr(goal, approve, allow_empty, cfg):
     if is_disabled():
         print("[DISABLED] GARVIS_ORCHESTRATOR_DISABLED is set - refusing."); return 3
     orch, hist, audit, art = build(cfg)
-    sub = decompose_smart(goal, 5)                    # niche-friendly, broadens for recall
+    mem0 = MemoryStore(os.path.join(cfgmod.history_dir(cfg), "memory.jsonl"))
+    eff = selflearn.rewrite_query(goal, mem0)         # apply self-learned lessons first
+    sub = decompose_smart(eff, 5)                     # niche-friendly, broadens for recall
     fb = [TaskSpec(id=f"r{i}", worker="research", intent=s, inputs={"query": s})
           for i, s in enumerate(sub)]
     run = orch.run_goal(goal, planner=None, fallback_tasks=fb, history=hist,
@@ -528,6 +531,79 @@ def cmd_autoreview(cfg):
     return 0
 
 
+def cmd_ci_check(cfg):
+    """Local CI: py_compile + verify + secret-scan + all offline tests (in-process)."""
+    res = ops.ci_check(run_tests=True)
+    print(f"  compile    : {'OK' if res['compile']['ok'] else 'FAIL ' + str(res['compile']['errors'])}")
+    print(f"  verify     : {'OK' if res['verify']['ok'] else 'FAIL ' + str(res['verify']['failing'])}")
+    print(f"  secret-scan: {'OK' if res['secret_scan']['ok'] else 'HITS ' + str(res['secret_scan']['hits'])}")
+    if "tests" in res:
+        t = res["tests"]
+        print(f"  tests      : {t['passed']}/{t['total']}" + ("" if t["ok"] else f"  FAILURES {t['failures']}"))
+    print("  => ci-check:", "PASS" if res["ok"] else "FAIL")
+    return 0 if res["ok"] else 1
+
+
+def _safe_research_runner(cfg, hist, audit, mem):
+    """Build a READ-ONLY research run_fn for the autonomy loop. Applies self-learned query
+    rewrite, respects the run budget, records the run + feeds memory. No writes, no PRs."""
+    def run_fn(goal):
+        orch, _, _, art = build(cfg)
+        eff = selflearn.rewrite_query(goal, mem)
+        budget = RunBudget.from_config(cfg)
+        n = min(budget.max_tasks, planning.recommended_task_count(eff, budget.max_tasks))
+        fb = [TaskSpec(id=f"r{i}", worker="research", intent=s, inputs={"query": s})
+              for i, s in enumerate(decompose_smart(eff, n))]
+        run = orch.run_goal(goal, planner=None, fallback_tasks=fb, history=hist,
+                            budget=budget, audit=audit, memory_context=mem.planner_context(goal))
+        record_run(mem, run)
+        findings = [f for e in run.results.values() if isinstance(e.result, dict)
+                    for f in e.result.get("findings", [])]
+        return {"run_id": run.id, "status": run.status.value, "findings": findings}
+    return run_fn
+
+
+def cmd_run_due(approve, cfg):
+    """Execute due queue items (DRY-RUN unless --approve-run-due). Read-only research only;
+    respects budgets, kill switch, and task limits. Never opens PRs."""
+    mem, _, queue, hist = _stores(cfg)
+    audit = AuditLog(os.path.join(cfgmod.history_dir(cfg), "audit.jsonl"))
+    budget = RunBudget.from_config(cfg)
+    run_fn = _safe_research_runner(cfg, hist, audit, mem) if approve else None
+    out = autonomy.run_due(queue, run_fn, memory=mem, history=hist, audit=audit,
+                           execute=approve, max_tasks=budget.max_tasks,
+                           max_seconds=budget.max_seconds, disabled=is_disabled())
+    import json as _j
+    print(_j.dumps(out, ensure_ascii=False, indent=2, default=str))
+    if not approve:
+        print("  DRY-RUN: nothing executed. Re-run with --approve-run-due to execute safe tasks.")
+    return 0
+
+
+def cmd_background_once(approve, cfg):
+    """One autonomy cycle: due queue -> execute safe tasks -> review -> learn -> brief.
+    DRY-RUN unless --approve-background."""
+    mem, goals, queue, hist = _stores(cfg)
+    audit = AuditLog(os.path.join(cfgmod.history_dir(cfg), "audit.jsonl"))
+    budget = RunBudget.from_config(cfg)
+    run_fn = _safe_research_runner(cfg, hist, audit, mem) if approve else None
+    out = autonomy.background_once(queue, run_fn, memory=mem, history=hist, audit=audit,
+                                   execute=approve, max_tasks=budget.max_tasks,
+                                   max_seconds=budget.max_seconds, disabled=is_disabled())
+    if approve:                                          # close the loop with a fresh brief
+        art = cfgmod.artifact_dir(cfg); os.makedirs(art, exist_ok=True)
+        open(os.path.join(art, "daily-brief.md"), "w", encoding="utf-8").write(
+            daily_brief_full(hist, mem, goals, queue, audit))
+    import json as _j
+    print(_j.dumps({k: v for k, v in out.items() if k != "run_due"}, ensure_ascii=False,
+                   indent=2, default=str))
+    print("  run_due:", out["run_due"].get("mode"),
+          "ran" if out["run_due"].get("executed") else "(dry-run)")
+    if not approve:
+        print("  DRY-RUN: nothing executed. Re-run with --approve-background to run one cycle.")
+    return 0
+
+
 def cmd_insights(cfg):
     """Show what GARVIS has learned about its own runs (failures/empty/weak/blocked)."""
     mem, _, _, hist = _stores(cfg)
@@ -663,6 +739,12 @@ def main(argv):
         return cmd_monitor(cfg)
     if cmd == "auto-review":
         return cmd_autoreview(cfg)
+    if cmd == "ci-check":
+        return cmd_ci_check(cfg)
+    if cmd == "run-due":
+        return cmd_run_due("--approve-run-due" in rest, cfg)
+    if cmd == "background-once":
+        return cmd_background_once("--approve-background" in rest, cfg)
     if cmd == "review":
         return cmd_review(rest, cfg)
     if cmd == "github":
