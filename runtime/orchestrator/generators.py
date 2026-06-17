@@ -27,24 +27,35 @@ def _all_findings(run) -> list[dict]:
 
 
 def research_summary(run) -> str:
+    from .summarize import top_findings, executive_summary
     findings = _all_findings(run)
     if not findings:
         return f"No findings for goal: {run.goal}"
     bullets = []
-    for f in findings[:10]:
+    for f in top_findings(findings, run.goal, 10):           # ranked + deduped, highest signal
         t = f.get("title", ""); u = f.get("url", ""); s = f.get("source", "")
-        bullets.append(f"- {t} ({s})" + (f" - {u}" if u else ""))
-    return f"{len(findings)} findings for '{run.goal}':\n" + "\n".join(bullets)
+        c = f.get("confidence", "")
+        meta = f"{s}" + (f", conf={c}" if c != "" else "")
+        bullets.append(f"- {t} ({meta})" + (f" - {u}" if u else ""))
+    return executive_summary(run.goal, findings) + "\n\n" + "\n".join(bullets)
 
 
 def change_proposal(goal: str, findings: list[dict]) -> str:
-    options = "\n".join(f"- {f.get('title','')} ({f.get('source','')})"
-                        for f in (findings or [])[:8]) or "- (no options gathered)"
-    rec = (findings[0]["title"] if findings else "gather more data before deciding")
+    from .summarize import top_findings, executive_summary, key_points, confidence_band
+    ranked = top_findings(findings or [], goal, 8)
+    options = "\n".join(
+        f"- {f.get('title','')} ({f.get('source','')}, conf={f.get('confidence','?')})"
+        for f in ranked) or "- (no options gathered)"
+    evidence = "\n".join(f"- {p}" for p in key_points(findings or [], goal, 5)) or "- (none)"
+    rec = (ranked[0]["title"] if ranked else "gather more data before deciding")
     return markdown(f"Change proposal: {goal}", [
+        ("Executive summary", executive_summary(goal, findings or [])),
         ("Context", f"Proposal generated from research on: {goal}."),
-        ("Options considered", options),
-        ("Recommendation", f"Start with: **{rec}**. Validate against constraints before adopting."),
+        ("Options considered (ranked)", options),
+        ("Key evidence", evidence),
+        ("Recommendation",
+         f"Start with: **{rec}** (evidence confidence: {confidence_band(findings or [])}). "
+         f"Validate against constraints before adopting."),
         ("Risk / next step", "Spike the top option; keep changes reversible; require review."),
     ])
 

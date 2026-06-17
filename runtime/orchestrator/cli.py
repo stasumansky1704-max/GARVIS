@@ -44,6 +44,8 @@ from orchestrator import scheduler
 from orchestrator import ops
 from orchestrator import selflearn
 from orchestrator import planning
+from orchestrator import monitor
+from orchestrator.brief import auto_review
 from orchestrator.workers.github_worker import GitHubReadWorker, GitHubDraftPRWorker
 
 
@@ -252,11 +254,17 @@ def cmd_scheduler(rest, cfg):
 
 def cmd_brief(rest, cfg):
     mem, goals, q, hist = _stores(cfg)
+    audit = AuditLog(os.path.join(cfgmod.history_dir(cfg), "audit.jsonl"))
     art = cfgmod.artifact_dir(cfg); os.makedirs(art, exist_ok=True)
     if rest and rest[0] == "weekly":
         text = weekly_brief(hist, mem, goals); path = os.path.join(art, "weekly-brief.md")
     else:
-        text = daily_brief_full(hist, mem, goals, q); path = os.path.join(art, "daily-brief.md")
+        text = daily_brief_full(hist, mem, goals, q)
+        recs = selflearn.recommend(hist, audit)          # self-learning section
+        if recs:
+            text = text.rstrip() + "\n\n## Self-learning recommendations\n" + \
+                   "\n".join(f"- [{r['area']}] {r['finding']} -> {r['action']}" for r in recs) + "\n"
+        path = os.path.join(art, "daily-brief.md")
     open(path, "w", encoding="utf-8").write(text)
     print(text)
     print("brief written:", path)
@@ -504,6 +512,22 @@ def cmd_workflow(rest, cfg):
     return 0
 
 
+def cmd_monitor(cfg):
+    """Self-monitoring dashboard: safety audit + run/queue/goal/memory health."""
+    mem, goals, queue, hist = _stores(cfg)
+    import json as _j
+    print(_j.dumps(monitor.dashboard(hist, mem, goals, queue),
+                   ensure_ascii=False, indent=2, default=str))
+    return 0
+
+
+def cmd_autoreview(cfg):
+    """Autonomy: auto-rate recent unreviewed runs into memory (review loop)."""
+    mem, _, _, hist = _stores(cfg)
+    print("auto-reviewed:", auto_review(hist, mem)["reviewed"], "run(s)")
+    return 0
+
+
 def cmd_insights(cfg):
     """Show what GARVIS has learned about its own runs (failures/empty/weak/blocked)."""
     mem, _, _, hist = _stores(cfg)
@@ -635,6 +659,10 @@ def main(argv):
         return cmd_insights(cfg)
     if cmd == "learn":
         return cmd_learn(cfg)
+    if cmd == "monitor":
+        return cmd_monitor(cfg)
+    if cmd == "auto-review":
+        return cmd_autoreview(cfg)
     if cmd == "review":
         return cmd_review(rest, cfg)
     if cmd == "github":

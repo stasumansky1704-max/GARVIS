@@ -9,12 +9,30 @@ import os
 import time
 
 
+def _collect_findings(run) -> list:
+    out = []
+    for env in run.results.values():
+        if isinstance(env.result, dict):
+            out.extend(env.result.get("findings", []))
+    return out
+
+
 def generate_report(run, out_dir: str) -> str:
+    from .summarize import executive_summary, key_points, source_breakdown, confidence_band
+    from .research_quality import quality_score, completeness_score
     os.makedirs(out_dir, exist_ok=True)
+    all_findings = _collect_findings(run)
     lines = [f"# Research report - {run.goal}", "",
              f"- run id: `{run.id}`",
              f"- status: **{getattr(run.status, 'value', run.status)}**",
-             f"- generated: {time.strftime('%Y-%m-%dT%H:%M:%S')}", ""]
+             f"- generated: {time.strftime('%Y-%m-%dT%H:%M:%S')}",
+             f"- quality: {quality_score(all_findings)}  |  "
+             f"completeness: {completeness_score(run.goal, all_findings)}  |  "
+             f"confidence: {confidence_band(all_findings)}  |  sources: "
+             f"{source_breakdown(all_findings)}", "",
+             "## Executive summary", executive_summary(run.goal, all_findings), ""]
+    if all_findings:
+        lines += ["## Key findings", *[f"- {p}" for p in key_points(all_findings, run.goal, 5)], ""]
     total = 0
     for tid, env in run.results.items():
         res = env.result if isinstance(env.result, dict) else None
