@@ -28,8 +28,9 @@ from orchestrator.registry import WorkerRegistry
 from orchestrator.history import RunHistory
 from orchestrator.audit import AuditLog
 from orchestrator.report import generate_report
-from orchestrator.decompose import decompose
+from orchestrator.decompose import decompose, decompose_smart
 from orchestrator.llm_planner import LLMPlanner
+from orchestrator import draftpr
 from orchestrator.workers.research_worker import ResearchWorker
 from orchestrator.workers.docs_worker import DocsWorker
 from orchestrator.secret_scan import scan_dir
@@ -306,36 +307,54 @@ def _slug(text: str) -> str:
     return s.strip("-")[:48] or "proposal"
 
 
-def cmd_draft_pr(goal, approve, cfg):
-    """Research -> proposal -> PREVIEW a Draft PR; create it ONLY with --approve-draft-pr.
+def cmd_draft_pr(goal, approve, allow_empty, cfg):
+    """Research -> quality-checked proposal -> PREVIEW a Draft PR; create ONLY with
+    --approve-draft-pr. Empty proposals are blocked unless --allow-empty-proposal.
     Never pushes to main, never merges, never deletes branches."""
     if is_disabled():
         print("[DISABLED] GARVIS_ORCHESTRATOR_DISABLED is set - refusing."); return 3
     orch, hist, audit, art = build(cfg)
-    sub = decompose(goal, 4)
+    sub = decompose_smart(goal, 5)                    # niche-friendly, broadens for recall
     fb = [TaskSpec(id=f"r{i}", worker="research", intent=s, inputs={"query": s})
           for i, s in enumerate(sub)]
     run = orch.run_goal(goal, planner=None, fallback_tasks=fb, history=hist,
                         budget=RunBudget.from_config(cfg), audit=audit)
     findings = [f for e in run.results.values() if isinstance(e.result, dict)
                 for f in e.result.get("findings", [])]
-    content = gen.draft_pr_content(goal, body=gen.research_summary(run), findings=findings)
-    slug = _slug(goal)
-    branch = f"draft/garvis/{slug}-{run.id}"          # safe; never main
+    title = draftpr.clean_title(goal)
+    slug = draftpr.safe_slug(goal)
+    branch = f"draft/garvis/{slug}-{run.id}"          # safe, length-bounded; never main
     file_path = f"docs/proposals/{slug}-{run.id}.md"
     file_content = gen.change_proposal(goal, findings)
+    quality = draftpr.proposal_quality(file_content, findings)
+    artifact_link = os.path.relpath(generate_report(run, art))
+    content = gen.draft_pr_content(title.replace("draft: ", ""),
+                                   body=gen.research_summary(run), findings=findings,
+                                   artifact_link=artifact_link)
+    content["title"] = title
 
     print("=" * 64)
     print("  DRAFT PR PREVIEW (dry-run)" if not approve else "  DRAFT PR (CREATING)")
     print("=" * 64)
-    print(f"  title : {content['title']}")
-    print(f"  base  : main      (never pushed to / never merged)")
-    print(f"  branch: {branch}")
-    print(f"  file  : {file_path}  ({len(file_content)} chars)")
-    print(f"  body  :")
-    for ln in content["body"].splitlines()[:8]:
-        print(f"    | {ln}")
-    audit.event("draft_pr_preview", goal=goal, branch=branch, title=content["title"])
+    print(f"  title   : {content['title']}")
+    print(f"  base    : main      (never pushed to / never merged)")
+    print(f"  branch  : {branch}")
+    print(f"  file    : {file_path}  ({len(file_content)} chars)")
+    print(f"  findings: {len(findings)}   proposal quality: {quality['score']}"
+          + ("  [EMPTY]" if quality["is_empty"] else ""))
+    print(f"  --- dry-run diff preview ---")
+    for ln in draftpr.dry_run_diff(file_path, file_content, max_lines=8).splitlines():
+        print(f"    {ln}")
+    audit.event("draft_pr_preview", goal=goal, branch=branch, title=content["title"],
+                quality=quality["score"], findings=len(findings))
+
+    if quality["is_empty"] and not allow_empty:
+        print("\n  [BLOCKED] proposal is empty (" + "; ".join(quality["reasons"]) + ").")
+        print("  Refusing to create an empty draft PR. Options:")
+        print("    - broaden the goal, or")
+        print("    - re-run with --allow-empty-proposal to override explicitly.")
+        audit.event("draft_pr_blocked_empty", goal=goal, reasons=quality["reasons"])
+        return 1
 
     if not approve:
         print("\n  DRY-RUN: no branch/file/PR created.")
@@ -347,13 +366,20 @@ def cmd_draft_pr(goal, approve, cfg):
         "branch": branch, "file_path": file_path, "file_content": file_content,
         "body": content["body"], "approved": True}))
     if env.status != Status.DONE:
-        print("\n  [FAILED]", env.error); return 1
-    audit.event("draft_pr_created", number=env.result.get("number"),
-                url=env.result.get("url"), branch=branch)
+        print("\n  [FAILED/BLOCKED]", env.error); return 1
+    number = env.result.get("number")
+    for step in env.result.get("steps", []):         # audit each GitHub step
+        audit.event("draft_pr_step", step=step, branch=branch)
+    audit.event("draft_pr_created", number=number, url=env.result.get("url"), branch=branch)
     hist.save({"id": run.id, "timestamp": __import__("time").strftime("%Y-%m-%dT%H:%M:%S"),
                "goal": goal, "status": "draft_pr_created", "tasks": [],
-               "result_summary": str(env.result.get("url")), "approvals": ["draft-pr"]})
+               "result_summary": str(env.result.get("url")), "approvals": ["draft-pr"],
+               "draft_pr": {"number": number, "branch": branch, "quality": quality["score"]}})
+    mem, *_ = _stores(cfg)
+    mem.add("decision", f"opened draft PR #{number} for '{goal}' (branch {branch})",
+            tags=["draft-pr", "github"], meta={"number": number, "branch": branch})
     print(f"\n  [OK] DRAFT PR created: {env.result.get('url')}  (draft={env.result.get('draft')})")
+    print("\n" + draftpr.rollback_instructions(branch, number))
     return 0
 
 
@@ -410,10 +436,12 @@ def main(argv):
         return cmd_autodemo(" ".join(rest).strip(), cfg)
     if cmd == "draft-pr" and rest:
         approve = "--approve-draft-pr" in rest
+        allow_empty = "--allow-empty-proposal" in rest
         goal = " ".join(a for a in rest if not a.startswith("--")).strip()
         if not goal:
-            print("usage: cli.py draft-pr \"<goal>\" [--approve-draft-pr]"); return 2
-        return cmd_draft_pr(goal, approve, cfg)
+            print("usage: cli.py draft-pr \"<goal>\" [--approve-draft-pr] [--allow-empty-proposal]")
+            return 2
+        return cmd_draft_pr(goal, approve, allow_empty, cfg)
     print(__doc__); return 2
 
 
