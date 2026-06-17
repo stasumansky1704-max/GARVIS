@@ -69,3 +69,24 @@ def review_run(history, memory, run_id: str, rating: str, note: str = "") -> dic
                      meta={"run_id": run_id, "rating": rating})
     return {"memory_id": mid, "run_id": run_id, "rating": rating, "note": note,
             "found_run": rec is not None}
+
+
+def auto_review(history, memory, limit: int = 10) -> dict:
+    """Autonomy: auto-rate recent runs not yet reviewed. Empty/failed -> 'weak' (prompts a
+    broadening lesson); good runs -> 'auto-good' and reinforce related memory. Idempotent
+    per run id (won't re-review)."""
+    reviewed = {m.get("meta", {}).get("run_id") for m in memory.list("decision")
+                if "review" in (m.get("tags") or [])}
+    new = 0
+    for rec in history.list()[-limit:]:
+        rid = rec.get("id")
+        if not rid or rid in reviewed:
+            continue
+        s = (rec.get("result_summary") or "").lower()
+        empty = (not s) or ("no results found" in s) or ("no findings" in s)
+        weak = rec.get("status") != "done" or empty
+        review_run(history, memory, rid, "weak" if weak else "auto-good",
+                   "auto-reviewed: empty/failed" if weak else "auto-reviewed: produced signal")
+        reviewed.add(rid)
+        new += 1
+    return {"reviewed": new}

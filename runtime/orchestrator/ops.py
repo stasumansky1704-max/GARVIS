@@ -132,6 +132,27 @@ def check_no_sd_rec(paths: tuple[str, ...] | None = None) -> dict:
     return {"name": "no_sd_rec", "ok": not hits, "offenders": hits}
 
 
+def check_no_dangerous_calls(paths: tuple[str, ...] | None = None) -> dict:
+    """The agent core must not use eval/exec/os.system/subprocess-shell (code-exec risk).
+
+    Flags real calls; ignores quoted-string references and comments.
+    """
+    roots = paths or (_DIR,)
+    needles = ("eval(", "exec(", "os.system(", "subprocess.call(", "subprocess.popen(",
+               "shell=true")
+
+    def pred(line: str) -> bool:
+        for n in needles:
+            if n in line and not _is_string_literal_hit(line, n):
+                return True
+        return False
+
+    hits = []
+    for r in roots:
+        hits += _scan_lines(r, pred)
+    return {"name": "no_dangerous_calls", "ok": not hits, "offenders": hits}
+
+
 def check_gitignored() -> dict:
     """_runs and _artifacts must be covered by .gitignore (no artifacts/secrets committed)."""
     gi = os.path.join(REPO_ROOT, ".gitignore")
@@ -185,7 +206,7 @@ def version_status() -> dict:
 def verify() -> dict:
     """Run all safety regression checks. ok=True only if every check passes."""
     checks = [check_isolation(), check_no_wdm_ks(), check_no_sd_rec(),
-              check_gitignored(), config_doctor()]
+              check_no_dangerous_calls(), check_gitignored(), config_doctor()]
     return {"ok": all(c["ok"] for c in checks), "checks": checks}
 
 
@@ -205,7 +226,8 @@ def discover_orchestrator_tests() -> list[str]:
              "test_real_agent_capabilities", "test_orchestrator_sprint",
              "test_super_sprint", "test_draft_pr", "test_research_quality",
              "test_draftpr_workflow", "test_github_hardening", "test_memory_evolution",
-             "test_goals_queue_scheduler", "test_ops_commands", "test_user_workflows")
+             "test_goals_queue_scheduler", "test_ops_commands", "test_user_workflows",
+             "test_self_evolution", "test_quality_autonomy")
     return [os.path.join("tests", n + ".py") for n in names
             if os.path.exists(os.path.join(tdir, n + ".py"))]
 

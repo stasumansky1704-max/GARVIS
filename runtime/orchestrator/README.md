@@ -56,8 +56,15 @@ python runtime/orchestrator/cli.py draft-pr "best python testing frameworks"
 python runtime/orchestrator/cli.py draft-pr "..." --approve-draft-pr
 #   empty proposals are blocked unless you pass --allow-empty-proposal
 
+# Self-learning + self-monitoring (offline; reads own history/audit):
+python runtime/orchestrator/cli.py learn                      # write deduped lessons -> memory
+python runtime/orchestrator/cli.py insights                   # failures/empty/weak/blocked + recs
+python runtime/orchestrator/cli.py monitor                    # safety audit + run/queue/goal/memory health
+python runtime/orchestrator/cli.py auto-review                # auto-rate recent runs into memory
+python runtime/orchestrator/cli.py memory consolidate|decay|promote <id>
+
 # Operational safety + self-check (offline):
-python runtime/orchestrator/cli.py verify                     # isolation/no-WDM-KS/no-sd.rec/gitignored/config
+python runtime/orchestrator/cli.py verify                     # isolation/no-WDM-KS/no-sd.rec/no-dangerous-calls/gitignored/config
 python runtime/orchestrator/cli.py validate|health|version
 python runtime/orchestrator/cli.py config explain|doctor
 
@@ -96,8 +103,12 @@ All tests (168 total, offline): `test_orchestrator_mvp/_hardening/_sprint`,
 - `memory.py`   — importance, TTL/expire, ranked retrieval, export/import/inspect, protected rules.
 - `goals.py` / `queue.py` / `scheduler.py` — goals (priority/deps/blockers) + retrying queue
   + SAFE dry-run scheduler (no daemon).
-- `ops.py`      — isolation/no-WDM-KS/no-sd.rec/gitignored/config self-checks + verify/health.
+- `ops.py`      — isolation/no-WDM-KS/no-sd.rec/no-dangerous-calls/gitignored/config self-checks.
 - `workflows.py`— composed, CLI-executable end-to-end user workflows (safe by default).
+- `selflearn.py`— analyzes own history/audit; writes deduped lessons into memory (feedback loop).
+- `planning.py` — complexity sizing, capability-based worker selection, plan scoring, error classification.
+- `summarize.py`— ranked high-signal summaries: top findings, key points, executive summary.
+- `monitor.py`  — self-monitoring metrics + self-audit dashboard.
 
 ## What is intentionally inert in this MVP
 - Workers are **dry-run**: they describe the action and return an `Envelope` but perform

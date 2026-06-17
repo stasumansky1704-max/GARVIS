@@ -19,6 +19,7 @@ if TYPE_CHECKING:
 _PRIORITY = {SafetyClass.READ: 0, SafetyClass.WRITE: 1,
              SafetyClass.EXTERNAL: 2, SafetyClass.DANGEROUS: 3}
 _READ_RETRIES = 3                                # idempotent READ workers retry on failure
+_MAX_TRANSIENT_RETRIES = 3                        # any worker: retry transient (net/rate) errors
 
 
 class TaskRouter:
@@ -42,9 +43,13 @@ class TaskRouter:
         worker = workers.get(task.worker)
         if worker is None:
             return Envelope(task.id, Status.FAILED, error=f"no worker impl for {task.worker!r}")
+        from .planning import is_transient_error
         attempts = _READ_RETRIES if spec.safety_class == SafetyClass.READ else 1
         last = None
-        for _ in range(attempts):                # retry idempotent READ workers on failure
+        tries = 0
+        max_tries = max(attempts, _MAX_TRANSIENT_RETRIES)
+        while tries < max_tries:
+            tries += 1
             try:
                 env = worker.run(task)
             except Exception as exc:             # never let a worker crash the run
@@ -52,6 +57,10 @@ class TaskRouter:
             if env.status != Status.FAILED:
                 return env
             last = env
+            # Keep retrying only while it's worth it: idempotent READs, OR transient errors
+            # (network / rate limit) for any worker. Permanent errors stop immediately.
+            if tries >= attempts and not is_transient_error(env.error or ""):
+                break
         return last
 
     def dispatch(self, plan: Plan, workers: dict[str, "Worker"],
