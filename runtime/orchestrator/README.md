@@ -15,6 +15,32 @@ python runtime/orchestrator/demo.py          # demo: research (read) + docs (wri
 python tests/test_orchestrator_mvp.py        # unit + end-to-end tests (also pytest-compatible)
 ```
 
+## CLI runbook (real research agent)
+```
+# Research a goal end-to-end (LLM planner + deterministic decomposition fallback ->
+# real read-only web research -> merge -> markdown report + history + audit):
+python runtime/orchestrator/cli.py research "best open source AI agent frameworks"
+
+# Add an approval-gated docs task (blocked unless approved; writes to gitignored artifacts):
+python runtime/orchestrator/cli.py research "..." --doc
+python runtime/orchestrator/cli.py research "..." --doc --approve docs
+
+# Run history + a single run summary:
+python runtime/orchestrator/cli.py history
+python runtime/orchestrator/cli.py show <run_id>
+
+# Explicit LIVE smoke (network); secret scan of generated artifacts:
+python runtime/orchestrator/cli.py smoke "hello world"
+python runtime/orchestrator/cli.py secret-scan
+
+# Kill switch (refuses to run):
+GARVIS_ORCHESTRATOR_DISABLED=1 python runtime/orchestrator/cli.py research "..."
+```
+Config: `runtime/orchestrator/orchestrator_config.json` (non-secret: limits, source
+toggles, default planner). Outputs go to gitignored `_artifacts/` and `_runs/`.
+All tests: `python tests/test_orchestrator_mvp.py`, `test_orchestrator_hardening.py`,
+`test_real_agent_capabilities.py`, `test_orchestrator_sprint.py` (42 total, offline).
+
 ## Modules
 - `models.py`   — `TaskSpec`, `Envelope`, `Plan`, `Run` + `Status`/`SafetyClass`.
 - `registry.py` — `WorkerSpec` + in-memory `WorkerRegistry` (capability catalog).
