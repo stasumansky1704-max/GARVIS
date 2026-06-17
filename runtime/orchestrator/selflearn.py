@@ -15,7 +15,9 @@ All functions are read-only except learn(), which only appends to the memory sto
 """
 from __future__ import annotations
 
-from .research_quality import broaden_query, extract_terms
+import re
+
+from .research_quality import broaden_query, clean_query, extract_terms
 
 # Project tokens whose presence in an empty-result goal is a learnable signal.
 _PROJECT_TOKENS = ("garvis", "jarvis", "alphaflow")
@@ -76,6 +78,8 @@ def analyze_weak_plans(history) -> dict:
 
 
 def analyze_blocked(audit) -> dict:
+    if audit is None:
+        return {"blocked_tasks": 0, "reasons": {}}
     events = [e for e in audit.list() if e.get("kind") == "task_blocked"]
     reasons: dict[str, int] = {}
     for e in events:
@@ -85,6 +89,8 @@ def analyze_blocked(audit) -> dict:
 
 
 def analyze_denials(audit) -> dict:
+    if audit is None:
+        return {"approval_denials": 0}
     denied = [e for e in audit.list()
               if e.get("kind") in ("task_blocked", "draft_pr_blocked_empty")
               and "approval" in (e.get("error", "") + e.get("kind", "")).lower()]
@@ -154,6 +160,30 @@ def learn(history, audit, memory) -> list[str]:
                   f"[{rec['area']}] {rec['finding']} -> {rec['action']}",
                   ["self-learned", rec["area"]])
     return written
+
+
+def rewrite_query(goal: str, memory=None) -> str:
+    """Apply self-learned lessons to rewrite a goal into a better research query BEFORE
+    planning. Strips project/filler tokens, and if memory holds a specific broader-query
+    lesson for a similar goal, prefers that suggestion. Returns a (usually) improved query.
+
+    This is the active half of the feedback loop: empty-result lessons recorded by learn()
+    now change how future queries are phrased.
+    """
+    base = clean_query(goal) or " ".join(extract_terms(goal)) or (goal or "").strip()
+    if memory is None:
+        return base
+    try:
+        hits = memory.search(goal, limit=6)
+    except Exception:
+        return base
+    for m in hits:
+        text = m.get("text", "")
+        if "prefer broader query" in text:
+            quoted = re.findall(r"'([^']+)'", text)
+            if quoted:
+                return quoted[-1]                       # the learned broader query
+    return base
 
 
 def insights(history, audit) -> dict:
