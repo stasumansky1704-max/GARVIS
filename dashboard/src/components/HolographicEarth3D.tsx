@@ -59,12 +59,14 @@ function TexturedEarth({ ai = 0 }: { ai?: number }) {
     <group ref={ref}>
       {/* Surface: real continents, emissive so land reads as holographic light */}
       <mesh>
-        <sphereGeometry args={[EARTH_R, 96, 96]} />
+        <sphereGeometry args={[EARTH_R, 128, 128]} />
         <meshStandardMaterial
           map={texture}
           emissiveMap={texture}
           emissive={new THREE.Color("#ffffff")}
           emissiveIntensity={1.05 + ai * 0.25}
+          bumpMap={texture}
+          bumpScale={0.8}            /* subtle relief so terrain reads 3D, keeps brightness */
           metalness={0}
           roughness={1}
           color={new THREE.Color("#ffffff")}
@@ -88,44 +90,80 @@ function TexturedEarth({ ai = 0 }: { ai?: number }) {
   );
 }
 
-// --- Dense particle shell (the holographic "dots" hugging the globe) ---
-function ParticleShell({ ai = 0 }: { ai?: number }) {
-  const ref = useRef<THREE.Points>(null);
-  const positions = useMemo(() => {
-    const N = 2600;
-    const arr = new Float32Array(N * 3);
-    for (let i = 0; i < N; i++) {
-      // even sphere distribution (golden spiral)
-      const y = 1 - (i / (N - 1)) * 2;
-      const r = Math.sqrt(1 - y * y);
-      const phi = i * Math.PI * (3 - Math.sqrt(5));
-      const rad = EARTH_R * 1.045;
-      arr[i * 3] = Math.cos(phi) * r * rad;
-      arr[i * 3 + 1] = y * rad;
-      arr[i * 3 + 2] = Math.sin(phi) * r * rad;
+// --- Vertical light streaks rising from the floor (like the reference) ---
+const FLOOR_Y = -3.4;            // floor sits well below the globe (visible gap)
+
+function FloorStreaks({ ai = 0 }: { ai?: number }) {
+  // a soft vertical gradient used by every streak (bright at the floor, fading up)
+  const grad = useMemo(() => {
+    const c = document.createElement("canvas");
+    c.width = 8;
+    c.height = 128;
+    const ctx = c.getContext("2d")!;
+    const g = ctx.createLinearGradient(0, 128, 0, 0);
+    g.addColorStop(0, "rgba(150,220,255,0.9)");
+    g.addColorStop(0.5, "rgba(90,180,255,0.28)");
+    g.addColorStop(1, "rgba(90,180,255,0)");
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, 8, 128);
+    const t = new THREE.CanvasTexture(c);
+    t.colorSpace = THREE.SRGBColorSpace;
+    return t;
+  }, []);
+  useEffect(() => () => grad.dispose(), [grad]);
+
+  const streaks = useMemo(() => {
+    const out: { x: number; z: number; h: number; w: number }[] = [];
+    for (let i = 0; i < 16; i++) {
+      const x = (Math.random() - 0.5) * 16;
+      const z = -1 - Math.random() * 9;        // spread into the distance
+      out.push({ x, z, h: 2.6 + Math.random() * 2.2, w: 0.18 + Math.random() * 0.18 });
     }
-    return arr;
+    return out;
   }, []);
 
+  const group = useRef<THREE.Group>(null);
   useFrame(({ clock }) => {
-    if (ref.current) ref.current.rotation.y = -clock.getElapsedTime() * 0.04;
+    if (!group.current) return;
+    group.current.children.forEach((c, i) => {
+      const m = (c as THREE.Mesh).material as THREE.MeshBasicMaterial;
+      m.opacity = 0.35 + 0.3 * Math.sin(clock.getElapsedTime() * 1.3 + i) + ai * 0.3;
+    });
   });
 
   return (
-    <points ref={ref}>
-      <bufferGeometry>
-        <bufferAttribute attach="attributes-position" args={[positions, 3]} />
-      </bufferGeometry>
-      <pointsMaterial
-        color="#7fe9ff"
-        size={0.018}
-        sizeAttenuation
-        transparent
-        opacity={0.5 + ai * 0.3}
-        blending={THREE.AdditiveBlending}
-        depthWrite={false}
-      />
-    </points>
+    <group ref={group}>
+      {streaks.map((s, i) => (
+        <mesh key={i} position={[s.x, FLOOR_Y + s.h / 2, s.z]}>
+          <planeGeometry args={[s.w, s.h]} />
+          <meshBasicMaterial
+            map={grad}
+            transparent
+            opacity={0.4}
+            blending={THREE.AdditiveBlending}
+            depthWrite={false}
+            side={THREE.DoubleSide}
+          />
+        </mesh>
+      ))}
+    </group>
+  );
+}
+
+// --- Bright glow band where the globe's light meets the floor ---
+function FloorGlow({ ai = 0 }: { ai?: number }) {
+  const ref = useRef<THREE.Mesh>(null);
+  useFrame(({ clock }) => {
+    if (ref.current) {
+      const m = ref.current.material as THREE.MeshBasicMaterial;
+      m.opacity = 0.45 + Math.sin(clock.getElapsedTime() * 1.5) * 0.08 + ai * 0.2;
+    }
+  });
+  return (
+    <mesh ref={ref} rotation={[-Math.PI / 2, 0, 0]} position={[0, FLOOR_Y + 0.05, -0.5]}>
+      <circleGeometry args={[3.2, 48]} />
+      <meshBasicMaterial color="#bfeaff" transparent opacity={0.5} blending={THREE.AdditiveBlending} depthWrite={false} />
+    </mesh>
   );
 }
 
@@ -184,7 +222,7 @@ const HEX_FRAG = `
     return dot(a, a) < dot(b, b) ? a : b;
   }
   void main(){
-    vec2 uv = (vUv - 0.5) * 34.0;            // hex density
+    vec2 uv = (vUv - 0.5) * 82.0;            // smaller, denser hex cells
     vec2 gv = hexCell(uv);
     float d = hexDist(gv);
     float edge = smoothstep(0.44, 0.50, d);  // thin bright cell border
@@ -221,35 +259,10 @@ function HexFloor({ ai = 0 }: { ai?: number }) {
     material.uniforms.uIntensity.value = 1.0 + ai * 0.6;
   });
   return (
-    <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -2.5, 0]}>
-      <planeGeometry args={[46, 46, 1, 1]} />
+    <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, FLOOR_Y, 0]}>
+      <planeGeometry args={[64, 64, 1, 1]} />
       <primitive object={material} attach="material" />
     </mesh>
-  );
-}
-
-function CityMarkers({ ai = 0 }: { ai?: number }) {
-  const groupRef = useRef<THREE.Group>(null);
-  useFrame(({ clock }) => {
-    if (!groupRef.current) return;
-    groupRef.current.children.forEach((child, i) => {
-      const pulse = 1 + Math.sin(clock.getElapsedTime() * 2 + i * 0.8) * 0.25 * (1 + ai);
-      (child as THREE.Mesh).scale.setScalar(pulse);
-    });
-  });
-  const markers = useMemo(
-    () => CITIES.map((c) => ({ pos: latLonToVec3(c.lat, c.lon, EARTH_R * 1.04) })),
-    []
-  );
-  return (
-    <group ref={groupRef}>
-      {markers.map((m, i) => (
-        <mesh key={i} position={m.pos}>
-          <sphereGeometry args={[0.03, 12, 12]} />
-          <meshStandardMaterial color="#aef6ff" emissive="#00e5ff" emissiveIntensity={2.5 + ai * 3} />
-        </mesh>
-      ))}
-    </group>
   );
 }
 
@@ -299,10 +312,10 @@ function EarthScene({ audioIntensity = 0 }: EarthProps) {
       <Suspense fallback={<FallbackGlobe />}>
         <TexturedEarth ai={audioIntensity} />
       </Suspense>
-      <ParticleShell ai={audioIntensity} />
       <LightBeam ai={audioIntensity} />
       <HexFloor ai={audioIntensity} />
-      <CityMarkers ai={audioIntensity} />
+      <FloorStreaks ai={audioIntensity} />
+      <FloorGlow ai={audioIntensity} />
       <ArcLines ai={audioIntensity} />
 
       <EffectComposer multisampling={0} frameBufferType={THREE.HalfFloatType}>
