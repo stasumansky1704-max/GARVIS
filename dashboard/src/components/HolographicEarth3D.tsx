@@ -64,10 +64,10 @@ function TexturedEarth({ ai = 0 }: { ai?: number }) {
           map={texture}
           emissiveMap={texture}
           emissive={new THREE.Color("#ffffff")}
-          emissiveIntensity={0.85 + ai * 0.25}
+          emissiveIntensity={1.05 + ai * 0.25}
           metalness={0}
           roughness={1}
-          color={new THREE.Color("#bcd9ee")}
+          color={new THREE.Color("#ffffff")}
           transparent={false}
           depthWrite
         />
@@ -319,7 +319,7 @@ export default function HolographicEarth3D({ audioIntensity = 0 }: EarthProps) {
       gl={{ antialias: false, alpha: true, powerPreference: "high-performance" }}
       onCreated={({ gl }) => {
         gl.toneMapping = THREE.ACESFilmicToneMapping;
-        gl.toneMappingExposure = 1.4;
+        gl.toneMappingExposure = 1.7;
       }}
       style={{ background: "transparent" }}
     >
