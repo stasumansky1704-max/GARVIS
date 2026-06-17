@@ -70,8 +70,9 @@ The Draft-PR worker only ever creates a NEW `draft/garvis/*` branch off main, co
 `docs/proposals/*.md` file, and opens a **draft** PR - never main, never merge, never delete.
 Config: `runtime/orchestrator/orchestrator_config.json` (non-secret: limits, source
 toggles, default planner). Outputs go to gitignored `_artifacts/` and `_runs/`.
-CI: `.github/workflows/orchestrator.yml` runs py_compile + `verify` + secret-scan + all
-offline suites + safe CLI smoke (never touches backend/Docker/GPU/dashboard/audio).
+CI: `runtime/orchestrator/ci/orchestrator.yml` (copy to `.github/workflows/` to activate)
+runs py_compile + `verify` + secret-scan + all offline suites + safe CLI smoke (never
+touches backend/Docker/GPU/dashboard/audio).
 All tests (168 total, offline): `test_orchestrator_mvp/_hardening/_sprint`,
 `test_real_agent_capabilities`, `test_super_sprint`, `test_draft_pr`,
 `test_research_quality`, `test_draftpr_workflow`, `test_github_hardening`,

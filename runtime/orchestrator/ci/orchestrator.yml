@@ -1,0 +1,82 @@
+name: orchestrator-ci
+
+# INSTALL: copy this file to .github/workflows/orchestrator.yml to activate it.
+# (It lives here because the current push token lacks GitHub `workflow` scope; the file
+#  is complete and ready to drop into .github/workflows/ by anyone with that scope.)
+#
+# Runs ONLY the isolated agent-core (runtime/orchestrator) checks and offline tests.
+# It never starts the backend, Docker, GPU runtime, or dashboard, and never runs audio
+# tests or live network/PR actions. Safe by default.
+
+on:
+  push:
+    paths:
+      - "runtime/orchestrator/**"
+      - "tests/test_orchestrator_*.py"
+      - "tests/test_real_agent_capabilities.py"
+      - "tests/test_super_sprint.py"
+      - "tests/test_draft_pr.py"
+      - "tests/test_research_quality.py"
+      - "tests/test_draftpr_workflow.py"
+      - "tests/test_github_hardening.py"
+      - "tests/test_memory_evolution.py"
+      - "tests/test_goals_queue_scheduler.py"
+      - "tests/test_ops_commands.py"
+      - "tests/test_user_workflows.py"
+      - ".github/workflows/orchestrator.yml"
+  pull_request:
+    paths:
+      - "runtime/orchestrator/**"
+      - "tests/**"
+  workflow_dispatch: {}
+
+jobs:
+  orchestrator:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: py_compile (compile-check the agent core + tests)
+        run: |
+          python -m py_compile runtime/orchestrator/*.py runtime/orchestrator/workers/*.py
+          python -m py_compile \
+            tests/test_orchestrator_mvp.py tests/test_orchestrator_hardening.py \
+            tests/test_real_agent_capabilities.py tests/test_orchestrator_sprint.py \
+            tests/test_super_sprint.py tests/test_draft_pr.py \
+            tests/test_research_quality.py tests/test_draftpr_workflow.py \
+            tests/test_github_hardening.py tests/test_memory_evolution.py \
+            tests/test_goals_queue_scheduler.py tests/test_ops_commands.py \
+            tests/test_user_workflows.py
+
+      - name: Safety verify (isolation, no-WDM-KS, no-sd.rec, gitignored, config)
+        run: python runtime/orchestrator/cli.py verify
+
+      - name: Secret scan (generated artifacts/history)
+        run: python runtime/orchestrator/secret_scan.py
+
+      - name: Offline test suites (no network, no audio, no backend)
+        run: |
+          set -e
+          for t in \
+            tests/test_orchestrator_mvp.py tests/test_orchestrator_hardening.py \
+            tests/test_real_agent_capabilities.py tests/test_orchestrator_sprint.py \
+            tests/test_super_sprint.py tests/test_draft_pr.py \
+            tests/test_research_quality.py tests/test_draftpr_workflow.py \
+            tests/test_github_hardening.py tests/test_memory_evolution.py \
+            tests/test_goals_queue_scheduler.py tests/test_ops_commands.py \
+            tests/test_user_workflows.py ; do
+            echo "== $t =="
+            python "$t"
+          done
+
+      - name: CLI smoke (offline, safe commands only)
+        run: |
+          python runtime/orchestrator/cli.py version
+          python runtime/orchestrator/cli.py health
+          python runtime/orchestrator/cli.py config doctor
+          python runtime/orchestrator/cli.py validate

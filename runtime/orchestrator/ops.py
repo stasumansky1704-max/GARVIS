@@ -11,6 +11,8 @@ own safety posture without a human:
 - verify / health / version_status / validation_summary : aggregate, human-readable
 
 All checks are read-only and scoped to the agent core; none touch backend runtime.
+The CI definition that runs these lives at runtime/orchestrator/ci/orchestrator.yml
+(copy to .github/workflows/ to activate).
 """
 from __future__ import annotations
 
