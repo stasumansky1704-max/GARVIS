@@ -570,9 +570,11 @@ def cmd_run_due(approve, cfg):
     audit = AuditLog(os.path.join(cfgmod.history_dir(cfg), "audit.jsonl"))
     budget = RunBudget.from_config(cfg)
     run_fn = _safe_research_runner(cfg, hist, audit, mem) if approve else None
+    rewrite_fn = (lambda g: selflearn.rewrite_query(g, mem)) if approve else None
     out = autonomy.run_due(queue, run_fn, memory=mem, history=hist, audit=audit,
                            execute=approve, max_tasks=budget.max_tasks,
-                           max_seconds=budget.max_seconds, disabled=is_disabled())
+                           max_seconds=budget.max_seconds, disabled=is_disabled(),
+                           rewrite_fn=rewrite_fn)
     import json as _j
     print(_j.dumps(out, ensure_ascii=False, indent=2, default=str))
     if not approve:
@@ -587,9 +589,11 @@ def cmd_background_once(approve, cfg):
     audit = AuditLog(os.path.join(cfgmod.history_dir(cfg), "audit.jsonl"))
     budget = RunBudget.from_config(cfg)
     run_fn = _safe_research_runner(cfg, hist, audit, mem) if approve else None
+    rewrite_fn = (lambda g: selflearn.rewrite_query(g, mem)) if approve else None
     out = autonomy.background_once(queue, run_fn, memory=mem, history=hist, audit=audit,
                                    execute=approve, max_tasks=budget.max_tasks,
-                                   max_seconds=budget.max_seconds, disabled=is_disabled())
+                                   max_seconds=budget.max_seconds, disabled=is_disabled(),
+                                   rewrite_fn=rewrite_fn)
     if approve:                                          # close the loop with a fresh brief
         art = cfgmod.artifact_dir(cfg); os.makedirs(art, exist_ok=True)
         open(os.path.join(art, "daily-brief.md"), "w", encoding="utf-8").write(
@@ -601,6 +605,63 @@ def cmd_background_once(approve, cfg):
           "ran" if out["run_due"].get("executed") else "(dry-run)")
     if not approve:
         print("  DRY-RUN: nothing executed. Re-run with --approve-background to run one cycle.")
+    return 0
+
+
+def cmd_loop(approve, max_cycles, interval, cfg):
+    """BOUNDED scheduled autonomy loop (NOT a daemon). DRY-RUN unless --approve-loop.
+    Requires --max-cycles (<=10) and --interval (5..3600s). Kill switch checked per cycle."""
+    import time as _time
+    mem, goals, queue, hist = _stores(cfg)
+    audit = AuditLog(os.path.join(cfgmod.history_dir(cfg), "audit.jsonl"))
+    budget = RunBudget.from_config(cfg)
+
+    def cycle_fn():
+        run_fn = _safe_research_runner(cfg, hist, audit, mem)
+        rewrite_fn = lambda g: selflearn.rewrite_query(g, mem)
+        out = autonomy.background_once(queue, run_fn, memory=mem, history=hist, audit=audit,
+                                       execute=True, max_tasks=budget.max_tasks,
+                                       max_seconds=budget.max_seconds, disabled=is_disabled(),
+                                       rewrite_fn=rewrite_fn)
+        art = cfgmod.artifact_dir(cfg); os.makedirs(art, exist_ok=True)
+        open(os.path.join(art, "daily-brief.md"), "w", encoding="utf-8").write(
+            daily_brief_full(hist, mem, goals, queue, audit))
+        return {"reviewed": out.get("reviewed"), "lessons": len(out.get("lessons", [])),
+                "ran": len(out.get("run_due", {}).get("ran", []))}
+
+    out = autonomy.run_loop(cycle_fn, max_cycles=max_cycles, interval=interval,
+                            execute=approve, disabled_fn=is_disabled, audit=audit,
+                            sleep_fn=_time.sleep)
+    import json as _j
+    print(_j.dumps(out, ensure_ascii=False, indent=2, default=str))
+    if out.get("errors"):
+        return 2
+    if not approve:
+        print("  DRY-RUN: nothing executed. Re-run with --approve-loop to run the bounded loop.")
+    return 0
+
+
+def cmd_loop_status(cfg):
+    """Show recent loop activity from the audit log (previews, cycles, stops, completions)."""
+    audit = AuditLog(os.path.join(cfgmod.history_dir(cfg), "audit.jsonl"))
+    loop_kinds = {autonomy.EV_LOOP_PREVIEW, autonomy.EV_LOOP_CYCLE,
+                  autonomy.EV_LOOP_STOPPED, autonomy.EV_LOOP_COMPLETED}
+    events = [e for e in audit.list() if e.get("kind") in loop_kinds][-15:]
+    if not events:
+        print("  no loop activity recorded yet."); return 0
+    for e in events:
+        extra = {k: v for k, v in e.items() if k not in ("ts", "kind")}
+        print(f"  {e['ts']}  {e['kind']:<22}  {extra}")
+    return 0
+
+
+def cmd_loop_dry_run(cfg, max_cycles=1, interval=60):
+    """Show what the loop WOULD do, without executing (explicit dry-run command)."""
+    audit = AuditLog(os.path.join(cfgmod.history_dir(cfg), "audit.jsonl"))
+    out = autonomy.run_loop(lambda: None, max_cycles=max_cycles, interval=interval,
+                            execute=False, audit=audit)
+    import json as _j
+    print(_j.dumps(out, ensure_ascii=False, indent=2, default=str))
     return 0
 
 
@@ -745,6 +806,22 @@ def main(argv):
         return cmd_run_due("--approve-run-due" in rest, cfg)
     if cmd == "background-once":
         return cmd_background_once("--approve-background" in rest, cfg)
+    if cmd == "loop":
+        def _flag_int(name):
+            if name in rest:
+                i = rest.index(name)
+                if i + 1 < len(rest):
+                    try:
+                        return int(rest[i + 1])
+                    except ValueError:
+                        return None
+            return None
+        return cmd_loop("--approve-loop" in rest, _flag_int("--max-cycles"),
+                        _flag_int("--interval"), cfg)
+    if cmd == "loop-status":
+        return cmd_loop_status(cfg)
+    if cmd == "loop-dry-run":
+        return cmd_loop_dry_run(cfg)
     if cmd == "review":
         return cmd_review(rest, cfg)
     if cmd == "github":
