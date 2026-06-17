@@ -34,6 +34,7 @@ EV_LOOP_PREVIEW = "loop_preview"
 EV_LOOP_CYCLE = "loop_cycle_completed"
 EV_LOOP_STOPPED = "loop_stopped"
 EV_LOOP_COMPLETED = "loop_completed"
+EV_SCHED_ENQUEUED = "loop_schedules_enqueued"
 
 # Hard safety bounds for the scheduled loop (no infinite loops, ever).
 MAX_CYCLES_LIMIT = 10
@@ -112,6 +113,15 @@ def background_once(queue, run_fn=None, *, memory=None, history=None, audit=None
           reviewed=reviewed, lessons=len(lessons))
     return {"mode": "live" if (execute and rd.get("executed")) else "dry-run",
             "run_due": rd, "reviewed": reviewed, "lessons": lessons}
+
+
+def enqueue_due_schedules(schedule_store, queue, audit=None, now_ts=None) -> dict:
+    """Enqueue any due persisted schedules into the queue before a loop runs. Emits an audit
+    event. Read-only w.r.t. execution - the bounded loop still runs the queue."""
+    enq = schedule_store.enqueue_due(queue, now_ts=now_ts)
+    _emit(audit, EV_SCHED_ENQUEUED, count=len(enq),
+          schedule_ids=[e["schedule_id"] for e in enq])
+    return {"enqueued": len(enq), "items": enq}
 
 
 def validate_loop_params(max_cycles, interval) -> list[str]:
