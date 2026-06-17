@@ -35,6 +35,18 @@ python runtime/orchestrator/cli.py secret-scan
 
 # Kill switch (refuses to run):
 GARVIS_ORCHESTRATOR_DISABLED=1 python runtime/orchestrator/cli.py research "..."
+
+# Memory-aware actionable agent commands:
+python runtime/orchestrator/cli.py autodemo "best open source AI agent frameworks"
+#   ^ goal -> research -> memory -> proposal.md + draft-PR content (json) -> goal done -> review
+python runtime/orchestrator/cli.py memory list|search <q>|add <layer> <text>|compress
+python runtime/orchestrator/cli.py goal add|list|status <id> <s>|metrics
+python runtime/orchestrator/cli.py queue add <goal>|list
+python runtime/orchestrator/cli.py brief                       # daily brief artifact
+python runtime/orchestrator/cli.py review <run_id> <rating> [note]
+python runtime/orchestrator/cli.py github branches|pulls|commits|issues|risk <pr#>
+python runtime/orchestrator/cli.py propose "<goal>"           # research -> change proposal
+python runtime/orchestrator/cli.py artifacts [search <q>]
 ```
 Config: `runtime/orchestrator/orchestrator_config.json` (non-secret: limits, source
 toggles, default planner). Outputs go to gitignored `_artifacts/` and `_runs/`.
