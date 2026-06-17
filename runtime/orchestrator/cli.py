@@ -39,7 +39,8 @@ from orchestrator import generators as gen
 from orchestrator import artifacts as artmod
 from orchestrator.goals import GoalRegistry
 from orchestrator.queue import ResearchQueue
-from orchestrator.brief import daily_brief, review_run
+from orchestrator.brief import daily_brief, daily_brief_full, weekly_brief, review_run
+from orchestrator import scheduler
 from orchestrator.workers.github_worker import GitHubReadWorker, GitHubDraftPRWorker
 
 
@@ -164,9 +165,23 @@ def cmd_memory(rest, cfg):
             print(f"  [{r['layer']}] {r['text']}")
         return 0
     if sub == "compress":
-        print("removed duplicates:", mem.compress()); return 0
-    for r in mem.list(rest[1] if len(rest) > 1 else None):
-        print(f"  [{r['layer']}] {r['text']}")
+        n = mem.compress()
+        print("removed duplicates:", n, "| valid:", mem.validate_compression()["valid"]); return 0
+    if sub == "inspect":
+        for k, v in mem.inspect().items():
+            print(f"  {k}: {v}")
+        return 0
+    if sub == "export":
+        print(mem.export_jsonl()); return 0
+    if sub == "expire":
+        print("archived (ttl elapsed):", mem.expire()); return 0
+    if sub == "delete" and len(rest) >= 2:
+        approve = "--approve-delete" in rest
+        print(mem.delete(rest[1], approve=approve)); return 0
+    for r in mem.list(rest[1] if len(rest) > 1 and not rest[1].startswith("--") else None):
+        if r.get("archived"):
+            continue
+        print(f"  [{r['layer']}] (imp={r.get('importance')}) {r['text']}")
     return 0
 
 
@@ -177,10 +192,25 @@ def cmd_goal(rest, cfg):
         print("goal:", goals.add(" ".join(rest[1:]))); return 0
     if sub == "status" and len(rest) >= 3:
         print("ok" if goals.set_status(rest[1], rest[2]) else "not found"); return 0
+    if sub == "priority" and len(rest) >= 3:
+        print("ok" if goals.set_priority(rest[1], int(rest[2])) else "not found"); return 0
+    if sub == "progress" and len(rest) >= 3:
+        print("ok" if goals.set_progress(rest[1], int(rest[2])) else "not found"); return 0
+    if sub == "block" and len(rest) >= 3:
+        print("ok" if goals.add_blocker(rest[1], " ".join(rest[2:])) else "not found"); return 0
+    if sub == "unblock" and len(rest) >= 2:
+        print("ok" if goals.clear_blockers(rest[1]) else "not found"); return 0
+    if sub == "review" and len(rest) >= 2:
+        print(goals.review(rest[1])); return 0
     if sub == "metrics":
         print(goals.metrics()); return 0
+    if sub == "next":
+        for g in goals.prioritized():
+            print(f"  P{g.get('priority',3)} {g['id']}  [{g.get('progress',0)}%]  {g['text'][:50]}")
+        return 0
     for g in goals.list():
-        print(f"  {g['id']}  {g.get('status','open'):<11}  {g['text'][:50]}  runs={len(g.get('runs',[]))}")
+        print(f"  {g['id']}  {g.get('status','open'):<11}  P{g.get('priority',3)}  "
+              f"{g['text'][:46]}  runs={len(g.get('runs',[]))}")
     return 0
 
 
@@ -189,16 +219,34 @@ def cmd_queue(rest, cfg):
     sub = rest[0] if rest else "list"
     if sub == "add" and len(rest) >= 2:
         print("queued:", q.enqueue(" ".join(rest[1:]))); return 0
+    if sub == "dry-run":
+        for p in q.dry_run():
+            print(f"  P{p['priority']} {p['id']}  attempts={p['attempts']}  {p['goal'][:50]}")
+        return 0
     for item in q.list():
-        print(f"  {item['id']}  {item.get('status','pending'):<8}  {item['goal'][:50]}")
+        print(f"  {item['id']}  {item.get('status','pending'):<8}  P{item.get('priority',3)}  "
+              f"{item['goal'][:46]}")
     return 0
 
 
-def cmd_brief(cfg):
-    mem, _, _, hist = _stores(cfg)
+def cmd_scheduler(rest, cfg):
+    """SAFE dry-run scheduler: show what would run now. Never executes (no daemon)."""
+    _, _, q, _ = _stores(cfg)
+    out = scheduler.dry_run(q)
+    print(f"scheduler [{out['mode']}] - {out['due']} item(s) due:")
+    for p in out["plan"]:
+        print(f"  P{p['priority']} {p['id']}  attempts={p['attempts']}  {p['goal'][:50]}")
+    print("  (dry-run only; execution is explicit and not enabled here)")
+    return 0
+
+
+def cmd_brief(rest, cfg):
+    mem, goals, q, hist = _stores(cfg)
     art = cfgmod.artifact_dir(cfg); os.makedirs(art, exist_ok=True)
-    text = daily_brief(hist, mem)
-    path = os.path.join(art, "daily-brief.md")
+    if rest and rest[0] == "weekly":
+        text = weekly_brief(hist, mem, goals); path = os.path.join(art, "weekly-brief.md")
+    else:
+        text = daily_brief_full(hist, mem, goals, q); path = os.path.join(art, "daily-brief.md")
     open(path, "w", encoding="utf-8").write(text)
     print(text)
     print("brief written:", path)
@@ -423,7 +471,9 @@ def main(argv):
     if cmd == "queue":
         return cmd_queue(rest, cfg)
     if cmd == "brief":
-        return cmd_brief(cfg)
+        return cmd_brief(rest, cfg)
+    if cmd == "scheduler":
+        return cmd_scheduler(rest, cfg)
     if cmd == "review":
         return cmd_review(rest, cfg)
     if cmd == "github":
