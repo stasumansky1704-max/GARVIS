@@ -12,6 +12,7 @@ pr_summary()/pr_risk() are pure functions usable by other capabilities.
 """
 from __future__ import annotations
 
+import base64
 import json
 import urllib.request
 
@@ -54,6 +55,19 @@ class GitHubClient:
     def issues(self): return self._req("GET", "/issues?state=open&per_page=30")
     def pull(self, num): return self._req("GET", "/pulls/%d" % int(num))
     def pull_files(self, num): return self._req("GET", "/pulls/%d/files?per_page=100" % int(num))
+
+    # branch + file ops (needed to back a real DRAFT PR). No merge, no delete.
+    def ref_sha(self, branch):
+        return self._req("GET", "/git/ref/heads/%s" % branch)["object"]["sha"]
+
+    def create_branch(self, new_branch, from_sha):
+        return self._req("POST", "/git/refs",
+                         {"ref": "refs/heads/%s" % new_branch, "sha": from_sha})
+
+    def put_file(self, branch, path, text, message):
+        return self._req("PUT", "/contents/%s" % path,
+                         {"message": message, "branch": branch,
+                          "content": base64.b64encode(text.encode("utf-8")).decode("ascii")})
 
     # write (DRAFT only)
     def create_draft_pr(self, title, head, base, body):
@@ -135,16 +149,33 @@ class GitHubDraftPRWorker(Worker):
 
     def run(self, task: TaskSpec) -> Envelope:
         i = task.inputs
-        for req in ("title", "head", "base"):
-            if not i.get(req):
-                return Envelope(task_id=task.id, status=Status.FAILED,
-                                error=f"create_draft_pr missing {req!r}")
+        base = i.get("base", "main")
+        title = i.get("title")
+        branch = i.get("branch") or i.get("head")
+        if not title or not branch:
+            return Envelope(task_id=task.id, status=Status.FAILED,
+                            error="draft PR requires 'title' and 'branch'")
+        preview = {"title": title, "base": base, "branch": branch,
+                   "file_path": i.get("file_path"), "draft": True,
+                   "will_merge": False, "will_delete_branch": False}
+        # DRY-RUN unless explicitly approved -> no side effects, just the preview.
+        if not i.get("approved"):
+            return Envelope(task_id=task.id, status=Status.BLOCKED,
+                            error="dry-run: draft PR creation requires explicit approval",
+                            result={"preview": preview},
+                            logs=["DRY-RUN preview (no branch/file/PR created)"])
         try:
-            pr = self.client.create_draft_pr(i["title"], i["head"], i["base"], i.get("body", ""))
+            # If a new branch + file are requested, create them off base first.
+            if i.get("file_path") and i.get("file_content") is not None:
+                sha = self.client.ref_sha(base)
+                self.client.create_branch(branch, sha)          # never main; new branch only
+                self.client.put_file(branch, i["file_path"], i["file_content"],
+                                     "docs(proposal): %s" % title)
+            pr = self.client.create_draft_pr(title, branch, base, i.get("body", ""))
         except Exception as exc:
             return Envelope(task_id=task.id, status=Status.FAILED,
                             error=f"create_draft_pr: {type(exc).__name__}: {exc}")
         return Envelope(task_id=task.id, status=Status.DONE,
                         result={"number": pr.get("number"), "url": pr.get("html_url"),
-                                "draft": pr.get("draft")},
-                        logs=["created DRAFT PR (never merged)"])
+                                "draft": pr.get("draft"), "branch": branch, "base": base},
+                        logs=["created DRAFT PR (never merged, never deleted branch)"])

@@ -39,7 +39,7 @@ from orchestrator import artifacts as artmod
 from orchestrator.goals import GoalRegistry
 from orchestrator.queue import ResearchQueue
 from orchestrator.brief import daily_brief, review_run
-from orchestrator.workers.github_worker import GitHubReadWorker
+from orchestrator.workers.github_worker import GitHubReadWorker, GitHubDraftPRWorker
 
 
 def build(cfg):
@@ -299,6 +299,64 @@ def cmd_autodemo(goal, cfg):
     return 0
 
 
+def _slug(text: str) -> str:
+    s = "".join(c.lower() if c.isalnum() else "-" for c in text.strip())
+    while "--" in s:
+        s = s.replace("--", "-")
+    return s.strip("-")[:48] or "proposal"
+
+
+def cmd_draft_pr(goal, approve, cfg):
+    """Research -> proposal -> PREVIEW a Draft PR; create it ONLY with --approve-draft-pr.
+    Never pushes to main, never merges, never deletes branches."""
+    if is_disabled():
+        print("[DISABLED] GARVIS_ORCHESTRATOR_DISABLED is set - refusing."); return 3
+    orch, hist, audit, art = build(cfg)
+    sub = decompose(goal, 4)
+    fb = [TaskSpec(id=f"r{i}", worker="research", intent=s, inputs={"query": s})
+          for i, s in enumerate(sub)]
+    run = orch.run_goal(goal, planner=None, fallback_tasks=fb, history=hist,
+                        budget=RunBudget.from_config(cfg), audit=audit)
+    findings = [f for e in run.results.values() if isinstance(e.result, dict)
+                for f in e.result.get("findings", [])]
+    content = gen.draft_pr_content(goal, body=gen.research_summary(run), findings=findings)
+    slug = _slug(goal)
+    branch = f"draft/garvis/{slug}-{run.id}"          # safe; never main
+    file_path = f"docs/proposals/{slug}-{run.id}.md"
+    file_content = gen.change_proposal(goal, findings)
+
+    print("=" * 64)
+    print("  DRAFT PR PREVIEW (dry-run)" if not approve else "  DRAFT PR (CREATING)")
+    print("=" * 64)
+    print(f"  title : {content['title']}")
+    print(f"  base  : main      (never pushed to / never merged)")
+    print(f"  branch: {branch}")
+    print(f"  file  : {file_path}  ({len(file_content)} chars)")
+    print(f"  body  :")
+    for ln in content["body"].splitlines()[:8]:
+        print(f"    | {ln}")
+    audit.event("draft_pr_preview", goal=goal, branch=branch, title=content["title"])
+
+    if not approve:
+        print("\n  DRY-RUN: no branch/file/PR created.")
+        print("  To create the REAL draft PR, re-run with:  --approve-draft-pr")
+        return 0
+
+    env = GitHubDraftPRWorker().run(TaskSpec(id="draftpr", worker="github_draft_pr",
+        intent="create draft pr", inputs={"title": content["title"], "base": "main",
+        "branch": branch, "file_path": file_path, "file_content": file_content,
+        "body": content["body"], "approved": True}))
+    if env.status != Status.DONE:
+        print("\n  [FAILED]", env.error); return 1
+    audit.event("draft_pr_created", number=env.result.get("number"),
+                url=env.result.get("url"), branch=branch)
+    hist.save({"id": run.id, "timestamp": __import__("time").strftime("%Y-%m-%dT%H:%M:%S"),
+               "goal": goal, "status": "draft_pr_created", "tasks": [],
+               "result_summary": str(env.result.get("url")), "approvals": ["draft-pr"]})
+    print(f"\n  [OK] DRAFT PR created: {env.result.get('url')}  (draft={env.result.get('draft')})")
+    return 0
+
+
 def main(argv):
     try:
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -350,6 +408,12 @@ def main(argv):
         return cmd_artifacts(rest, cfg)
     if cmd == "autodemo" and rest:
         return cmd_autodemo(" ".join(rest).strip(), cfg)
+    if cmd == "draft-pr" and rest:
+        approve = "--approve-draft-pr" in rest
+        goal = " ".join(a for a in rest if not a.startswith("--")).strip()
+        if not goal:
+            print("usage: cli.py draft-pr \"<goal>\" [--approve-draft-pr]"); return 2
+        return cmd_draft_pr(goal, approve, cfg)
     print(__doc__); return 2
 
 

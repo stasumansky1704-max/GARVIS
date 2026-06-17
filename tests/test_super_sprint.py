@@ -150,8 +150,12 @@ def test_github_unknown_op_failed():
 
 def test_github_draft_pr_worker():
     w = GitHubDraftPRWorker(client=_FakeGH())
+    dry = w.run(TaskSpec(id="g", worker="github_draft_pr", intent="pr",
+                         inputs={"title": "t", "branch": "h", "base": "main", "body": "b"}))
+    assert dry.status == Status.BLOCKED          # no approval -> dry-run, no side effects
     env = w.run(TaskSpec(id="g", worker="github_draft_pr", intent="pr",
-                         inputs={"title": "t", "head": "h", "base": "main", "body": "b"}))
+                         inputs={"title": "t", "branch": "h", "base": "main", "body": "b",
+                                 "approved": True}))
     assert env.status == Status.DONE and env.result["draft"] is True and env.result["number"] == 99
 
 
