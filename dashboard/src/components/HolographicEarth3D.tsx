@@ -1,6 +1,6 @@
 import { useRef, useMemo, useState, useEffect, Suspense } from "react";
 import { Canvas, useFrame, useLoader } from "@react-three/fiber";
-import { Bloom, Vignette, EffectComposer } from "@react-three/postprocessing";
+import { Bloom, Vignette, EffectComposer, SMAA } from "@react-three/postprocessing";
 import * as THREE from "three";
 
 // Intelligence Hub holographic Earth.
@@ -47,7 +47,9 @@ function TexturedEarth({ ai = 0 }: { ai?: number }) {
   // Real equirectangular Blue Marble map (continents + oceans), not a scene render.
   const texture = useLoader(THREE.TextureLoader, "/textures/earth_map.jpg");
   texture.colorSpace = THREE.SRGBColorSpace;
-  texture.anisotropy = 8;
+  texture.anisotropy = 16;            // crisp continents at grazing angles
+  texture.generateMipmaps = true;
+  texture.minFilter = THREE.LinearMipmapLinearFilter;
 
   useFrame(({ clock }) => {
     if (ref.current) ref.current.rotation.y = clock.getElapsedTime() * 0.06;
@@ -61,11 +63,11 @@ function TexturedEarth({ ai = 0 }: { ai?: number }) {
         <meshStandardMaterial
           map={texture}
           emissiveMap={texture}
-          emissive={new THREE.Color("#0a3550")}
-          emissiveIntensity={0.28 + ai * 0.3}
+          emissive={new THREE.Color("#ffffff")}
+          emissiveIntensity={0.85 + ai * 0.25}
           metalness={0}
           roughness={1}
-          color={new THREE.Color("#ffffff")}
+          color={new THREE.Color("#bcd9ee")}
           transparent={false}
           depthWrite
         />
@@ -78,7 +80,7 @@ function TexturedEarth({ ai = 0 }: { ai?: number }) {
           color="#0bd5ff"
           wireframe
           transparent
-          opacity={0.04 + ai * 0.03}
+          opacity={0.025 + ai * 0.02}
           depthWrite={false}
         />
       </mesh>
@@ -264,10 +266,12 @@ function FallbackGlobe() {
 function EarthScene({ audioIntensity = 0 }: EarthProps) {
   return (
     <>
-      <ambientLight intensity={0.85} />
-      <pointLight position={[0, 2, 7]} intensity={2.4} color="#eaf6ff" />
-      <pointLight position={[0, 6, 1]} intensity={1.8} color="#ffffff" />
-      <pointLight position={[-5, -2, -4]} intensity={0.7} color="#0066cc" />
+      {/* even, bright illumination so the whole visible hemisphere reads (no dark night side) */}
+      <hemisphereLight args={["#eaf7ff", "#0a2740", 1.5]} />
+      <ambientLight intensity={0.65} />
+      <pointLight position={[0, 1.5, 7]} intensity={3.4} color="#f2faff" />
+      <pointLight position={[0, 6, 1.5]} intensity={2.0} color="#ffffff" />
+      <pointLight position={[-5, -1, -4]} intensity={1.2} color="#1a8fff" />
 
       <Suspense fallback={<FallbackGlobe />}>
         <TexturedEarth ai={audioIntensity} />
@@ -278,9 +282,15 @@ function EarthScene({ audioIntensity = 0 }: EarthProps) {
       <CityMarkers ai={audioIntensity} />
       <ArcLines ai={audioIntensity} />
 
-      <EffectComposer>
-        <Bloom intensity={1.15 + audioIntensity * 1.2} luminanceThreshold={0.22} luminanceSmoothing={0.9} mipmapBlur />
-        <Vignette offset={0.35} darkness={0.78} />
+      <EffectComposer multisampling={0} frameBufferType={THREE.HalfFloatType}>
+        <SMAA />
+        <Bloom
+          intensity={0.85 + audioIntensity * 1.1}
+          luminanceThreshold={0.45}
+          luminanceSmoothing={0.9}
+          mipmapBlur
+        />
+        <Vignette offset={0.32} darkness={0.7} />
       </EffectComposer>
     </>
   );
@@ -305,7 +315,12 @@ export default function HolographicEarth3D({ audioIntensity = 0 }: EarthProps) {
   return (
     <Canvas
       camera={{ position: [0, 0.5, 6.0], fov: 45 }}
-      gl={{ antialias: true, alpha: true, powerPreference: "high-performance" }}
+      dpr={[1, 2]}
+      gl={{ antialias: false, alpha: true, powerPreference: "high-performance" }}
+      onCreated={({ gl }) => {
+        gl.toneMapping = THREE.ACESFilmicToneMapping;
+        gl.toneMappingExposure = 1.4;
+      }}
       style={{ background: "transparent" }}
     >
       <EarthScene audioIntensity={audioIntensity} />
