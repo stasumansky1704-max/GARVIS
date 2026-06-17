@@ -68,24 +68,28 @@ def test_llm_planner_never_executes():
 
 
 # ---------- Research worker (read-only) ----------
-def test_research_worker_mock_returns_structured_findings():
-    env = ResearchWorker(mock=True).run(TaskSpec(id="t1", worker="research", intent="r",
-                                                 inputs={"query": "best tts"}))
+_FAKE_FETCH = lambda q: ([{"title": "T", "url": "https://e/x", "snippet": "s", "source": "wikipedia"}], [])
+
+
+def test_research_worker_returns_structured_findings():
+    env = ResearchWorker(fetch=_FAKE_FETCH).run(
+        TaskSpec(id="t1", worker="research", intent="r", inputs={"query": "best tts"}))
     assert env.status == Status.DONE
-    for k in ("query", "findings", "sources", "summary", "mock"):
+    for k in ("query", "findings", "sources", "summary", "count"):
         assert k in env.result
-    assert env.result["mock"] is True
+    assert env.result["count"] == 1 and env.result["sources"] == ["https://e/x"]
 
 
 def test_research_worker_missing_query_fails():
-    env = ResearchWorker(mock=True).run(TaskSpec(id="t1", worker="research", intent="r"))
+    env = ResearchWorker(fetch=_FAKE_FETCH).run(TaskSpec(id="t1", worker="research", intent="r"))
     assert env.status == Status.FAILED
 
 
-def test_research_worker_real_mode_blocks_safely():
-    env = ResearchWorker(mock=False).run(TaskSpec(id="t1", worker="research", intent="r",
-                                                  inputs={"query": "q"}))
-    assert env.status == Status.BLOCKED            # real backend intentionally not wired
+def test_research_worker_no_results_is_done_not_fabricated():
+    env = ResearchWorker(fetch=lambda q: ([], ["wikipedia: err"])).run(
+        TaskSpec(id="t1", worker="research", intent="r", inputs={"query": "q"}))
+    assert env.status == Status.DONE and env.result["count"] == 0
+    assert "No results" in env.result["summary"]      # honest, not fake
 
 
 # ---------- Router resilience ----------
@@ -106,7 +110,7 @@ def test_router_dependency_cycle_blocks():
         TaskSpec(id="t1", worker="research", intent="x", deps=["t2"]),
         TaskSpec(id="t2", worker="research", intent="x", deps=["t1"]),
     ])
-    res = router.dispatch(plan, workers={"research": ResearchWorker(mock=True)})
+    res = router.dispatch(plan, workers={"research": ResearchWorker(fetch=lambda q: ([], []))})
     assert res["t1"].status == Status.BLOCKED and "cycle" in res["t1"].error.lower()
 
 
@@ -116,7 +120,7 @@ def test_router_kill_switch_blocks_all():
     router.kill = True
     from orchestrator.models import Plan
     plan = Plan(run_id="r", goal="g", tasks=[TaskSpec(id="t1", worker="research", intent="x")])
-    res = router.dispatch(plan, workers={"research": ResearchWorker(mock=True)})
+    res = router.dispatch(plan, workers={"research": ResearchWorker(fetch=lambda q: ([], []))})
     assert res["t1"].status == Status.BLOCKED and "kill" in res["t1"].error.lower()
 
 
