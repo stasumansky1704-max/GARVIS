@@ -416,6 +416,82 @@ class MemoryStore:
         return {"nodes": len(self.all()), "edges": len(self.links()),
                 "topics": len(self.topics())}
 
+    def cross_topic_link(self) -> int:
+        """Link representative memories ACROSS different topics that share a term - connects
+        otherwise-separate clusters. Returns edges created."""
+        topics = self.topics()
+        existing = {frozenset((e["a"], e["b"])) for e in self.links()}
+        created = 0
+        for i in range(len(topics)):
+            for j in range(i + 1, len(topics)):
+                shared = set(topics[i]["topic"].split()) & set(topics[j]["topic"].split())
+                if not shared:
+                    continue
+                a, b = topics[i]["ids"][0], topics[j]["ids"][0]
+                if frozenset((a, b)) in existing or a == b:
+                    continue
+                if self.link(a, b, rel="cross-topic"):
+                    existing.add(frozenset((a, b)))
+                    created += 1
+        return created
+
+    def detect_conflicts(self) -> list[dict]:
+        """Find likely-contradicting memories in the same layer: high token overlap where
+        exactly one side carries a negation (never/not/avoid/no). Surfaces stale beliefs."""
+        neg = {"never", "not", "no", "avoid", "dont", "don", "stop", "disable"}
+        recs = self.list("rule") + self.list("decision")
+        out = []
+        for i in range(len(recs)):
+            ti = _tokens(recs[i]["text"]); ni = bool(ti & neg)
+            for j in range(i + 1, len(recs)):
+                if recs[i]["layer"] != recs[j]["layer"]:
+                    continue
+                tj = _tokens(recs[j]["text"]); nj = bool(tj & neg)
+                if ni == nj or not ti or not tj:
+                    continue
+                core = (ti - neg) & (tj - neg)
+                if len(core) >= 2:                          # same subject, opposite stance
+                    out.append({"a": recs[i]["id"], "b": recs[j]["id"],
+                                "shared": sorted(core)[:4]})
+        return out
+
+    def context_relevance(self, goal: str) -> float:
+        """0..1: how well memory covers a goal (fraction of goal terms present in memory)."""
+        terms = _tokens(goal)
+        if not terms:
+            return 0.0
+        corpus = set()
+        for r in self.list():
+            if not r.get("archived"):
+                corpus |= _tokens(r["text"])
+        return round(len(terms & corpus) / len(terms), 3)
+
+    def long_term_score(self, rec: dict, now_ts: float | None = None) -> float:
+        """How worth-keeping a memory is long-term: importance + confidence + use, with a
+        gentle age penalty (protected rules always score 1.0)."""
+        if is_protected(rec):
+            return 1.0
+        imp = float(rec.get("importance", 0.5))
+        conf = float(rec.get("confidence", 1.0))
+        uses = min(0.3, 0.05 * int(rec.get("uses", 0)))
+        age_pen = min(0.3, self._age_days(rec, now_ts) / 365.0 * 0.3)
+        return round(max(0.0, 0.5 * imp + 0.2 * conf + uses - age_pen), 4)
+
+    def influence_report(self, limit: int = 10) -> list[dict]:
+        """Most influential memories (by long-term score) - what actually drives planning."""
+        scored = [{"id": r["id"], "layer": r["layer"], "text": r["text"][:70],
+                   "score": self.long_term_score(r)} for r in self.all()
+                  if not r.get("archived")]
+        scored.sort(key=lambda x: -x["score"])
+        return scored[:limit]
+
+    def health_report(self) -> dict:
+        """Memory health: inventory + graph + conflicts + duplicate groups."""
+        snap = self.inspect()
+        conflicts = self.detect_conflicts()
+        return {**snap, "graph": self.graph_stats(),
+                "conflicts": len(conflicts), "conflict_pairs": conflicts[:5]}
+
     def graph_terms(self, goal: str, limit: int = 6) -> list[str]:
         """Graph-aware query terms: pull terms from memories LINKED to the goal's most
         relevant memory, plus terms from topics that match the goal. Surfaces connected

@@ -207,6 +207,44 @@ def rewrite_query(goal: str, memory=None) -> str:
     return base
 
 
+def learning_history(memory) -> list[dict]:
+    """All self-learned memories, newest last - GARVIS's record of what it has learned."""
+    return [{"ts": m.get("ts"), "layer": m["layer"], "text": m["text"],
+             "importance": m.get("importance")}
+            for m in memory.list() if "self-learned" in (m.get("tags") or [])]
+
+
+def learning_confidence(memory) -> float:
+    """0..1 confidence in accumulated learning: scales with lesson count + avg importance +
+    reinforcement (uses)."""
+    lessons = [m for m in memory.list() if "self-learned" in (m.get("tags") or [])]
+    if not lessons:
+        return 0.0
+    volume = min(1.0, len(lessons) / 8.0)
+    avg_imp = sum(float(m.get("importance", 0.5)) for m in lessons) / len(lessons)
+    reinforced = min(1.0, sum(int(m.get("uses", 0)) for m in lessons) / 5.0)
+    return round(0.5 * volume + 0.3 * avg_imp + 0.2 * reinforced, 3)
+
+
+def learning_quality(history, memory) -> dict:
+    """Lessons learned vs problems observed - are we actually learning from mistakes?"""
+    problems = (analyze_empty_results(history)["empty_runs"]
+                + analyze_weak_plans(history)["weak_runs"]
+                + analyze_repeat_failures(history)["repeat_goals"])
+    lessons = len(learning_history(memory))
+    return {"problems": problems, "lessons": lessons,
+            "coverage": round(min(1.0, lessons / problems), 3) if problems else 1.0,
+            "confidence": learning_confidence(memory)}
+
+
+def learning_diagnostics(history, audit, memory) -> dict:
+    """One-call learning health for the metrics surface."""
+    return {"history_count": len(learning_history(memory)),
+            "confidence": learning_confidence(memory),
+            "quality": learning_quality(history, memory),
+            "open_recommendations": len(recommend(history, audit))}
+
+
 def insights(history, audit) -> dict:
     """One-call snapshot of everything self-learning observed."""
     return {"failures": analyze_failures(history),

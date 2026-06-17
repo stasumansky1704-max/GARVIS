@@ -88,6 +88,107 @@ def plan_quality(tasks: list) -> float:
     return score_plan(tasks)["score"]
 
 
+def topic_centrality(memory) -> list[dict]:
+    """Rank memory topics by centrality (cluster size). Returns [{topic, terms, score}]."""
+    try:
+        topics = memory.topics()
+    except Exception:
+        return []
+    total = sum(t["size"] for t in topics) or 1
+    return [{"topic": t["topic"], "terms": t["topic"].split(),
+             "score": round(t["size"] / total, 3)} for t in topics]
+
+
+def rank_queries_by_centrality(queries: list[str], memory) -> list[str]:
+    """Order queries so those touching the most central memory topics come first.
+    Stable for queries with no topic signal (keeps original order)."""
+    central = topic_centrality(memory)
+    if not central:
+        return list(queries)
+    weight = {}
+    for c in central:
+        for term in c["terms"]:
+            weight[term] = max(weight.get(term, 0.0), c["score"])
+
+    def qscore(q):
+        toks = set(extract_terms(q, keep_short=True))
+        return sum(weight.get(t, 0.0) for t in toks)
+
+    return [q for _, q in sorted(enumerate(queries),
+            key=lambda iq: (-qscore(iq[1]), iq[0]))]
+
+
+def multi_strategy_decompose(goal: str, memory=None, max_tasks: int = 5) -> dict:
+    """Combine multiple decomposition strategies (smart + graph + facet), dedup, and rank
+    by topic centrality. Returns {queries, strategies_used} - measurably broader than one."""
+    from .decompose import decompose_smart, decompose_graph, decompose
+    strategies = {"smart": decompose_smart(goal, max_tasks),
+                  "facet": decompose(goal, max_tasks)}
+    if memory is not None:
+        strategies["graph"] = decompose_graph(goal, memory, max_tasks)
+    merged, seen = [], set()
+    for qs in strategies.values():
+        for q in qs:
+            if q and q.lower() not in seen:
+                seen.add(q.lower())
+                merged.append(q)
+    if memory is not None:
+        merged = rank_queries_by_centrality(merged, memory)
+    return {"queries": merged[:max_tasks],
+            "strategies_used": [k for k, v in strategies.items() if v]}
+
+
+def planning_confidence(tasks: list, memory=None, goal: str = "") -> float:
+    """0..1 confidence in a plan: blends plan quality, memory coverage of the goal, and
+    whether the task count matches the goal's complexity."""
+    pq = plan_quality(tasks)
+    coverage = 0.0
+    if memory is not None and goal:
+        try:
+            ctx = memory.planner_context(goal)
+            signal = len(ctx.get("relevant", [])) + len(ctx.get("graph_terms", []))
+            coverage = min(1.0, signal / 5.0)
+        except Exception:
+            coverage = 0.0
+    want = recommended_task_count(goal, cap=max(2, len(tasks) or 2)) if goal else len(tasks)
+    fit = 1.0 - min(1.0, abs(len(tasks) - want) / max(1, want))
+    return round(0.5 * pq + 0.3 * coverage + 0.2 * fit, 3)
+
+
+def self_review(tasks: list) -> dict:
+    """Planner self-review: surface concrete plan issues before dispatch."""
+    issues = []
+    sp = score_plan(tasks)
+    if not tasks:
+        issues.append("empty plan")
+    if sp["duplicates"]:
+        issues.append(f"{sp['duplicates']} duplicate task(s)")
+    if sp["dangling_deps"]:
+        issues.append(f"{sp['dangling_deps']} task(s) depend on unknown ids")
+    if len(tasks) == 1:
+        issues.append("single-task plan (low breadth)")
+    return {"ok": not issues, "issues": issues, "score": sp["score"]}
+
+
+def explain_plan(goal: str, tasks: list, memory=None) -> dict:
+    """Human-readable explanation of WHY this plan (queries, strategies, confidence)."""
+    return {"goal": goal, "tasks": len(tasks),
+            "queries": [(t.inputs or {}).get("query", t.intent) for t in tasks],
+            "confidence": planning_confidence(tasks, memory, goal),
+            "complexity": estimate_complexity(goal),
+            "review": self_review(tasks),
+            "central_topics": [c["topic"] for c in topic_centrality(memory)][:3]
+                              if memory is not None else []}
+
+
+def planning_diagnostics(tasks: list, memory=None, goal: str = "") -> dict:
+    """Aggregate planning health for the metrics surface."""
+    return {"plan_quality": plan_quality(tasks),
+            "confidence": planning_confidence(tasks, memory, goal),
+            "review": self_review(tasks),
+            "complexity": estimate_complexity(goal) if goal else 0}
+
+
 def classify_error(msg: str) -> str:
     m = (msg or "").lower()
     if any(t in m for t in ("rate limit", "ratelimit", "429")):
