@@ -661,6 +661,141 @@ body {
   .intel-rail { width: 100%; max-width: 100%; }
 }
 
+/* ===================== Intelligence Hub (full command center) ===================== */
+.ihub {
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background:
+    radial-gradient(circle at 50% 38%, rgba(0, 110, 180, 0.12), transparent 45%),
+    #03070f;
+  color: var(--text);
+  overflow: hidden;
+}
+.ihub-body {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 248px 1fr 340px;
+}
+
+/* ----- sidebar ----- */
+.ihub-side {
+  display: flex;
+  flex-direction: column;
+  padding: 22px 18px;
+  border-right: 1px solid rgba(0, 212, 255, 0.1);
+  background: linear-gradient(180deg, rgba(7, 15, 28, 0.6), rgba(3, 7, 15, 0.2));
+}
+.ihub-logo { display: flex; gap: 12px; align-items: center; margin-bottom: 30px; }
+.ihub-logo-mark {
+  width: 40px; height: 40px; border-radius: 10px; display: grid; place-items: center;
+  font-family: var(--font-display); font-size: 20px; color: var(--cyan);
+  border: 1px solid rgba(0, 212, 255, 0.5);
+  box-shadow: 0 0 18px rgba(0, 212, 255, 0.25), inset 0 0 12px rgba(0, 212, 255, 0.15);
+}
+.ihub-logo-text { font-family: var(--font-display); font-size: 18px; letter-spacing: 0.12em; color: var(--white); }
+.ihub-logo-sub { font-size: 8.5px; letter-spacing: 0.14em; color: var(--text-dim); margin-top: 3px; }
+.ihub-nav { display: flex; flex-direction: column; gap: 4px; }
+.ihub-nav-item {
+  display: flex; align-items: center; gap: 12px; padding: 11px 12px; border-radius: 10px;
+  background: transparent; border: 1px solid transparent; color: var(--text-dim);
+  font-size: 13px; letter-spacing: 0.04em; cursor: pointer; text-align: left;
+  transition: all 0.2s ease;
+}
+.ihub-nav-item:hover { color: var(--text); background: rgba(0, 212, 255, 0.05); }
+.ihub-nav-item.active {
+  color: var(--cyan); background: rgba(0, 212, 255, 0.1);
+  border-color: rgba(0, 212, 255, 0.35); box-shadow: inset 2px 0 0 var(--cyan);
+}
+.ihub-nav-glyph { width: 18px; text-align: center; opacity: 0.9; }
+.ihub-side-foot { margin-top: auto; display: flex; flex-direction: column; gap: 16px; }
+.ihub-status-card { border: 1px solid var(--border); border-radius: 12px; padding: 14px; background: var(--bg-panel); }
+.ihub-status-row { display: flex; justify-content: space-between; align-items: center; color: var(--text-dim); font-size: 10px; letter-spacing: 0.1em; }
+.ihub-status-online { color: var(--green); font-family: var(--font-display); font-size: 22px; margin-top: 6px; }
+.ihub-status-sub { color: var(--green); opacity: 0.6; font-size: 10px; letter-spacing: 0.08em; margin-top: 2px; }
+.ihub-quote { font-size: 12px; font-style: italic; color: var(--text-dim); line-height: 1.6; border-left: 2px solid rgba(0,212,255,0.3); padding-left: 12px; }
+.ihub-quote cite { display: block; margin-top: 8px; color: var(--cyan); font-style: normal; }
+
+/* ----- center stage ----- */
+.ihub-center { display: flex; flex-direction: column; min-width: 0; padding: 22px 26px 0; }
+.ihub-top { display: flex; justify-content: space-between; align-items: flex-start; }
+.ihub-top h1 { font-family: var(--font-display); font-size: 30px; letter-spacing: 0.16em; color: var(--white); }
+.ihub-top p { color: var(--text-dim); font-size: 11px; letter-spacing: 0.18em; margin-top: 6px; }
+.ihub-top-right { display: flex; align-items: center; gap: 22px; }
+.ihub-sync { display: flex; align-items: center; gap: 8px; color: var(--cyan); font-size: 12px; letter-spacing: 0.12em; }
+.ihub-sync i { width: 8px; height: 8px; border-radius: 50%; background: var(--cyan); box-shadow: 0 0 10px var(--cyan); animation: badge-pulse 1.8s infinite; }
+.ihub-clock { font-family: var(--font-mono); font-size: 20px; color: var(--white); text-align: right; }
+.ihub-clock small { display: block; font-size: 9px; color: var(--text-dim); letter-spacing: 0.16em; }
+
+.ihub-stage { position: relative; flex: 1; min-height: 0; margin-top: 6px; }
+.ihub-globe { position: absolute; inset: 0; }
+.ihub-links { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 5; }
+
+.ihub-hex {
+  position: absolute; transform: translate(-50%, -50%); width: 152px; height: 158px;
+  z-index: 10;
+  clip-path: polygon(25% 1%, 75% 1%, 100% 50%, 75% 99%, 25% 99%, 0% 50%);
+  background: var(--accent);
+  filter: drop-shadow(0 0 12px color-mix(in srgb, var(--accent) 45%, transparent));
+}
+.ihub-hex-inner {
+  width: 100%; height: 100%;
+  clip-path: polygon(25% 1%, 75% 1%, 100% 50%, 75% 99%, 25% 99%, 0% 50%);
+  background: rgba(6, 13, 24, 0.92);
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 6px; text-align: center; padding: 0 22px;
+  transform: scale(0.985);
+}
+.ihub-hex-glyph { font-size: 22px; filter: drop-shadow(0 0 8px var(--accent)); }
+.ihub-hex h3 { font-family: var(--font-display); font-size: 12.5px; letter-spacing: 0.06em; color: var(--white); line-height: 1.25; }
+.ihub-hex-metric { font-family: var(--font-mono); font-size: 12px; color: var(--text); }
+.ihub-hex-state { display: flex; align-items: center; gap: 6px; font-size: 9.5px; letter-spacing: 0.08em; color: var(--accent); }
+.ihub-hex-state i { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 6px var(--accent); }
+
+.ihub-command { display: flex; align-items: center; gap: 12px; justify-content: center; padding: 14px 0 18px; }
+.ihub-command-wave { color: var(--green); font-size: 18px; }
+.ihub-command strong { font-family: var(--font-display); letter-spacing: 0.1em; color: var(--green); font-size: 14px; }
+.ihub-command small { display: block; color: var(--text-dim); font-size: 10px; letter-spacing: 0.12em; margin-top: 2px; }
+
+/* ----- right rail ----- */
+.ihub-right { display: flex; flex-direction: column; gap: 14px; padding: 22px 18px; border-left: 1px solid rgba(0, 212, 255, 0.1); min-height: 0; }
+.ihub-panel { background: var(--bg-panel); border: 1px solid var(--border); border-radius: 14px; padding: 14px; backdrop-filter: blur(16px); }
+.ihub-panel-grow { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.ihub-panel-head { font-family: var(--font-display); font-size: 12px; letter-spacing: 0.1em; color: var(--cyan); margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; }
+.ihub-demo { font-family: var(--font-mono); font-size: 8px; color: var(--text-dim); border: 1px solid var(--border); border-radius: 6px; padding: 2px 6px; letter-spacing: 0.1em; }
+.ihub-map {
+  height: 92px; border-radius: 10px; margin-bottom: 12px;
+  background:
+    radial-gradient(circle, rgba(0,212,255,0.55) 0.6px, transparent 1px) 0 0 / 9px 9px,
+    radial-gradient(circle at 30% 40%, rgba(0,212,255,0.2), transparent 55%),
+    rgba(0, 30, 50, 0.4);
+  opacity: 0.7;
+}
+.ihub-overview { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; text-align: center; }
+.ihub-overview b { display: block; font-family: var(--font-display); font-size: 22px; color: var(--white); }
+.ihub-overview span { font-size: 9px; letter-spacing: 0.08em; color: var(--text-dim); }
+.ihub-feed { list-style: none; display: flex; flex-direction: column; gap: 12px; overflow: auto; flex: 1; }
+.ihub-feed li { display: grid; grid-template-columns: auto auto; gap: 4px 8px; align-items: center; }
+.ihub-feed-time { font-family: var(--font-mono); font-size: 10px; color: var(--cyan); }
+.ihub-feed-cat { font-size: 9px; letter-spacing: 0.1em; color: var(--text-dim); }
+.ihub-feed p { grid-column: 1 / -1; font-size: 12px; color: var(--text); line-height: 1.45; }
+.ihub-link-btn { margin-top: 12px; width: 100%; background: rgba(0, 212, 255, 0.06); border: 1px solid var(--border); color: var(--cyan); padding: 9px; border-radius: 9px; font-size: 11px; letter-spacing: 0.1em; cursor: pointer; }
+.ihub-link-btn:hover { background: rgba(0, 212, 255, 0.12); }
+.ihub-add { color: var(--green); }
+.ihub-cmds { list-style: none; display: flex; flex-direction: column; gap: 10px; }
+.ihub-cmds li { position: relative; padding-left: 16px; font-size: 12.5px; color: var(--text); }
+.ihub-cmds li::before { content: ""; position: absolute; left: 0; top: 6px; width: 6px; height: 6px; border-radius: 50%; background: var(--cyan); box-shadow: 0 0 6px var(--cyan); }
+
+/* ----- bottom stats ----- */
+.ihub-stats { display: flex; align-items: center; gap: 26px; padding: 10px 26px; border-top: 1px solid rgba(0,212,255,0.1); background: rgba(4, 9, 18, 0.7); }
+.ihub-stat { display: flex; flex-direction: column; gap: 2px; min-width: 90px; color: var(--cyan); }
+.ihub-stat-label { font-size: 9px; letter-spacing: 0.1em; color: var(--text-dim); }
+.ihub-stat-value { font-family: var(--font-mono); font-size: 17px; color: var(--white); }
+.ihub-spark { width: 90px; height: 14px; color: rgba(0,212,255,0.6); }
+.ihub-stat-note { margin-left: auto; min-width: 0; color: var(--text-dim); font-size: 10px; letter-spacing: 0.06em; }
+
 ::-webkit-scrollbar {
   width: 8px;
 }

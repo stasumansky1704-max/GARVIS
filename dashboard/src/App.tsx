@@ -1,13 +1,8 @@
 import { useEffect, useState } from "react";
-import HolographicEarth3D from "./components/HolographicEarth3D";
 import LivingCore from "./living-core/LivingCore";
 import StatusBadge from "./components/StatusBadge";
-import {
-  FACTORIES,
-  INTEL_LAYERS,
-  factoriesSummary,
-  intelSummary,
-} from "./data/missionControl";
+import IntelHub from "./components/IntelHub";
+import { FACTORIES, factoriesSummary } from "./data/missionControl";
 
 type Page = "home" | "workflows" | "intelligence" | "settings";
 
@@ -42,6 +37,16 @@ export default function App() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
+  // Intelligence Hub is a full-bleed command center with its own chrome (sidebar). The
+  // other screens (incl. Home / Living Core) keep the original top-nav frame, untouched.
+  if (page === "intelligence") {
+    return (
+      <div className="jarvis-app">
+        <IntelHub audioIntensity={audioIntensity} page={page} onNavigate={setPage} />
+      </div>
+    );
+  }
+
   return (
     <div className="jarvis-app">
       <nav className="jarvis-nav">
@@ -74,7 +79,6 @@ export default function App() {
       <main className="jarvis-main">
         {page === "home" && <HomePage audioIntensity={audioIntensity} />}
         {page === "workflows" && <WorkflowsPage />}
-        {page === "intelligence" && <IntelligencePage audioIntensity={audioIntensity} />}
         {page === "settings" && <SettingsPage />}
       </main>
     </div>
@@ -111,53 +115,6 @@ function WorkflowsPage() {
         shows “Active” until it is wired to a real capability.
       </p>
     </section>
-  );
-}
-
-function IntelligencePage({ audioIntensity }: { audioIntensity: number }) {
-  // The holographic Earth is the hero. Layer cards sit in side rails so they never
-  // block the globe (cybernetic command-center framing, not a dashboard grid).
-  const left = INTEL_LAYERS.slice(0, 3);
-  const right = INTEL_LAYERS.slice(3);
-
-  return (
-    <section className="intel-screen">
-      <div className="earth-stage">
-        <HolographicEarth3D audioIntensity={audioIntensity} />
-      </div>
-
-      <div className="intel-overlay">
-        <header className="intel-header">
-          <h1>INTELLIGENCE HUB</h1>
-          <p>{intelSummary()}</p>
-        </header>
-
-        <div className="intel-rails">
-          <div className="intel-rail intel-rail--left">
-            {left.map((l) => <IntelCard key={l.id} layer={l} />)}
-          </div>
-          <div className="intel-rail intel-rail--right">
-            {right.map((l) => <IntelCard key={l.id} layer={l} />)}
-          </div>
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function IntelCard({ layer }: { layer: (typeof INTEL_LAYERS)[number] }) {
-  return (
-    <article className="intel-card">
-      <div className="intel-card-top">
-        <span className="intel-glyph" aria-hidden>{layer.glyph}</span>
-        <span className="intel-card-title">{layer.name}</span>
-        <StatusBadge status={layer.connection} />
-      </div>
-      <p>{layer.summary}</p>
-      <div className="intel-card-foot">
-        <StatusBadge status={layer.maturity} />
-      </div>
-    </article>
   );
 }
 

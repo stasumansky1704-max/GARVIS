@@ -321,9 +321,10 @@ function EarthScene({ audioIntensity = 0 }: EarthProps) {
       <EffectComposer multisampling={0} frameBufferType={THREE.HalfFloatType}>
         <SMAA />
         <Bloom
-          intensity={0.85 + audioIntensity * 1.1}
-          luminanceThreshold={0.45}
-          luminanceSmoothing={0.9}
+          intensity={1.6 + audioIntensity * 1.1}
+          luminanceThreshold={0.28}
+          luminanceSmoothing={0.92}
+          radius={0.7}
           mipmapBlur
         />
         <Vignette offset={0.32} darkness={0.7} />
@@ -351,7 +352,7 @@ export default function HolographicEarth3D({ audioIntensity = 0 }: EarthProps) {
   return (
     <Canvas
       camera={{ position: [0, 0.5, 6.0], fov: 45 }}
-      dpr={[1, 2]}
+      dpr={[1, 1.5]}
       gl={{ antialias: false, alpha: true, powerPreference: "high-performance" }}
       onCreated={({ gl }) => {
         gl.toneMapping = THREE.ACESFilmicToneMapping;
