@@ -41,6 +41,7 @@ from orchestrator.goals import GoalRegistry
 from orchestrator.queue import ResearchQueue
 from orchestrator.brief import daily_brief, daily_brief_full, weekly_brief, review_run
 from orchestrator import scheduler
+from orchestrator import ops
 from orchestrator.workers.github_worker import GitHubReadWorker, GitHubDraftPRWorker
 
 
@@ -431,6 +432,119 @@ def cmd_draft_pr(goal, approve, allow_empty, cfg):
     return 0
 
 
+def _build_workflows(cfg, with_github=False):
+    """Construct a Workflows facade backed by the real orchestrator (read-only research)."""
+    from orchestrator.workflows import Workflows
+    from orchestrator.workers.github_worker import GitHubReadWorker
+    mem, goals, queue, hist = _stores(cfg)
+
+    def research_fn(goal):
+        orch, _, audit, art = build(cfg)
+        fb = [TaskSpec(id=f"r{i}", worker="research", intent=s, inputs={"query": s})
+              for i, s in enumerate(decompose_smart(goal, 5))]
+        run = orch.run_goal(goal, planner=None, fallback_tasks=fb, history=hist,
+                            budget=RunBudget.from_config(cfg), audit=audit,
+                            memory_context=mem.planner_context(goal))
+        findings = [f for e in run.results.values() if isinstance(e.result, dict)
+                    for f in e.result.get("findings", [])]
+        qual = max((e.result.get("quality", 0.0) for e in run.results.values()
+                    if isinstance(e.result, dict)), default=0.0)
+        return {"run_id": run.id, "findings": findings,
+                "summary": gen.research_summary(run), "quality": qual}
+
+    gh = GitHubReadWorker().client if with_github else None
+    return Workflows(research_fn=research_fn, github_client=gh, memory=mem,
+                     goals=goals, queue=queue, history=hist)
+
+
+def cmd_workflow(rest, cfg):
+    """Run a real end-to-end workflow from the CLI. Safe by default (no live PR creation)."""
+    if is_disabled():
+        print("[DISABLED] refusing to run."); return 3
+    if not rest:
+        from orchestrator.workflows import WORKFLOW_NAMES
+        print("usage: cli.py workflow <name> [args]"); print("names:", ", ".join(WORKFLOW_NAMES))
+        return 2
+    name = rest[0]
+    args = rest[1:]
+    goal = " ".join(a for a in args if not a.isdigit()).strip()
+    needs_gh = name in ("pr-risk",)
+    wf = _build_workflows(cfg, with_github=needs_gh)
+    if name == "research-to-report":
+        out = wf.research_to_report(goal)
+    elif name == "research-to-proposal":
+        out = wf.research_to_proposal(goal); out.pop("proposal_md", None)
+    elif name == "draft-pr-preview":
+        out = wf.research_to_draft_pr_preview(goal); out.pop("diff", None)
+    elif name == "goal-to-queue":
+        out = wf.goal_to_queue(goal)
+    elif name == "queue-to-brief":
+        out = wf.queue_to_brief(); out["brief"] = "(written)"
+    elif name == "review-to-memory" and len(args) >= 2:
+        out = wf.review_to_memory(args[0], args[1], " ".join(args[2:]))
+    elif name == "planner-context":
+        out = wf.memory_to_planner_context(goal)
+    elif name == "pr-risk" and args and args[0].isdigit():
+        out = wf.github_pr_risk_review(int(args[0]))
+    elif name == "safe-demo":
+        out = wf.safe_demo(goal or "open source AI agent frameworks")
+    else:
+        print("unknown/invalid workflow:", name); return 2
+    import json as _j
+    print(_j.dumps(out, ensure_ascii=False, indent=2, default=str))
+    return 0
+
+
+def cmd_verify(cfg):
+    """Run all safety regression checks (isolation, no-WDM-KS, no-sd.rec, gitignored, config)."""
+    res = ops.verify()
+    for c in res["checks"]:
+        flag = "OK " if c["ok"] else "FAIL"
+        detail = c.get("offenders") or c.get("missing") or c.get("problems") or ""
+        print(f"  [{flag}] {c['name']}" + (f"  -> {detail}" if detail else ""))
+    print("  => verify:", "PASS" if res["ok"] else "FAIL")
+    return 0 if res["ok"] else 1
+
+
+def cmd_validate(cfg):
+    s = ops.validation_summary()
+    print("  safety_ok:", s["safety_ok"])
+    for name, ok in s["checks"].items():
+        print(f"    {name}: {'ok' if ok else 'FAIL'}")
+    print(f"  test suites discoverable: {len(s['test_suites'])}")
+    for t in s["test_suites"]:
+        print("    -", t)
+    return 0 if s["safety_ok"] else 1
+
+
+def cmd_health(cfg):
+    h = ops.health()
+    print(f"  {h['version']}")
+    print(f"  health: {'OK' if h['ok'] else 'DEGRADED'}  ({h['passed']}/{h['total']} checks)")
+    if h["failing"]:
+        print("  failing:", ", ".join(h["failing"]))
+    return 0 if h["ok"] else 1
+
+
+def cmd_version(cfg):
+    for k, v in ops.version_status().items():
+        print(f"  {k}: {v}")
+    return 0
+
+
+def cmd_config(rest, cfg):
+    sub = rest[0] if rest else "explain"
+    if sub == "doctor":
+        d = ops.config_doctor()
+        print("  config doctor:", "OK" if d["ok"] else "PROBLEMS")
+        for p in d.get("problems", []):
+            print("   -", p)
+        return 0 if d["ok"] else 1
+    for k, v in ops.config_explain().items():
+        print(f"  {k}: {v}")
+    return 0
+
+
 def main(argv):
     try:
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -474,6 +588,18 @@ def main(argv):
         return cmd_brief(rest, cfg)
     if cmd == "scheduler":
         return cmd_scheduler(rest, cfg)
+    if cmd == "verify":
+        return cmd_verify(cfg)
+    if cmd == "validate":
+        return cmd_validate(cfg)
+    if cmd == "health":
+        return cmd_health(cfg)
+    if cmd == "version":
+        return cmd_version(cfg)
+    if cmd == "config":
+        return cmd_config(rest, cfg)
+    if cmd == "workflow":
+        return cmd_workflow(rest, cfg)
     if cmd == "review":
         return cmd_review(rest, cfg)
     if cmd == "github":
