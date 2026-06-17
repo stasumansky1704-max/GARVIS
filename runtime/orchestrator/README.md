@@ -47,7 +47,14 @@ python runtime/orchestrator/cli.py review <run_id> <rating> [note]
 python runtime/orchestrator/cli.py github branches|pulls|commits|issues|risk <pr#>
 python runtime/orchestrator/cli.py propose "<goal>"           # research -> change proposal
 python runtime/orchestrator/cli.py artifacts [search <q>]
+
+# Draft PR (close-the-loop). DEFAULT = dry-run preview (no branch/file/PR created):
+python runtime/orchestrator/cli.py draft-pr "best python testing frameworks"
+# Create the REAL draft PR (new branch + proposal file + DRAFT PR; never main/merge/delete):
+python runtime/orchestrator/cli.py draft-pr "..." --approve-draft-pr
 ```
+The Draft-PR worker only ever creates a NEW `draft/garvis/*` branch off main, commits a
+`docs/proposals/*.md` file, and opens a **draft** PR - never main, never merge, never delete.
 Config: `runtime/orchestrator/orchestrator_config.json` (non-secret: limits, source
 toggles, default planner). Outputs go to gitignored `_artifacts/` and `_runs/`.
 All tests: `python tests/test_orchestrator_mvp.py`, `test_orchestrator_hardening.py`,
