@@ -40,6 +40,11 @@ def daily_brief_full(history, memory, goals=None, queue=None, audit=None) -> str
         due = queue.prioritized_due()[:8]
         extra += ["", "## Due research queue",
                   *([f"- {q['goal'][:60]}" for q in due] or ["- (none)"])]
+        rws = queue.rewrites()[:8] if hasattr(queue, "rewrites") else []
+        if rws:
+            extra += ["", "## Self-learned query rewrites",
+                      *[f"- '{(r['original'] or '')[:35]}' -> '{(r['rewritten'] or '')[:35]}'"
+                        for r in rws]]
     # Failed runs
     failed = [r for r in history.list() if r.get("status") in ("failed", "blocked")][-5:]
     extra += ["", "## Failed / blocked runs",

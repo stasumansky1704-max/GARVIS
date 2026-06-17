@@ -51,6 +51,17 @@ class ResearchQueue:
         self._append({"id": qid, "status": "done", "run_id": run_id,
                       "ts": time.strftime("%Y-%m-%dT%H:%M:%S")})
 
+    def annotate(self, qid: str, **fields) -> None:
+        """Attach metadata to a queue item (e.g. original_goal / rewritten_goal). Merged by
+        list() (latest event wins), so it persists without mutating prior events."""
+        self._append({"id": qid, "ts": time.strftime("%Y-%m-%dT%H:%M:%S"), **fields})
+
+    def rewrites(self) -> list[dict]:
+        """Items whose goal was rewritten by self-learning (original -> rewritten)."""
+        return [{"id": q["id"], "original": q.get("original_goal"),
+                 "rewritten": q.get("rewritten_goal")}
+                for q in self.list() if q.get("rewritten_goal")]
+
     def mark_failed(self, qid: str, error: str) -> dict:
         """Capture a failure; re-queue for retry until max_retries, then mark 'failed'.
         Returns the resulting state {status, attempts, will_retry}."""
