@@ -60,7 +60,13 @@ class TaskRouter:
                 progressed = True
                 if env.status == Status.DONE:
                     done.add(task.id)
-        for task in remaining:                   # deps blocked/failed or kill switch hit
-            results[task.id] = Envelope(task.id, Status.BLOCKED,
-                                        error="not run (dependency blocked or kill switch)")
+        remaining_ids = {t.id for t in remaining}
+        for task in remaining:                   # classify WHY it did not run
+            if self.kill:
+                reason = "kill switch engaged"
+            elif any(d in remaining_ids for d in task.deps):
+                reason = "dependency cycle or unrunnable dependency"
+            else:
+                reason = "upstream dependency blocked or failed"
+            results[task.id] = Envelope(task.id, Status.BLOCKED, error="not run: " + reason)
         return results

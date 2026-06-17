@@ -6,6 +6,7 @@ Zero effect on backend runtime behavior. Implement per docs/GARVIS_ORCHESTRATOR_
 """
 
 __all__ = [
-    "models", "registry", "gates", "planner", "router", "merger", "store",
+    "models", "registry", "gates", "planner", "llm_planner",
+    "router", "merger", "store", "engine",
 ]
 __version__ = "0.0.0-scaffold"
