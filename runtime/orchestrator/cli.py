@@ -47,6 +47,10 @@ from orchestrator import planning
 from orchestrator import monitor
 from orchestrator import autonomy
 from orchestrator import guardian
+from orchestrator import metrics as metricsmod
+from orchestrator import advisor
+from orchestrator import agents as agentsmod
+from orchestrator import templates as templatesmod
 from orchestrator.schedule import ScheduleStore
 from orchestrator.vault import VaultStore
 from orchestrator.brief import auto_review
@@ -695,6 +699,42 @@ def cmd_vault(rest, cfg):
     return 0
 
 
+def cmd_metrics(cfg):
+    """Unified self-observation: planner/worker/queue/goal/learning/memory/autonomy/quality."""
+    mem, goals, queue, hist = _stores(cfg)
+    audit = AuditLog(os.path.join(_hd(cfg), "audit.jsonl"))
+    import json as _j
+    print(_j.dumps(metricsmod.dashboard(hist, mem, goals, queue, audit),
+                   ensure_ascii=False, indent=2, default=str))
+    return 0
+
+
+def cmd_advisor(cfg):
+    """Autonomy report: suggested goals + next steps (reduces supervision)."""
+    mem, goals, queue, hist = _stores(cfg)
+    audit = AuditLog(os.path.join(_hd(cfg), "audit.jsonl"))
+    import json as _j
+    print(_j.dumps(advisor.autonomy_report(hist, audit, mem, goals, queue),
+                   ensure_ascii=False, indent=2, default=str))
+    return 0
+
+
+def cmd_capabilities(cfg):
+    """List the reusable agent capability registry (foundation for future agents)."""
+    reg = agentsmod.build_default_registry()
+    print(f"  {len(reg)} capabilities | kinds: {reg.kinds()}")
+    for c in reg.catalog():
+        print(f"    [{c['kind']:<9}] {c['name']:<16} {c['safety_class']:<8} {c['ref']}")
+    return 0
+
+
+def cmd_factory(cfg):
+    """Factory-readiness report (capability coverage + templates)."""
+    import json as _j
+    print(_j.dumps(templatesmod.factory_readiness(), ensure_ascii=False, indent=2, default=str))
+    return 0
+
+
 def cmd_guardian(cfg):
     """Mini-PC readiness report (prepare-only; no deployment)."""
     vault = VaultStore(os.path.join(_hd(cfg), "vault.jsonl"))
@@ -954,6 +994,14 @@ def main(argv):
         return cmd_vault(rest, cfg)
     if cmd == "guardian":
         return cmd_guardian(cfg)
+    if cmd == "metrics":
+        return cmd_metrics(cfg)
+    if cmd == "advisor":
+        return cmd_advisor(cfg)
+    if cmd == "capabilities":
+        return cmd_capabilities(cfg)
+    if cmd == "factory":
+        return cmd_factory(cfg)
     if cmd == "ci-install":
         return cmd_ci_install(rest, cfg)
     if cmd == "audit":
