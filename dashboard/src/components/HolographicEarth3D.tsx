@@ -44,7 +44,8 @@ function latLonToVec3(lat: number, lon: number, radius: number): THREE.Vector3 {
 // --- Textured, glowing Earth (real continents from earth.jpg, holographic cyan grade) ---
 function TexturedEarth({ ai = 0 }: { ai?: number }) {
   const ref = useRef<THREE.Group>(null);
-  const texture = useLoader(THREE.TextureLoader, "/textures/earth.jpg");
+  // Real equirectangular Blue Marble map (continents + oceans), not a scene render.
+  const texture = useLoader(THREE.TextureLoader, "/textures/earth_map.jpg");
   texture.colorSpace = THREE.SRGBColorSpace;
   texture.anisotropy = 8;
 
@@ -60,11 +61,11 @@ function TexturedEarth({ ai = 0 }: { ai?: number }) {
         <meshStandardMaterial
           map={texture}
           emissiveMap={texture}
-          emissive={new THREE.Color("#2c93c4")}
-          emissiveIntensity={0.85 + ai * 0.4}
-          metalness={0.15}
-          roughness={0.8}
-          color={new THREE.Color("#bfe6ff")}
+          emissive={new THREE.Color("#0a3550")}
+          emissiveIntensity={0.28 + ai * 0.3}
+          metalness={0}
+          roughness={1}
+          color={new THREE.Color("#ffffff")}
           transparent={false}
           depthWrite
         />
@@ -263,10 +264,10 @@ function FallbackGlobe() {
 function EarthScene({ audioIntensity = 0 }: EarthProps) {
   return (
     <>
-      <ambientLight intensity={0.35} />
-      <pointLight position={[0, 6, 1]} intensity={2.2} color="#cfeeff" />
-      <pointLight position={[5, 2, 5]} intensity={1.0} color="#00bfff" />
-      <pointLight position={[-5, -2, -4]} intensity={0.5} color="#0044aa" />
+      <ambientLight intensity={0.85} />
+      <pointLight position={[0, 2, 7]} intensity={2.4} color="#eaf6ff" />
+      <pointLight position={[0, 6, 1]} intensity={1.8} color="#ffffff" />
+      <pointLight position={[-5, -2, -4]} intensity={0.7} color="#0066cc" />
 
       <Suspense fallback={<FallbackGlobe />}>
         <TexturedEarth ai={audioIntensity} />
