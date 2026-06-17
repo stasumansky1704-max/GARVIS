@@ -23,3 +23,7 @@ voice_client/piper_voices/
 # Premium voice POC artifacts (audio output + downloaded STT models - never commit)
 voice_client/poc_out/
 voice_client/vosk-model/
+
+# Orchestrator runtime artifacts (generated at run time - never commit)
+runtime/orchestrator/_artifacts/
+runtime/orchestrator/_runs/

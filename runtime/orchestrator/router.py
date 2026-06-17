@@ -5,14 +5,20 @@ run in their own (inert) implementations. Honors a kill switch.
 """
 from __future__ import annotations
 
+import time
 from typing import TYPE_CHECKING
 
 from .gates import SafetyGate, ApprovalGate
-from .models import Plan, Envelope, Status
+from .models import Plan, Envelope, Status, SafetyClass
 from .registry import WorkerRegistry
 
 if TYPE_CHECKING:
     from .workers.base import Worker
+
+# Worker dispatch priority: reads first (cheap/safe), writes/external later.
+_PRIORITY = {SafetyClass.READ: 0, SafetyClass.WRITE: 1,
+             SafetyClass.EXTERNAL: 2, SafetyClass.DANGEROUS: 3}
+_READ_RETRIES = 3                                # idempotent READ workers retry on failure
 
 
 class TaskRouter:
@@ -36,31 +42,63 @@ class TaskRouter:
         worker = workers.get(task.worker)
         if worker is None:
             return Envelope(task.id, Status.FAILED, error=f"no worker impl for {task.worker!r}")
-        try:
-            return worker.run(task)
-        except Exception as exc:                 # never let a worker crash the run
-            return Envelope(task.id, Status.FAILED, error=f"{type(exc).__name__}: {exc}")
+        attempts = _READ_RETRIES if spec.safety_class == SafetyClass.READ else 1
+        last = None
+        for _ in range(attempts):                # retry idempotent READ workers on failure
+            try:
+                env = worker.run(task)
+            except Exception as exc:             # never let a worker crash the run
+                env = Envelope(task.id, Status.FAILED, error=f"{type(exc).__name__}: {exc}")
+            if env.status != Status.FAILED:
+                return env
+            last = env
+        return last
 
     def dispatch(self, plan: Plan, workers: dict[str, "Worker"],
-                 approvals: set[str] | None = None) -> dict[str, Envelope]:
+                 approvals: set[str] | None = None, max_seconds: float | None = None,
+                 audit=None) -> dict[str, Envelope]:
         if approvals:
             self.approval.approved |= set(approvals)
+
+        def _emit(kind, task, env=None):
+            if audit is not None:
+                d = {"task": task.id, "worker": task.worker}
+                if env is not None:
+                    d["status"] = getattr(env.status, "value", str(env.status))
+                    if env.error:
+                        d["error"] = env.error
+                audit.event(kind, **d)
+
         results: dict[str, Envelope] = {}
         done: set[str] = set()
         remaining = list(plan.tasks)
+        started = time.time()
         progressed = True
         while remaining and progressed and not self.kill:
+            if max_seconds is not None and (time.time() - started) > max_seconds:
+                self.kill = True                 # time budget exceeded -> stop dispatch
+                break
             progressed = False
-            for task in list(remaining):
-                if not all(d in done for d in task.deps):
-                    continue                     # deps not satisfied yet
+            ready = [t for t in remaining if all(d in done for d in t.deps)]
+            ready.sort(key=lambda t: _PRIORITY.get(             # reads before writes
+                getattr(self.registry.get(t.worker), "safety_class", SafetyClass.WRITE), 1))
+            for task in ready:
+                _emit("task_started", task)
                 env = self._run_one(task, workers)
                 results[task.id] = env
                 remaining.remove(task)
                 progressed = True
+                _emit("task_completed" if env.status == Status.DONE else "task_blocked",
+                      task, env)
                 if env.status == Status.DONE:
                     done.add(task.id)
-        for task in remaining:                   # deps blocked/failed or kill switch hit
-            results[task.id] = Envelope(task.id, Status.BLOCKED,
-                                        error="not run (dependency blocked or kill switch)")
+        remaining_ids = {t.id for t in remaining}
+        for task in remaining:                   # classify WHY it did not run
+            if self.kill:
+                reason = "kill switch engaged"
+            elif any(d in remaining_ids for d in task.deps):
+                reason = "dependency cycle or unrunnable dependency"
+            else:
+                reason = "upstream dependency blocked or failed"
+            results[task.id] = Envelope(task.id, Status.BLOCKED, error="not run: " + reason)
         return results

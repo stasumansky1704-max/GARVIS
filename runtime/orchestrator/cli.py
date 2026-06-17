@@ -1,0 +1,357 @@
+"""
+GARVIS orchestrator CLI - end-to-end, runnable from one command.
+
+  python runtime/orchestrator/cli.py research "best AI coding agents"
+  python runtime/orchestrator/cli.py research "..." --doc                 # + approval-gated docs task
+  python runtime/orchestrator/cli.py research "..." --doc --approve docs
+  python runtime/orchestrator/cli.py history
+  python runtime/orchestrator/cli.py show <run_id>
+  python runtime/orchestrator/cli.py smoke "<query>"                       # explicit LIVE smoke
+  python runtime/orchestrator/cli.py secret-scan                          # scan artifacts/history
+
+Flow: goal -> decomposed into focused research tasks -> LLM planner (fallback) ->
+Router (Safety+Approval gates, budgets) -> REAL Research Worker -> Merger -> History +
+Audit -> markdown report (gitignored). Read-only research; docs approval-gated; env kill
+switch GARVIS_ORCHESTRATOR_DISABLED=1 refuses to run.
+"""
+from __future__ import annotations
+
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # add runtime/
+
+from orchestrator import config as cfgmod
+from orchestrator.engine import Orchestrator, RunBudget, is_disabled
+from orchestrator.models import TaskSpec, Status
+from orchestrator.registry import WorkerRegistry
+from orchestrator.history import RunHistory
+from orchestrator.audit import AuditLog
+from orchestrator.report import generate_report
+from orchestrator.decompose import decompose
+from orchestrator.llm_planner import LLMPlanner
+from orchestrator.workers.research_worker import ResearchWorker
+from orchestrator.workers.docs_worker import DocsWorker
+from orchestrator.secret_scan import scan_dir
+from orchestrator.memory import MemoryStore, record_run
+from orchestrator import generators as gen
+from orchestrator import artifacts as artmod
+from orchestrator.goals import GoalRegistry
+from orchestrator.queue import ResearchQueue
+from orchestrator.brief import daily_brief, review_run
+from orchestrator.workers.github_worker import GitHubReadWorker
+
+
+def build(cfg):
+    art = cfgmod.artifact_dir(cfg)
+    his = cfgmod.history_dir(cfg)
+    research = ResearchWorker(max_findings=cfg["limits"]["max_findings"],
+                              sources=cfgmod.enabled_sources(cfg))
+    docs = DocsWorker(out_dir=art)
+    reg = WorkerRegistry()
+    reg.register(research.spec)
+    reg.register(docs.spec)
+    orch = Orchestrator(reg, {"research": research, "docs": docs})
+    return orch, RunHistory(os.path.join(his, "history.jsonl")), AuditLog(os.path.join(his, "audit.jsonl")), art
+
+
+def cmd_research(goal, with_doc, approvals, cfg):
+    if is_disabled():
+        print("[DISABLED] GARVIS_ORCHESTRATOR_DISABLED is set - refusing to run.")
+        return 3
+    orch, hist, audit, art = build(cfg)
+    budget = RunBudget.from_config(cfg)
+    n_research = max(1, budget.max_tasks - (1 if with_doc else 0))
+    subs = decompose(goal, n_research)
+    fb = [TaskSpec(id=f"r{i}", worker="research", intent=s, inputs={"query": s})
+          for i, s in enumerate(subs)]
+    if with_doc:
+        fb.append(TaskSpec(id="docs", worker="docs", intent="document findings",
+                           inputs={"title": goal}, deps=[t.id for t in fb],
+                           needs_approval=True))
+    mem = MemoryStore(os.path.join(cfgmod.history_dir(cfg), "memory.jsonl"))
+    planner = LLMPlanner(orch.registry) if cfg["default_planner"] == "llm" else None
+    run = orch.run_goal(goal, planner=planner, fallback_tasks=fb, approvals=approvals,
+                        history=hist, budget=budget, audit=audit,
+                        memory_context=mem.planner_context(goal))
+    record_run(mem, run)                                 # feedback loop: learn from this run
+    report_path = generate_report(run, art)
+
+    findings_total = sum(len(e.result.get("findings", [])) for e in run.results.values()
+                         if isinstance(e.result, dict))
+    print("=" * 66)
+    print(f"  GARVIS run {run.id}   status={run.status.value}")
+    print(f"  goal: {run.goal}")
+    print(f"  planner: {cfg['default_planner']} (deterministic decomposition fallback)")
+    print(f"  tasks executed: {len(run.results)}   findings: {findings_total}")
+    print("=" * 66)
+    for tid, env in run.results.items():
+        line = f"  [{tid}] {env.status.value}"
+        if isinstance(env.result, dict) and "summary" in env.result:
+            line += f"  ({env.result['count']} findings)"
+        if env.error:
+            line += f"  - {env.error}"
+        print(line)
+    pend = [tid for tid, e in run.results.items()
+            if e.status == Status.BLOCKED and e.error and "approval" in e.error.lower()]
+    if pend:
+        print("  PENDING APPROVAL:", ", ".join(pend), "(re-run with --approve <task_id>)")
+    print(f"  report:  {report_path}")
+    print(f"  history: {hist.path}")
+    print(f"  audit:   {audit.path}")
+    return 0
+
+
+def cmd_history(cfg):
+    _, hist, _, _ = build(cfg)
+    recs = hist.list()
+    print(f"{len(recs)} run(s):")
+    for r in recs[-20:]:
+        print(f"  {r['id']}  {r['timestamp']}  {r['status']:<8}  {r['goal'][:48]}")
+    return 0
+
+
+def cmd_show(run_id, cfg):
+    _, hist, _, _ = build(cfg)
+    rec = hist.get(run_id)
+    if not rec:
+        print("not found:", run_id); return 1
+    print(f"run {rec['id']}  {rec['timestamp']}  status={rec['status']}")
+    print(f"goal: {rec['goal']}")
+    print(f"summary: {rec['result_summary']}")
+    print("tasks:")
+    for t in rec["tasks"]:
+        print(f"  [{t['id']}] {t['status']}" + (f"  {t.get('error')}" if t.get("error") else ""))
+    if rec.get("approvals"):
+        print("approvals:", ", ".join(rec["approvals"]))
+    return 0
+
+
+def cmd_smoke(query, cfg):
+    if is_disabled():
+        print("[DISABLED] refusing to run smoke."); return 3
+    print("[SMOKE] LIVE network research (explicit). query:", query)
+    return cmd_research(query, False, set(), cfg)
+
+
+def cmd_secret_scan(cfg):
+    art = cfgmod.artifact_dir(cfg)
+    his = cfgmod.history_dir(cfg)
+    hits = scan_dir(art) + scan_dir(his)
+    if not hits:
+        print("  clean: no obvious secrets in artifacts/history"); return 0
+    for fp, name in hits:
+        print(f"  [SECRET?] {name} in {fp}")
+    return 1
+
+
+def _stores(cfg):
+    hd = cfgmod.history_dir(cfg)
+    return (MemoryStore(os.path.join(hd, "memory.jsonl")),
+            GoalRegistry(os.path.join(hd, "goals.jsonl")),
+            ResearchQueue(os.path.join(hd, "queue.jsonl")),
+            RunHistory(os.path.join(hd, "history.jsonl")))
+
+
+def cmd_memory(rest, cfg):
+    mem, *_ = _stores(cfg)
+    sub = rest[0] if rest else "list"
+    if sub == "add" and len(rest) >= 3:
+        print("added:", mem.add(rest[1], " ".join(rest[2:]))); return 0
+    if sub == "search" and len(rest) >= 2:
+        for r in mem.search(" ".join(rest[1:])):
+            print(f"  [{r['layer']}] {r['text']}")
+        return 0
+    if sub == "compress":
+        print("removed duplicates:", mem.compress()); return 0
+    for r in mem.list(rest[1] if len(rest) > 1 else None):
+        print(f"  [{r['layer']}] {r['text']}")
+    return 0
+
+
+def cmd_goal(rest, cfg):
+    _, goals, _, _ = _stores(cfg)
+    sub = rest[0] if rest else "list"
+    if sub == "add" and len(rest) >= 2:
+        print("goal:", goals.add(" ".join(rest[1:]))); return 0
+    if sub == "status" and len(rest) >= 3:
+        print("ok" if goals.set_status(rest[1], rest[2]) else "not found"); return 0
+    if sub == "metrics":
+        print(goals.metrics()); return 0
+    for g in goals.list():
+        print(f"  {g['id']}  {g.get('status','open'):<11}  {g['text'][:50]}  runs={len(g.get('runs',[]))}")
+    return 0
+
+
+def cmd_queue(rest, cfg):
+    _, _, q, _ = _stores(cfg)
+    sub = rest[0] if rest else "list"
+    if sub == "add" and len(rest) >= 2:
+        print("queued:", q.enqueue(" ".join(rest[1:]))); return 0
+    for item in q.list():
+        print(f"  {item['id']}  {item.get('status','pending'):<8}  {item['goal'][:50]}")
+    return 0
+
+
+def cmd_brief(cfg):
+    mem, _, _, hist = _stores(cfg)
+    art = cfgmod.artifact_dir(cfg); os.makedirs(art, exist_ok=True)
+    text = daily_brief(hist, mem)
+    path = os.path.join(art, "daily-brief.md")
+    open(path, "w", encoding="utf-8").write(text)
+    print(text)
+    print("brief written:", path)
+    return 0
+
+
+def cmd_review(rest, cfg):
+    if len(rest) < 2:
+        print("usage: review <run_id> <rating> [note...]"); return 2
+    mem, _, _, hist = _stores(cfg)
+    fb = review_run(hist, mem, rest[0], rest[1], " ".join(rest[2:]))
+    print("recorded review:", fb)
+    return 0
+
+
+def cmd_github(rest, cfg):
+    if is_disabled():
+        print("[DISABLED] refusing to run."); return 3
+    op = rest[0] if rest else "pulls"
+    inputs = {"op": op}
+    if len(rest) > 1 and rest[1].isdigit():
+        inputs["number"] = int(rest[1])
+    env = GitHubReadWorker().run(TaskSpec(id="gh", worker="github_read", intent=op, inputs=inputs))
+    if env.status != Status.DONE:
+        print("  error:", env.error); return 1
+    data = env.result["data"]
+    if isinstance(data, list):
+        for d in data:
+            print("  -", d)
+    else:
+        print(" ", data)
+    return 0
+
+
+def cmd_propose(goal, cfg):
+    """Research a goal then write a change proposal artifact (read-only research)."""
+    if is_disabled():
+        print("[DISABLED] refusing to run."); return 3
+    orch, hist, audit, art = build(cfg)
+    sub = decompose(goal, 3)
+    fb = [TaskSpec(id=f"r{i}", worker="research", intent=s, inputs={"query": s})
+          for i, s in enumerate(sub)]
+    run = orch.run_goal(goal, planner=None, fallback_tasks=fb, history=hist,
+                        budget=RunBudget.from_config(cfg), audit=audit)
+    findings = []
+    for e in run.results.values():
+        if isinstance(e.result, dict):
+            findings.extend(e.result.get("findings", []))
+    md = gen.change_proposal(goal, findings)
+    path = os.path.join(art, "proposal-" + run.id + ".md")
+    os.makedirs(art, exist_ok=True); open(path, "w", encoding="utf-8").write(md)
+    print(f"proposal written ({len(findings)} findings):", path)
+    return 0
+
+
+def cmd_artifacts(rest, cfg):
+    art = cfgmod.artifact_dir(cfg)
+    if rest and rest[0] == "search" and len(rest) >= 2:
+        items = artmod.search(art, " ".join(rest[1:]))
+    else:
+        items = artmod.catalog(art)
+    for it in items:
+        print(f"  {it['mtime']}  {it['size']:>7}  {it['name']}")
+    return 0
+
+
+def cmd_autodemo(goal, cfg):
+    """Full flow: goal -> research -> memory -> proposal doc -> draft-PR content -> review."""
+    if is_disabled():
+        print("[DISABLED] refusing to run."); return 3
+    mem, goals, _, hist = _stores(cfg)
+    gid = goals.add(goal); goals.set_status(gid, "in_progress")
+    orch, _, audit, art = build(cfg)
+    sub = decompose(goal, 4)
+    fb = [TaskSpec(id=f"r{i}", worker="research", intent=s, inputs={"query": s})
+          for i, s in enumerate(sub)]
+    run = orch.run_goal(goal, planner=None, fallback_tasks=fb, history=hist,
+                        budget=RunBudget.from_config(cfg), audit=audit,
+                        memory_context=mem.planner_context(goal))
+    record_run(mem, run)
+    findings = [f for e in run.results.values() if isinstance(e.result, dict)
+                for f in e.result.get("findings", [])]
+    os.makedirs(art, exist_ok=True)
+    prop = os.path.join(art, "proposal-" + run.id + ".md")
+    open(prop, "w", encoding="utf-8").write(gen.change_proposal(goal, findings))
+    pr = gen.draft_pr_content(goal, body=gen.research_summary(run), findings=findings)
+    import json as _json
+    prpath = os.path.join(art, "draftpr-" + run.id + ".json")
+    open(prpath, "w", encoding="utf-8").write(_json.dumps(pr, ensure_ascii=False, indent=2))
+    goals.set_status(gid, "done", run_id=run.id)
+    review_run(hist, mem, run.id, "auto", "autodemo completed")
+    print("=" * 60)
+    print(f"  AUTODEMO complete  goal_id={gid}  run={run.id}  status={run.status.value}")
+    print(f"  findings: {len(findings)}")
+    print(f"  proposal:      {prop}")
+    print(f"  draft-PR content: {prpath} (content only; opening a DRAFT PR is approval-gated)")
+    print(f"  goal status:   done   |   review recorded in memory")
+    print("=" * 60)
+    return 0
+
+
+def main(argv):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+    if not argv:
+        print(__doc__); return 0
+    try:
+        cfg = cfgmod.load_config()
+    except cfgmod.ConfigError as exc:
+        print("[CONFIG ERROR]", exc); return 2
+
+    cmd = argv[0]
+    rest = argv[1:]
+    if cmd == "research":
+        with_doc = "--doc" in rest
+        approvals = set()
+        if "--approve" in rest:
+            i = rest.index("--approve")
+            if i + 1 < len(rest):
+                approvals.add(rest[i + 1])
+        goal = " ".join(a for a in rest if not a.startswith("--") and a not in approvals).strip()
+        if not goal:
+            print("usage: cli.py research \"<goal>\" [--doc] [--approve <task>]"); return 2
+        return cmd_research(goal, with_doc, approvals, cfg)
+    if cmd == "history":
+        return cmd_history(cfg)
+    if cmd == "show" and rest:
+        return cmd_show(rest[0], cfg)
+    if cmd == "smoke" and rest:
+        return cmd_smoke(" ".join(rest).strip(), cfg)
+    if cmd == "secret-scan":
+        return cmd_secret_scan(cfg)
+    if cmd == "memory":
+        return cmd_memory(rest, cfg)
+    if cmd == "goal":
+        return cmd_goal(rest, cfg)
+    if cmd == "queue":
+        return cmd_queue(rest, cfg)
+    if cmd == "brief":
+        return cmd_brief(cfg)
+    if cmd == "review":
+        return cmd_review(rest, cfg)
+    if cmd == "github":
+        return cmd_github(rest, cfg)
+    if cmd == "propose" and rest:
+        return cmd_propose(" ".join(rest).strip(), cfg)
+    if cmd == "artifacts":
+        return cmd_artifacts(rest, cfg)
+    if cmd == "autodemo" and rest:
+        return cmd_autodemo(" ".join(rest).strip(), cfg)
+    print(__doc__); return 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv[1:]))

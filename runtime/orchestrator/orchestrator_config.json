@@ -1,0 +1,16 @@
+{
+  "_note": "Non-secret orchestrator config. No API keys here. Validated by config.py on load.",
+  "default_planner": "llm",
+  "artifact_dir": "_artifacts",
+  "history_dir": "_runs",
+  "limits": {
+    "max_tasks": 8,
+    "max_findings": 5,
+    "max_external_requests": 12,
+    "max_seconds": 120
+  },
+  "research_sources": {
+    "wikipedia": true,
+    "duckduckgo": true
+  }
+}
