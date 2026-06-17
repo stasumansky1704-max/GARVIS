@@ -44,7 +44,7 @@ function latLonToVec3(lat: number, lon: number, radius: number): THREE.Vector3 {
 // --- Textured, glowing Earth (real continents from earth.jpg, holographic cyan grade) ---
 function TexturedEarth({ ai = 0 }: { ai?: number }) {
   const ref = useRef<THREE.Group>(null);
-  const texture = useLoader(THREE.TextureLoader, "/textures/earth.png");
+  const texture = useLoader(THREE.TextureLoader, "/textures/earth.jpg");
   texture.colorSpace = THREE.SRGBColorSpace;
   texture.anisotropy = 8;
 
@@ -61,17 +61,25 @@ function TexturedEarth({ ai = 0 }: { ai?: number }) {
           map={texture}
           emissiveMap={texture}
           emissive={new THREE.Color("#2c93c4")}
-          emissiveIntensity={0.95 + ai * 0.4}
+          emissiveIntensity={0.85 + ai * 0.4}
           metalness={0.15}
           roughness={0.8}
-          color={new THREE.Color("#cfeeff")}
+          color={new THREE.Color("#bfe6ff")}
+          transparent={false}
+          depthWrite
         />
       </mesh>
 
-      {/* Subtle graticule overlay keeps the holographic grid feel */}
-      <mesh scale={1.004}>
+      {/* Very subtle graticule sits ON the opaque surface (no see-through) */}
+      <mesh scale={1.003}>
         <sphereGeometry args={[EARTH_R, 36, 24]} />
-        <meshBasicMaterial color="#0bd5ff" wireframe transparent opacity={0.06 + ai * 0.05} />
+        <meshBasicMaterial
+          color="#0bd5ff"
+          wireframe
+          transparent
+          opacity={0.04 + ai * 0.03}
+          depthWrite={false}
+        />
       </mesh>
     </group>
   );
@@ -115,28 +123,6 @@ function ParticleShell({ ai = 0 }: { ai?: number }) {
         depthWrite={false}
       />
     </points>
-  );
-}
-
-function AtmosphereShell({ ai = 0 }: { ai?: number }) {
-  const ref = useRef<THREE.Mesh>(null);
-  useFrame(({ clock }) => {
-    if (ref.current) {
-      ref.current.scale.setScalar(1 + Math.sin(clock.getElapsedTime() * 1.4) * 0.012 * (1 + ai));
-    }
-  });
-  return (
-    <mesh ref={ref}>
-      <sphereGeometry args={[EARTH_R * 1.18, 64, 64]} />
-      <meshBasicMaterial
-        color="#1fc6ff"
-        transparent
-        opacity={0.18 + ai * 0.07}
-        blending={THREE.AdditiveBlending}
-        depthWrite={false}
-        side={THREE.BackSide}
-      />
-    </mesh>
   );
 }
 
@@ -286,7 +272,6 @@ function EarthScene({ audioIntensity = 0 }: EarthProps) {
         <TexturedEarth ai={audioIntensity} />
       </Suspense>
       <ParticleShell ai={audioIntensity} />
-      <AtmosphereShell ai={audioIntensity} />
       <LightBeam ai={audioIntensity} />
       <EnergyPlatform ai={audioIntensity} />
       <CityMarkers ai={audioIntensity} />
