@@ -35,3 +35,14 @@ class AuditLog:
                     except Exception:
                         pass
         return out
+
+    def query(self, kind: str, limit: int = 50) -> list[dict]:
+        """All events of a given kind (most recent last)."""
+        return [e for e in self.list() if e.get("kind") == kind][-limit:]
+
+    def summary(self) -> dict:
+        """Counts per event kind + total - a quick audit overview."""
+        counts: dict[str, int] = {}
+        for e in self.list():
+            counts[e.get("kind", "?")] = counts.get(e.get("kind", "?"), 0) + 1
+        return {"total": sum(counts.values()), "by_kind": counts}

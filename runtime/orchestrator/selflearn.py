@@ -97,6 +97,20 @@ def analyze_denials(audit) -> dict:
     return {"approval_denials": len(denied)}
 
 
+def analyze_repeat_failures(history) -> dict:
+    """Goals that failed/empty more than once - the strongest signal to change approach."""
+    counts: dict[str, int] = {}
+    for r in history.list():
+        if r.get("status") in ("failed", "blocked") or _summary_is_empty(r):
+            g = (r.get("goal") or "").strip().lower()
+            if g:
+                counts[g] = counts.get(g, 0) + 1
+    repeats = {g: n for g, n in counts.items() if n >= 2}
+    return {"repeat_goals": len(repeats),
+            "items": [{"goal": g, "count": n} for g, n in
+                      sorted(repeats.items(), key=lambda x: -x[1])]}
+
+
 def recommend(history, audit) -> list[dict]:
     """Structured, actionable recommendations derived from observed patterns."""
     recs = []
@@ -126,6 +140,13 @@ def recommend(history, audit) -> list[dict]:
         recs.append({"area": "autonomy", "severity": "low",
                      "finding": f"{blocked['blocked_tasks']} blocked tasks",
                      "action": "review approval gating and dependency ordering"})
+    repeats = analyze_repeat_failures(history)
+    if repeats["repeat_goals"]:
+        top = repeats["items"][0]
+        recs.append({"area": "self-improvement", "severity": "high",
+                     "finding": f"{repeats['repeat_goals']} goal(s) failed repeatedly "
+                                f"(e.g. '{top['goal'][:40]}' x{top['count']})",
+                     "action": "stop retrying as-is; rewrite the query or de-prioritize"})
     return recs
 
 
@@ -193,4 +214,5 @@ def insights(history, audit) -> dict:
             "weak_plans": analyze_weak_plans(history),
             "blocked": analyze_blocked(audit),
             "denials": analyze_denials(audit),
+            "repeat_failures": analyze_repeat_failures(history),
             "recommendations": recommend(history, audit)}

@@ -46,6 +46,9 @@ from orchestrator import selflearn
 from orchestrator import planning
 from orchestrator import monitor
 from orchestrator import autonomy
+from orchestrator import guardian
+from orchestrator.schedule import ScheduleStore
+from orchestrator.vault import VaultStore
 from orchestrator.brief import auto_review
 from orchestrator.workers.github_worker import GitHubReadWorker, GitHubDraftPRWorker
 
@@ -115,10 +118,19 @@ def cmd_research(goal, with_doc, approvals, cfg):
     return 0
 
 
-def cmd_history(cfg):
+def cmd_history(rest, cfg):
     _, hist, _, _ = build(cfg)
-    recs = hist.list()
-    print(f"{len(recs)} run(s):")
+    if rest and rest[0] == "search" and len(rest) >= 2:
+        recs = hist.search(" ".join(rest[1:]))
+        print(f"{len(recs)} match(es):")
+    elif rest and rest[0] == "filter" and len(rest) >= 2:
+        recs = hist.filter(rest[1])
+        print(f"{len(recs)} run(s) [{rest[1]}]:")
+    elif rest and rest[0] == "stats":
+        print(hist.stats()); return 0
+    else:
+        recs = hist.list()
+        print(f"{len(recs)} run(s):")
     for r in recs[-20:]:
         print(f"  {r['id']}  {r['timestamp']}  {r['status']:<8}  {r['goal'][:48]}")
     return 0
@@ -184,6 +196,18 @@ def cmd_memory(rest, cfg):
         print("decayed (old/unused):", mem.decay()); return 0
     if sub == "promote" and len(rest) >= 2:
         print("promoted:", mem.promote(rest[1])); return 0
+    if sub == "auto-link":
+        print("edges created:", mem.auto_link()); return 0
+    if sub == "topics":
+        for t in mem.topics():
+            print(f"  [{t['size']}] {t['topic']}")
+        return 0
+    if sub == "graph":
+        print(mem.graph_stats()); return 0
+    if sub == "related" and len(rest) >= 2:
+        for r in mem.related(rest[1]):
+            print(f"  [{r['layer']}] {r['text'][:70]}")
+        return 0
     if sub == "inspect":
         for k, v in mem.inspect().items():
             print(f"  {k}: {v}")
@@ -608,6 +632,101 @@ def cmd_background_once(approve, cfg):
     return 0
 
 
+def _hd(cfg):
+    return cfgmod.history_dir(cfg)
+
+
+def cmd_schedule(rest, cfg):
+    """Persisted recurring schedules (survive restart). Enqueue-due feeds the run-due/loop."""
+    sched = ScheduleStore(os.path.join(_hd(cfg), "schedules.jsonl"))
+    sub = rest[0] if rest else "list"
+    if sub == "add" and len(rest) >= 3:
+        try:
+            interval = int(rest[1])
+        except ValueError:
+            print("usage: schedule add <interval_seconds> \"<goal>\" [--window HH:MM-HH:MM]"); return 2
+        window = None
+        if "--window" in rest:
+            i = rest.index("--window")
+            window = rest[i + 1] if i + 1 < len(rest) else None
+        goal = " ".join(a for a in rest[2:] if not a.startswith("--") and a != window).strip()
+        try:
+            sid = sched.add(goal, interval, window=window)
+        except ValueError as exc:
+            print("error:", exc); return 2
+        print("scheduled:", sid); return 0
+    if sub == "remove" and len(rest) >= 2:
+        print("removed" if sched.remove(rest[1]) else "not found"); return 0
+    if sub == "due":
+        for s in sched.due():
+            print(f"  {s['id']}  P{s.get('priority',3)}  {s['goal'][:50]}  next={s.get('next_due')}")
+        return 0
+    if sub == "enqueue-due":
+        _, _, queue, _ = _stores(cfg)
+        out = sched.enqueue_due(queue)
+        print(f"enqueued {len(out)} due schedule(s):")
+        for e in out:
+            print(f"  schedule {e['schedule_id']} -> queue {e['queue_id']}  {e['goal'][:40]}")
+        return 0
+    for s in sched.list():
+        print(f"  {s['id']}  every {s.get('interval')}s  win={s.get('window')}  "
+              f"next={s.get('next_due')}  {s['goal'][:40]}")
+    return 0
+
+
+def cmd_vault(rest, cfg):
+    """Registry of required secret REFERENCES (names only; never values)."""
+    vault = VaultStore(os.path.join(_hd(cfg), "vault.jsonl"))
+    sub = rest[0] if rest else "status"
+    if sub == "register" and len(rest) >= 3:
+        try:
+            print("registered:", vault.register(rest[1], rest[2], " ".join(rest[3:])))
+        except ValueError as exc:
+            print("error:", exc); return 2
+        return 0
+    if sub == "remove" and len(rest) >= 2:
+        print("removed" if vault.remove(rest[1]) else "not found"); return 0
+    if sub == "missing":
+        print("missing:", vault.missing()); return 0
+    for name, present in vault.status().items():
+        print(f"  {name}: {'present' if present else 'MISSING'}")   # booleans only, no values
+    return 0
+
+
+def cmd_guardian(cfg):
+    """Mini-PC readiness report (prepare-only; no deployment)."""
+    vault = VaultStore(os.path.join(_hd(cfg), "vault.jsonl"))
+    rep = guardian.readiness_report(cfg, vault)
+    import json as _j
+    print(_j.dumps(rep, ensure_ascii=False, indent=2, default=str))
+    return 0 if rep["ready"] else 1
+
+
+def cmd_ci_install(rest, cfg):
+    """Make tests automatic: install a git pre-push hook running ci-check. Optionally also
+    stage the GitHub Actions workflow (--workflow; needs workflow scope to push)."""
+    hook = ops.install_git_hook()
+    print("git pre-push hook:", "installed" if hook.get("installed") else hook.get("reason"))
+    if "--workflow" in rest:
+        wf = ops.install_ci_workflow(force="--force" in rest)
+        print("workflow:", wf.get("path") if wf.get("installed") else wf.get("reason"))
+    return 0
+
+
+def cmd_audit(rest, cfg):
+    """Audit overview / query."""
+    audit = AuditLog(os.path.join(_hd(cfg), "audit.jsonl"))
+    if rest and rest[0] == "query" and len(rest) >= 2:
+        for e in audit.query(rest[1]):
+            print(" ", e)
+        return 0
+    s = audit.summary()
+    print(f"  total events: {s['total']}")
+    for k, n in sorted(s["by_kind"].items(), key=lambda x: -x[1]):
+        print(f"    {k}: {n}")
+    return 0
+
+
 def cmd_loop(approve, max_cycles, interval, cfg):
     """BOUNDED scheduled autonomy loop (NOT a daemon). DRY-RUN unless --approve-loop.
     Requires --max-cycles (<=10) and --interval (5..3600s). Kill switch checked per cycle."""
@@ -763,7 +882,7 @@ def main(argv):
             print("usage: cli.py research \"<goal>\" [--doc] [--approve <task>]"); return 2
         return cmd_research(goal, with_doc, approvals, cfg)
     if cmd == "history":
-        return cmd_history(cfg)
+        return cmd_history(rest, cfg)
     if cmd == "show" and rest:
         return cmd_show(rest[0], cfg)
     if cmd == "smoke" and rest:
@@ -822,6 +941,16 @@ def main(argv):
         return cmd_loop_status(cfg)
     if cmd == "loop-dry-run":
         return cmd_loop_dry_run(cfg)
+    if cmd == "schedule":
+        return cmd_schedule(rest, cfg)
+    if cmd == "vault":
+        return cmd_vault(rest, cfg)
+    if cmd == "guardian":
+        return cmd_guardian(cfg)
+    if cmd == "ci-install":
+        return cmd_ci_install(rest, cfg)
+    if cmd == "audit":
+        return cmd_audit(rest, cfg)
     if cmd == "review":
         return cmd_review(rest, cfg)
     if cmd == "github":
