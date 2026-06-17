@@ -26,8 +26,9 @@ def daily_brief(history, memory) -> str:
     return "\n".join(lines) + "\n"
 
 
-def daily_brief_full(history, memory, goals=None, queue=None) -> str:
-    """Daily brief enriched with active goals (priority-ordered) and due queue items."""
+def daily_brief_full(history, memory, goals=None, queue=None, audit=None) -> str:
+    """Full daily brief: recent runs + due goals + due queue + failed runs + new lessons +
+    memory insights + recommended next actions (self-learning)."""
     text = daily_brief(history, memory)
     extra = []
     if goals is not None:
@@ -39,6 +40,25 @@ def daily_brief_full(history, memory, goals=None, queue=None) -> str:
         due = queue.prioritized_due()[:8]
         extra += ["", "## Due research queue",
                   *([f"- {q['goal'][:60]}" for q in due] or ["- (none)"])]
+    # Failed runs
+    failed = [r for r in history.list() if r.get("status") in ("failed", "blocked")][-5:]
+    extra += ["", "## Failed / blocked runs",
+              *([f"- `{r['id']}` {r.get('goal','')[:55]}" for r in failed] or ["- (none)"])]
+    # New lessons (self-learned memory)
+    lessons = [m for m in memory.list() if "self-learned" in (m.get("tags") or [])][-5:]
+    extra += ["", "## Recent lessons",
+              *([f"- {m['text'][:80]}" for m in lessons] or ["- (none)"])]
+    # Memory insights
+    snap = memory.inspect()
+    extra += ["", "## Memory insights",
+              f"- {snap['total']} memories | protected {snap['protected']} | "
+              f"avg importance {snap['avg_importance']} | dup groups {snap['duplicate_groups']}"]
+    # Recommended next actions (self-learning)
+    if audit is not None:
+        from .selflearn import recommend
+        recs = recommend(history, audit)
+        extra += ["", "## Recommended next actions",
+                  *([f"- [{r['area']}] {r['action']}" for r in recs] or ["- (none)"])]
     return text.rstrip() + "\n" + "\n".join(extra) + "\n"
 
 
