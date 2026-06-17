@@ -227,7 +227,7 @@ def discover_orchestrator_tests() -> list[str]:
              "test_super_sprint", "test_draft_pr", "test_research_quality",
              "test_draftpr_workflow", "test_github_hardening", "test_memory_evolution",
              "test_goals_queue_scheduler", "test_ops_commands", "test_user_workflows",
-             "test_self_evolution", "test_quality_autonomy")
+             "test_self_evolution", "test_quality_autonomy", "test_autonomy_loop")
     return [os.path.join("tests", n + ".py") for n in names
             if os.path.exists(os.path.join(tdir, n + ".py"))]
 
@@ -238,3 +238,70 @@ def validation_summary() -> dict:
     return {"safety_ok": v["ok"],
             "checks": {c["name"]: c["ok"] for c in v["checks"]},
             "test_suites": discover_orchestrator_tests()}
+
+
+def _run_test_suites(exclude: tuple[str, ...] = ()) -> dict:
+    """Run every discoverable orchestrator test suite IN-PROCESS (no subprocess). Returns
+    {passed, total, failures}. Each suite's test_* functions are executed directly."""
+    import importlib.util
+    import io
+    import contextlib
+    passed = total = 0
+    failures = []
+    for rel in discover_orchestrator_tests():
+        name = os.path.basename(rel)[:-3]
+        if name in exclude:
+            continue
+        fp = os.path.join(REPO_ROOT, rel)
+        try:
+            spec = importlib.util.spec_from_file_location("ci_" + name, fp)
+            mod = importlib.util.module_from_spec(spec)
+            with contextlib.redirect_stdout(io.StringIO()):
+                spec.loader.exec_module(mod)
+        except Exception as exc:                          # import-time failure
+            failures.append(f"{name}: import {type(exc).__name__}")
+            total += 1
+            continue
+        fns = [v for k, v in vars(mod).items() if k.startswith("test_") and callable(v)]
+        for fn in fns:
+            total += 1
+            try:
+                with contextlib.redirect_stdout(io.StringIO()):
+                    fn()
+                passed += 1
+            except Exception as exc:
+                failures.append(f"{name}.{fn.__name__}: {type(exc).__name__}")
+    return {"passed": passed, "total": total, "failures": failures}
+
+
+def ci_check(run_tests: bool = True) -> dict:
+    """Local CI: py_compile + verify + secret-scan (+ all offline tests). In-process; no
+    subprocess, no network, no backend. ok=True only when every stage passes."""
+    import glob
+    import py_compile
+    from . import secret_scan, config as cfgmod
+
+    comp_errors = []
+    for fp in (glob.glob(os.path.join(_DIR, "*.py"))
+               + glob.glob(os.path.join(_DIR, "workers", "*.py"))):
+        try:
+            py_compile.compile(fp, doraise=True)
+        except Exception:
+            comp_errors.append(os.path.basename(fp))
+    res = {"compile": {"ok": not comp_errors, "errors": comp_errors}}
+
+    v = verify()
+    res["verify"] = {"ok": v["ok"], "failing": [c["name"] for c in v["checks"] if not c["ok"]]}
+
+    cfg = cfgmod.load_config()
+    hits = secret_scan.scan_dir(cfgmod.artifact_dir(cfg)) + secret_scan.scan_dir(cfgmod.history_dir(cfg))
+    res["secret_scan"] = {"ok": not hits, "hits": len(hits)}
+
+    if run_tests:
+        # Exclude the autonomy-loop suite to avoid recursion (it calls ci_check itself).
+        t = _run_test_suites(exclude=("test_autonomy_loop",))
+        res["tests"] = {"ok": t["passed"] == t["total"], "passed": t["passed"],
+                        "total": t["total"], "failures": t["failures"][:10]}
+
+    res["ok"] = all(stage["ok"] for stage in res.values() if isinstance(stage, dict))
+    return res
