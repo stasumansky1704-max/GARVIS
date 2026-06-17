@@ -229,7 +229,8 @@ def discover_orchestrator_tests() -> list[str]:
              "test_goals_queue_scheduler", "test_ops_commands", "test_user_workflows",
              "test_self_evolution", "test_quality_autonomy", "test_autonomy_loop",
              "test_scheduled_autonomy", "test_mega_evolution", "test_graph_planning",
-             "test_ascension_intelligence", "test_ascension_systems")
+             "test_ascension_intelligence", "test_ascension_systems",
+             "test_ascension_reliability")
     return [os.path.join("tests", n + ".py") for n in names
             if os.path.exists(os.path.join(tdir, n + ".py"))]
 
