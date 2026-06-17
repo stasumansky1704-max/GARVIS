@@ -5,6 +5,7 @@ run in their own (inert) implementations. Honors a kill switch.
 """
 from __future__ import annotations
 
+import time
 from typing import TYPE_CHECKING
 
 from .gates import SafetyGate, ApprovalGate
@@ -42,22 +43,40 @@ class TaskRouter:
             return Envelope(task.id, Status.FAILED, error=f"{type(exc).__name__}: {exc}")
 
     def dispatch(self, plan: Plan, workers: dict[str, "Worker"],
-                 approvals: set[str] | None = None) -> dict[str, Envelope]:
+                 approvals: set[str] | None = None, max_seconds: float | None = None,
+                 audit=None) -> dict[str, Envelope]:
         if approvals:
             self.approval.approved |= set(approvals)
+
+        def _emit(kind, task, env=None):
+            if audit is not None:
+                d = {"task": task.id, "worker": task.worker}
+                if env is not None:
+                    d["status"] = getattr(env.status, "value", str(env.status))
+                    if env.error:
+                        d["error"] = env.error
+                audit.event(kind, **d)
+
         results: dict[str, Envelope] = {}
         done: set[str] = set()
         remaining = list(plan.tasks)
+        started = time.time()
         progressed = True
         while remaining and progressed and not self.kill:
+            if max_seconds is not None and (time.time() - started) > max_seconds:
+                self.kill = True                 # time budget exceeded -> stop dispatch
+                break
             progressed = False
             for task in list(remaining):
                 if not all(d in done for d in task.deps):
                     continue                     # deps not satisfied yet
+                _emit("task_started", task)
                 env = self._run_one(task, workers)
                 results[task.id] = env
                 remaining.remove(task)
                 progressed = True
+                _emit("task_completed" if env.status == Status.DONE else "task_blocked",
+                      task, env)
                 if env.status == Status.DONE:
                     done.add(task.id)
         remaining_ids = {t.id for t in remaining}

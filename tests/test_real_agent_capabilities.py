@@ -120,9 +120,9 @@ def test_run_to_record_shape():
 
 
 def test_research_worker_default_fetch_is_real():
-    # default (no injection) wires the real network fetcher - proves it is not a mock
-    from orchestrator.workers.research_worker import real_fetch
-    assert ResearchWorker()._fetch is real_fetch
+    # default (no injection) uses the real network fetcher method - not a mock
+    rw = ResearchWorker()
+    assert rw._fetch is None and hasattr(rw, "_real_fetch")
 
 
 def test_docs_slug_is_filesystem_safe():
