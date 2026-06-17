@@ -17,6 +17,9 @@ import urllib.request
 from .base import Worker
 from ..models import TaskSpec, Envelope, Status, SafetyClass
 from ..registry import WorkerSpec
+from ..research_quality import (MIN_USEFUL_FINDINGS, broaden_query, completeness_score,
+                                dedup_findings, explain_empty, quality_score, rank_findings,
+                                score_confidence, source_coverage, source_query)
 
 _UA = {"User-Agent": "GARVIS-Research/0.1 (local read-only research worker)"}
 _TIMEOUT = 15
@@ -93,7 +96,7 @@ class ResearchWorker(Worker):
                 errors.append(f"{name}: skipped (request budget exhausted)")
                 continue
             try:
-                findings.extend(fn(query, self.max_findings))
+                findings.extend(fn(source_query(query, name), self.max_findings))
             except Exception as exc:
                 errors.append(f"{name}: {type(exc).__name__}")
             finally:
@@ -114,20 +117,48 @@ class ResearchWorker(Worker):
             return Envelope(task_id=task.id, status=Status.FAILED,
                             error="research task missing 'query' input")
         fetch = self._fetch or self._real_fetch
+        retries = 0 if task.inputs.get("no_retry") else 2
         try:
-            findings, errors = fetch(query)
+            findings, errors, retries_used = self._fetch_with_broadening(fetch, query, retries)
         except Exception as exc:                 # structured failure; never crash the run
             return Envelope(task_id=task.id, status=Status.FAILED,
                             error=f"research fetch failed: {type(exc).__name__}: {exc}",
                             result={"query": query, "findings": [], "sources": [],
                                     "summary": "research failed", "count": 0,
-                                    "source_errors": [str(exc)]})
-        findings = findings[: self.max_findings]
-        sources = [f["url"] for f in findings if f.get("url")]
-        result = {"query": query, "findings": findings, "sources": sources,
-                  "summary": self._summarize(query, findings), "count": len(findings),
-                  "source_errors": errors}
+                                    "source_errors": [str(exc)], "quality": 0.0,
+                                    "completeness": 0.0, "coverage": source_coverage([])})
+        # Improve confidence, dedup, rank, then trim to the budget.
+        for f in findings:
+            f["confidence"] = score_confidence(f, query)
+        findings = rank_findings(dedup_findings(findings), query)[: self.max_findings]
         logs = [f"ResearchWorker: {len(findings)} findings"]
+        if retries_used:
+            logs.append(f"broadened query {retries_used}x to improve recall")
+        if not findings:
+            errors = list(errors) + [explain_empty(query, errors)]
         if errors:
-            logs.append("source errors: " + ", ".join(errors))
+            logs.append("source notes: " + ", ".join(errors))
+        result = {"query": query, "findings": findings,
+                  "sources": [f["url"] for f in findings if f.get("url")],
+                  "summary": self._summarize(query, findings), "count": len(findings),
+                  "source_errors": errors, "quality": quality_score(findings),
+                  "completeness": completeness_score(query, findings),
+                  "coverage": source_coverage(findings), "retries": retries_used,
+                  "useful": len(findings) >= MIN_USEFUL_FINDINGS}
         return Envelope(task_id=task.id, status=Status.DONE, result=result, logs=logs)
+
+    def _fetch_with_broadening(self, fetch, query, retries):
+        """Fetch; if too few findings, retry with progressively broader queries (capability:
+        automatic retry with broader query). Returns (findings, errors, retries_used)."""
+        findings, errors = fetch(query)
+        used, current = 0, query
+        while len(dedup_findings(findings)) < MIN_USEFUL_FINDINGS and used < retries:
+            broader = broaden_query(current)
+            if not broader or broader == current:
+                break
+            more, errs = fetch(broader)
+            findings = findings + more
+            errors = list(errors) + [f"retry '{broader}'"] + list(errs)
+            current = broader
+            used += 1
+        return findings, errors, used
