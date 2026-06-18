@@ -1,13 +1,14 @@
 import { useEffect, useState } from "react";
-import JarvisCore3D from "./components/JarvisCore3D";
-import HolographicEarth3D from "./components/HolographicEarth3D";
 import LivingCore from "./living-core/LivingCore";
+import StatusBadge from "./components/StatusBadge";
+import IntelHub from "./components/IntelHub";
+import { FACTORIES, factoriesSummary } from "./data/missionControl";
 
 type Page = "home" | "workflows" | "intelligence" | "settings";
 
 const pageTitles: Record<Page, string> = {
   home: "HOME",
-  workflows: "WORKFLOWS",
+  workflows: "FACTORIES",
   intelligence: "INTELLIGENCE HUB",
   settings: "SETTINGS",
 };
@@ -35,6 +36,16 @@ export default function App() {
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
+
+  // Intelligence Hub is a full-bleed command center with its own chrome (sidebar). The
+  // other screens (incl. Home / Living Core) keep the original top-nav frame, untouched.
+  if (page === "intelligence") {
+    return (
+      <div className="jarvis-app">
+        <IntelHub audioIntensity={audioIntensity} page={page} onNavigate={setPage} />
+      </div>
+    );
+  }
 
   return (
     <div className="jarvis-app">
@@ -68,7 +79,6 @@ export default function App() {
       <main className="jarvis-main">
         {page === "home" && <HomePage audioIntensity={audioIntensity} />}
         {page === "workflows" && <WorkflowsPage />}
-        {page === "intelligence" && <IntelligencePage audioIntensity={audioIntensity} />}
         {page === "settings" && <SettingsPage />}
       </main>
     </div>
@@ -84,60 +94,26 @@ function HomePage({ audioIntensity: _audioIntensity }: { audioIntensity: number 
 function WorkflowsPage() {
   return (
     <section className="page-screen">
-      <PageHeader title="WORKFLOWS" subtitle="Projects, missions, automations and operational workflows" />
+      <PageHeader title="FACTORIES" subtitle={factoriesSummary()} />
 
-      <div className="empty-panel">
-        <div className="empty-icon">⚡</div>
-        <h2>No active workflows yet</h2>
-        <p>
-          Workflows will appear here only when real workflows are created or connected.
-          No fake production data.
-        </p>
-        <button className="primary-button">CREATE WORKFLOW</button>
-      </div>
-    </section>
-  );
-}
-
-function IntelligencePage({ audioIntensity }: { audioIntensity: number }) {
-  return (
-    <section className="intel-screen">
-      <div className="earth-stage">
-        <HolographicEarth3D audioIntensity={audioIntensity} />
+      <div className="factory-grid">
+        {FACTORIES.map((f) => (
+          <article className="factory-card" key={f.id}>
+            <div className="factory-card-top">
+              <span className="factory-glyph" aria-hidden>{f.glyph}</span>
+              <StatusBadge status={f.status} />
+            </div>
+            <h3>{f.name}</h3>
+            <p>{f.summary}</p>
+          </article>
+        ))}
       </div>
 
-      <div className="intel-overlay">
-        <PageHeader
-          title="INTELLIGENCE HUB"
-          subtitle="World events, markets, sports, wrestling and live global awareness"
-        />
-
-        <div className="intel-layout">
-          <div className="intel-panel">
-            <h3>WORLD EVENTS</h3>
-            <p>Feed not connected.</p>
-            <span>Connect news source / event API</span>
-          </div>
-
-          <div className="intel-panel">
-            <h3>STOCK MARKET</h3>
-            <p>Market feed not connected.</p>
-            <span>Connect index, stock and crypto feeds</span>
-          </div>
-
-          <div className="intel-panel">
-            <h3>SPORTS / WRESTLING</h3>
-            <p>Sports feed not connected.</p>
-            <span>WWE, AEW, UFC, NBA, football and major events</span>
-          </div>
-
-          <div className="intel-panel">
-            <h3>REVENUE</h3>
-            <p>Revenue source not connected.</p>
-            <span>Stripe / PayPal / custom endpoint later</span>
-          </div>
-        </div>
-      </div>
+      <p className="surface-note">
+        Business factories only. Internal engine capabilities (research, loop, run-due,
+        review, schedule) are not user workflows and are intentionally hidden. No factory
+        shows “Active” until it is wired to a real capability.
+      </p>
     </section>
   );
 }
