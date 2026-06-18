@@ -42,32 +42,35 @@ function latLonToVec3(lat: number, lon: number, radius: number): THREE.Vector3 {
   );
 }
 
-// --- Textured, glowing Earth (real continents from earth.jpg, holographic cyan grade) ---
+// Initial spin so a recognizable view (Africa / Europe / Atlantic) faces the camera.
+const GLOBE_START_ROT = 2.1;
+
+// --- Realistic Earth: the map is the surface; lighting reveals real continents/oceans.
 function TexturedEarth({ ai = 0 }: { ai?: number }) {
   const ref = useRef<THREE.Group>(null);
-  // Real equirectangular Blue Marble map (continents + oceans), not a scene render.
+  // Real equirectangular Blue Marble map (continents + oceans).
   const texture = useLoader(THREE.TextureLoader, "/textures/earth_map.jpg");
   texture.colorSpace = THREE.SRGBColorSpace;
-  texture.anisotropy = 16;            // crisp continents at grazing angles
+  texture.anisotropy = 16;
   texture.generateMipmaps = true;
   texture.minFilter = THREE.LinearMipmapLinearFilter;
 
   useFrame(({ clock }) => {
-    if (ref.current) ref.current.rotation.y = clock.getElapsedTime() * 0.06;
+    if (ref.current) ref.current.rotation.y = GLOBE_START_ROT + clock.getElapsedTime() * 0.05;
   });
 
   return (
-    <group ref={ref}>
-      {/* Surface: real continents, emissive so land reads as holographic light */}
+    <group ref={ref} rotation={[0.18, GLOBE_START_ROT, 0]}>
+      {/* Surface: REAL Earth. Colours come from the lit map (daytime look), not a cyan glow. */}
       <mesh>
         <sphereGeometry args={[EARTH_R, 128, 128]} />
         <meshStandardMaterial
           map={texture}
+          emissive={new THREE.Color("#0a1626")}
           emissiveMap={texture}
-          emissive={new THREE.Color("#ffffff")}
-          emissiveIntensity={1.05 + ai * 0.25}
+          emissiveIntensity={0.22}   /* only lifts the night side; map colours dominate */
           bumpMap={texture}
-          bumpScale={0.8}            /* subtle relief so terrain reads 3D, keeps brightness */
+          bumpScale={0.6}
           metalness={0}
           roughness={1}
           color={new THREE.Color("#ffffff")}
@@ -76,14 +79,14 @@ function TexturedEarth({ ai = 0 }: { ai?: number }) {
         />
       </mesh>
 
-      {/* Very subtle graticule sits ON the opaque surface (no see-through) */}
-      <mesh scale={1.003}>
-        <sphereGeometry args={[EARTH_R, 36, 24]} />
+      {/* Faint holographic graticule ABOVE the Earth (subtle overlay, never hides it). */}
+      <mesh scale={1.006}>
+        <sphereGeometry args={[EARTH_R, 24, 16]} />
         <meshBasicMaterial
-          color="#0bd5ff"
+          color="#36c6ff"
           wireframe
           transparent
-          opacity={0.025 + ai * 0.02}
+          opacity={0.05 + ai * 0.03}
           depthWrite={false}
         />
       </mesh>
