@@ -1,12 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import HolographicEarth3D from "./HolographicEarth3D";
 
-// Full Intelligence Hub command-center (page-scoped). Faithful live recreation of the
-// reference: left sidebar, orbiting hex cards + connectors, central living globe + radar
-// base, right rail (overview / feed / commands), top bar, bottom stats bar.
-// NOTE: numbers, feeds and "connected" states are SAMPLE/PLACEHOLDER (not wired to a real
-// backend) - shown for layout fidelity and clearly labelled in the UI. Home / Living Core
-// are NOT touched by this component.
+// Full Intelligence Hub command center (page-scoped). Faithful live recreation of the
+// reference layout, but with HONEST data only: no fake live numbers, no fake feeds, no
+// fake "connected" states. Every data section is a clearly-labelled placeholder until a
+// real source is wired. Home / Living Core are NOT touched by this component.
 
 type Page = "home" | "workflows" | "intelligence" | "settings";
 
@@ -26,50 +24,42 @@ const NAV: { key: Page | string; label: string; glyph: string }[] = [
   { key: "settings", label: "Settings", glyph: "✦" },
 ];
 
-// Six orbiting hex cards. Status is honest about wiring (none connected yet); the metric
-// strings are clearly sample placeholders.
+// Six orbiting hex cards. No live metrics; honest connection + maturity states only.
 const CARDS = [
-  { id: "world", title: "WORLD INTELLIGENCE", glyph: "🌐", metric: "— signals",
-    state: "NOT CONNECTED", accent: "#b07bff", pos: { top: "8%", left: "31%" } },
-  { id: "market", title: "MARKET NEXUS", glyph: "📈", metric: "— feeds",
-    state: "NOT CONNECTED", accent: "#34e0a1", pos: { top: "8%", left: "69%" } },
-  { id: "social", title: "SOCIAL RADAR", glyph: "☻", metric: "— posts",
-    state: "NOT CONNECTED", accent: "#2fb6ff", pos: { top: "40%", left: "15%" } },
-  { id: "revenue", title: "REVENUE COMMAND", glyph: "$", metric: "— streams",
-    state: "NOT CONNECTED", accent: "#ffb33e", pos: { top: "40%", left: "85%" } },
-  { id: "tech", title: "TECHNOLOGY WATCH", glyph: "⌬", metric: "— updates",
-    state: "NOT CONNECTED", accent: "#2fb6ff", pos: { top: "73%", left: "31%" } },
-  { id: "ops", title: "OPERATIONS CENTER", glyph: "⚙", metric: "— systems",
-    state: "NOT CONNECTED", accent: "#34e0a1", pos: { top: "73%", left: "69%" } },
+  { id: "world", title: "WORLD INTELLIGENCE", glyph: "🌐", need: "news / event API",
+    state: "Not Connected", maturity: "Blueprint", accent: "#b07bff", pos: { top: "8%", left: "31%" } },
+  { id: "market", title: "MARKET NEXUS", glyph: "📈", need: "market data feeds",
+    state: "Not Connected", maturity: "Blueprint", accent: "#34e0a1", pos: { top: "8%", left: "69%" } },
+  { id: "social", title: "SOCIAL RADAR", glyph: "☻", need: "platform APIs",
+    state: "Not Connected", maturity: "Concept", accent: "#2fb6ff", pos: { top: "40%", left: "15%" } },
+  { id: "revenue", title: "REVENUE COMMAND", glyph: "$", need: "Stripe / PayPal / custom",
+    state: "Not Connected", maturity: "Blueprint", accent: "#ffb33e", pos: { top: "40%", left: "85%" } },
+  { id: "tech", title: "TECHNOLOGY WATCH", glyph: "⌬", need: "research / source feed",
+    state: "Not Connected", maturity: "Blueprint", accent: "#2fb6ff", pos: { top: "73%", left: "31%" } },
+  { id: "ops", title: "OPERATIONS CENTER", glyph: "⚙", need: "ops telemetry",
+    state: "Not Connected", maturity: "Prototype", accent: "#34e0a1", pos: { top: "73%", left: "69%" } },
 ];
 
-const FEED = [
-  { t: "14:59", cat: "WORLD", text: "Connect a news/event API to populate world events." },
-  { t: "14:57", cat: "MARKETS", text: "Connect market feeds for indices / crypto." },
-  { t: "14:54", cat: "TECH", text: "Connect a research source for model & tooling news." },
-  { t: "14:51", cat: "SCIENCE", text: "No live science feed connected yet." },
+// Honest "what needs wiring" rows (NOT a live feed).
+const SOURCES = [
+  { cat: "WORLD", text: "Connect a news / event API" },
+  { cat: "MARKETS", text: "Connect index / crypto feeds" },
+  { cat: "TECH", text: "Connect a research source" },
+  { cat: "SCIENCE", text: "No live source connected" },
 ];
 
-const STATS = [
-  { label: "CPU USAGE", value: "—" },
-  { label: "MEMORY", value: "—" },
-  { label: "GPU", value: "—" },
-  { label: "NETWORK", value: "—" },
-  { label: "DATABASE", value: "—" },
-  { label: "UPTIME", value: "—" },
-];
+const STAT_LABELS = ["CPU USAGE", "MEMORY", "GPU", "NETWORK", "DATABASE", "UPTIME"];
+const CMD_EXAMPLES = ["Monitor global markets", "Track AI news", "Analyze social sentiment", "Watch security advisories"];
+
+function Placeholder({ text = "Placeholder — not connected yet" }: { text?: string }) {
+  return <div className="ihub-ph">◌ {text}</div>;
+}
 
 function Spark() {
-  const pts = useMemo(
-    () =>
-      Array.from({ length: 16 })
-        .map((_, i) => `${i * 6},${14 - Math.round(Math.random() * 12)}`)
-        .join(" "),
-    []
-  );
+  // Flat baseline (no fake data trend) — purely decorative axis.
   return (
-    <svg className="ihub-spark" viewBox="0 0 90 16" preserveAspectRatio="none">
-      <polyline points={pts} fill="none" stroke="currentColor" strokeWidth="1.2" />
+    <svg className="ihub-spark" viewBox="0 0 90 16" preserveAspectRatio="none" aria-hidden>
+      <line x1="0" y1="13" x2="90" y2="13" stroke="currentColor" strokeWidth="1" strokeOpacity="0.4" />
     </svg>
   );
 }
@@ -77,12 +67,13 @@ function Spark() {
 export default function IntelHub({ audioIntensity = 0, page, onNavigate }: Props) {
   const [clock, setClock] = useState("");
   useEffect(() => {
-    const tick = () =>
-      setClock(new Date().toLocaleTimeString([], { hour12: false }));
+    const tick = () => setClock(new Date().toLocaleTimeString([], { hour12: false }));
     tick();
     const id = setInterval(tick, 1000);
     return () => clearInterval(id);
   }, []);
+
+  const cards = useMemo(() => CARDS, []);
 
   return (
     <div className="ihub">
@@ -102,7 +93,10 @@ export default function IntelHub({ audioIntensity = 0, page, onNavigate }: Props
               <button
                 key={n.key}
                 className={`ihub-nav-item ${page === n.key ? "active" : ""}`}
-                onClick={() => ["home", "workflows", "intelligence", "settings"].includes(n.key as string) && onNavigate(n.key as Page)}
+                onClick={() =>
+                  ["home", "workflows", "intelligence", "settings"].includes(n.key as string) &&
+                  onNavigate(n.key as Page)
+                }
               >
                 <span className="ihub-nav-glyph">{n.glyph}</span>
                 <span>{n.label}</span>
@@ -112,12 +106,9 @@ export default function IntelHub({ audioIntensity = 0, page, onNavigate }: Props
 
           <div className="ihub-side-foot">
             <div className="ihub-status-card">
-              <div className="ihub-status-row">
-                <span>SYSTEM STATUS</span>
-                <Spark />
-              </div>
-              <div className="ihub-status-online">ONLINE</div>
-              <div className="ihub-status-sub">ALL CORE SYSTEMS NOMINAL</div>
+              <div className="ihub-status-row"><span>SYSTEM STATUS</span></div>
+              <div className="ihub-status-state">PLACEHOLDER</div>
+              <div className="ihub-status-sub">Not connected yet</div>
             </div>
             <blockquote className="ihub-quote">
               “The goal is not to be perfect, it is to be useful.”
@@ -131,10 +122,10 @@ export default function IntelHub({ audioIntensity = 0, page, onNavigate }: Props
           <header className="ihub-top">
             <div>
               <h1>INTELLIGENCE HUB</h1>
-              <p>REAL-TIME WORLD INTELLIGENCE OVERVIEW</p>
+              <p>REAL-TIME WORLD INTELLIGENCE OVERVIEW · PLACEHOLDER</p>
             </div>
             <div className="ihub-top-right">
-              <span className="ihub-sync"><i /> AI CORE SYNC</span>
+              <span className="ihub-sync"><i /> PREVIEW MODE</span>
               <span className="ihub-clock">{clock}<small>LOCAL TIME</small></span>
             </div>
           </header>
@@ -144,9 +135,8 @@ export default function IntelHub({ audioIntensity = 0, page, onNavigate }: Props
               <HolographicEarth3D audioIntensity={audioIntensity} />
             </div>
 
-            {/* connector lines from each card to the globe */}
             <svg className="ihub-links" viewBox="0 0 100 100" preserveAspectRatio="none">
-              {CARDS.map((c) => (
+              {cards.map((c) => (
                 <line
                   key={c.id}
                   x1={parseFloat(c.pos.left)}
@@ -161,7 +151,7 @@ export default function IntelHub({ audioIntensity = 0, page, onNavigate }: Props
               ))}
             </svg>
 
-            {CARDS.map((c) => (
+            {cards.map((c) => (
               <article
                 key={c.id}
                 className="ihub-hex"
@@ -170,8 +160,9 @@ export default function IntelHub({ audioIntensity = 0, page, onNavigate }: Props
                 <div className="ihub-hex-inner">
                   <span className="ihub-hex-glyph">{c.glyph}</span>
                   <h3>{c.title}</h3>
-                  <div className="ihub-hex-metric">{c.metric}</div>
+                  <div className="ihub-hex-metric">needs {c.need}</div>
                   <div className="ihub-hex-state"><i /> {c.state}</div>
+                  <div className="ihub-hex-mat">{c.maturity}</div>
                 </div>
               </article>
             ))}
@@ -181,7 +172,7 @@ export default function IntelHub({ audioIntensity = 0, page, onNavigate }: Props
             <span className="ihub-command-wave">⌁</span>
             <div>
               <strong>SPEAK TO GARVIS</strong>
-              <small>OR TYPE A COMMAND</small>
+              <small>command input — placeholder, not wired yet</small>
             </div>
           </div>
         </section>
@@ -196,45 +187,43 @@ export default function IntelHub({ audioIntensity = 0, page, onNavigate }: Props
               <div><b>—</b><span>CITIES</span></div>
               <div><b>—</b><span>COVERAGE</span></div>
             </div>
+            <Placeholder />
           </div>
 
           <div className="ihub-panel ihub-panel-grow">
-            <div className="ihub-panel-head">INTELLIGENCE FEED <span className="ihub-demo">SAMPLE</span></div>
+            <div className="ihub-panel-head">INTELLIGENCE FEED <span className="ihub-demo">PLACEHOLDER</span></div>
             <ul className="ihub-feed">
-              {FEED.map((f, i) => (
+              {SOURCES.map((f, i) => (
                 <li key={i}>
-                  <span className="ihub-feed-time">{f.t}</span>
+                  <span className="ihub-feed-time">--:--</span>
                   <span className="ihub-feed-cat">{f.cat}</span>
                   <p>{f.text}</p>
                 </li>
               ))}
             </ul>
-            <button className="ihub-link-btn">VIEW ALL FEEDS ›</button>
+            <Placeholder text="Placeholder — no live feed connected yet" />
           </div>
 
           <div className="ihub-panel">
-            <div className="ihub-panel-head">ACTIVE COMMANDS</div>
+            <div className="ihub-panel-head">ACTIVE COMMANDS <span className="ihub-demo">EXAMPLES</span></div>
             <ul className="ihub-cmds">
-              <li>Monitor global markets</li>
-              <li>Track AI news</li>
-              <li>Analyze social sentiment</li>
-              <li>Watch security advisories</li>
+              {CMD_EXAMPLES.map((c) => <li key={c}>{c}</li>)}
             </ul>
-            <button className="ihub-link-btn ihub-add">＋ ADD COMMAND</button>
+            <Placeholder text="Placeholder — example commands, not active yet" />
           </div>
         </aside>
       </div>
 
       {/* ---------- Bottom stats bar ---------- */}
       <footer className="ihub-stats">
-        {STATS.map((s) => (
-          <div className="ihub-stat" key={s.label}>
-            <div className="ihub-stat-label">{s.label}</div>
-            <div className="ihub-stat-value">{s.value}</div>
+        {STAT_LABELS.map((label) => (
+          <div className="ihub-stat" key={label}>
+            <div className="ihub-stat-label">{label}</div>
+            <div className="ihub-stat-value">—</div>
             <Spark />
           </div>
         ))}
-        <div className="ihub-stat ihub-stat-note">SAMPLE / PLACEHOLDER DATA — not wired to live sources</div>
+        <div className="ihub-stat ihub-stat-note">Placeholder — not connected yet (no live metrics wired)</div>
       </footer>
     </div>
   );
