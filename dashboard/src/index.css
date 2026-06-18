@@ -807,6 +807,48 @@ body {
 .ihub-spark { width: 90px; height: 14px; color: rgba(0,212,255,0.6); }
 .ihub-stat-note { margin-left: auto; min-width: 0; color: var(--text-dim); font-size: 10px; letter-spacing: 0.06em; }
 
+/* node layer wraps the orbiting hexes + connector lines (absolute over the globe) */
+.ihub-nodes { position: absolute; inset: 0; pointer-events: none; z-index: 8; }
+.ihub-hex { pointer-events: auto; }
+
+/* ----- capture mode (?capture=1): drop backdrop blur so screenshots render fast ----- */
+.ihub-capture .ihub-panel,
+.ihub-capture .ihub-status-card { backdrop-filter: none; background: rgba(8, 16, 30, 0.96); }
+
+/* ----- responsive: tighten, then stack cleanly on narrow widths ----- */
+@media (max-width: 1280px) {
+  .ihub-body { grid-template-columns: 208px 1fr 300px; }
+  .ihub-top h1 { font-size: 24px; }
+  .ihub-hex { width: 132px; height: 138px; }
+  .ihub-hex h3 { font-size: 11px; }
+}
+@media (max-width: 1024px) {
+  /* block flow so the bottom stats never overlap the globe and panels keep height */
+  .ihub { display: block; height: auto; min-height: 100vh; overflow-y: auto; }
+  .ihub-body { display: flex; flex-direction: column; }
+  .ihub-side, .ihub-right { border: none; width: 100%; }
+  .ihub-right { display: block; }
+  .ihub-panel { margin-bottom: 14px; }
+  .ihub-panel-grow { flex: none; }
+  .ihub-feed { overflow: visible; flex: none; }
+  .ihub-nav { flex-direction: row; flex-wrap: wrap; }
+  .ihub-nav-item { flex: 1 1 auto; }
+  .ihub-side-foot { margin-top: 18px; }
+  .ihub-center { padding: 16px; }
+  .ihub-stage { position: static; height: auto; }
+  .ihub-globe { position: relative; height: 300px; }
+  .ihub-nodes { position: static; display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; padding-top: 16px; }
+  .ihub-links { display: none; }
+  .ihub-hex { position: static !important; transform: none !important; width: 100%; height: 124px; }
+  .ihub-stats { flex-wrap: wrap; height: auto; gap: 16px 24px; padding: 14px 18px; }
+  .ihub-stat-note { margin-left: 0; flex-basis: 100%; }
+}
+@media (max-width: 620px) {
+  .ihub-nodes { grid-template-columns: repeat(2, 1fr); }
+  .ihub-top { flex-direction: column; gap: 10px; }
+  .ihub-globe { height: 240px; }
+}
+
 ::-webkit-scrollbar {
   width: 8px;
 }

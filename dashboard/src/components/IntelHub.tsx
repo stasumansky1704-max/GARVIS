@@ -65,18 +65,27 @@ function Spark() {
 }
 
 export default function IntelHub({ audioIntensity = 0, page, onNavigate }: Props) {
+  // Screenshot-friendly mode (?capture=1): pauses animation + WebGL post-processing and
+  // drops backdrop blur so the scene renders fast for capture. Normal mode is unaffected.
+  const capture = useMemo(
+    () => typeof window !== "undefined" &&
+      new URLSearchParams(window.location.search).get("capture") === "1",
+    []
+  );
+
   const [clock, setClock] = useState("");
   useEffect(() => {
+    if (capture) { setClock("00:00:00"); return; }
     const tick = () => setClock(new Date().toLocaleTimeString([], { hour12: false }));
     tick();
     const id = setInterval(tick, 1000);
     return () => clearInterval(id);
-  }, []);
+  }, [capture]);
 
   const cards = useMemo(() => CARDS, []);
 
   return (
-    <div className="ihub">
+    <div className={`ihub${capture ? " ihub-capture" : ""}`}>
       <div className="ihub-body">
         {/* ---------- Left sidebar ---------- */}
         <aside className="ihub-side">
@@ -132,40 +141,42 @@ export default function IntelHub({ audioIntensity = 0, page, onNavigate }: Props
 
           <div className="ihub-stage">
             <div className="ihub-globe">
-              <HolographicEarth3D audioIntensity={audioIntensity} />
+              <HolographicEarth3D audioIntensity={capture ? 0 : audioIntensity} capture={capture} />
             </div>
 
-            <svg className="ihub-links" viewBox="0 0 100 100" preserveAspectRatio="none">
-              {cards.map((c) => (
-                <line
-                  key={c.id}
-                  x1={parseFloat(c.pos.left)}
-                  y1={parseFloat(c.pos.top) + 6}
-                  x2="50"
-                  y2="50"
-                  stroke={c.accent}
-                  strokeWidth="0.15"
-                  strokeOpacity="0.5"
-                  strokeDasharray="0.6 0.8"
-                />
-              ))}
-            </svg>
+            <div className="ihub-nodes">
+              <svg className="ihub-links" viewBox="0 0 100 100" preserveAspectRatio="none">
+                {cards.map((c) => (
+                  <line
+                    key={c.id}
+                    x1={parseFloat(c.pos.left)}
+                    y1={parseFloat(c.pos.top) + 6}
+                    x2="50"
+                    y2="50"
+                    stroke={c.accent}
+                    strokeWidth="0.15"
+                    strokeOpacity="0.5"
+                    strokeDasharray="0.6 0.8"
+                  />
+                ))}
+              </svg>
 
-            {cards.map((c) => (
-              <article
-                key={c.id}
-                className="ihub-hex"
-                style={{ top: c.pos.top, left: c.pos.left, ["--accent" as string]: c.accent }}
-              >
-                <div className="ihub-hex-inner">
-                  <span className="ihub-hex-glyph">{c.glyph}</span>
-                  <h3>{c.title}</h3>
-                  <div className="ihub-hex-metric">needs {c.need}</div>
-                  <div className="ihub-hex-state"><i /> {c.state}</div>
-                  <div className="ihub-hex-mat">{c.maturity}</div>
-                </div>
-              </article>
-            ))}
+              {cards.map((c) => (
+                <article
+                  key={c.id}
+                  className="ihub-hex"
+                  style={{ top: c.pos.top, left: c.pos.left, ["--accent" as string]: c.accent }}
+                >
+                  <div className="ihub-hex-inner">
+                    <span className="ihub-hex-glyph">{c.glyph}</span>
+                    <h3>{c.title}</h3>
+                    <div className="ihub-hex-metric">needs {c.need}</div>
+                    <div className="ihub-hex-state"><i /> {c.state}</div>
+                    <div className="ihub-hex-mat">{c.maturity}</div>
+                  </div>
+                </article>
+              ))}
+            </div>
           </div>
 
           <div className="ihub-command">

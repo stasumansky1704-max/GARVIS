@@ -12,6 +12,7 @@ import * as THREE from "three";
 
 interface EarthProps {
   audioIntensity?: number;
+  capture?: boolean; // screenshot-friendly: no post-processing, render-on-demand
 }
 
 const EARTH_R = 2;
@@ -299,7 +300,7 @@ function FallbackGlobe() {
   );
 }
 
-function EarthScene({ audioIntensity = 0 }: EarthProps) {
+function EarthScene({ audioIntensity = 0, capture = false }: EarthProps) {
   return (
     <>
       {/* even, bright illumination so the whole visible hemisphere reads (no dark night side) */}
@@ -318,22 +319,25 @@ function EarthScene({ audioIntensity = 0 }: EarthProps) {
       <FloorGlow ai={audioIntensity} />
       <ArcLines ai={audioIntensity} />
 
-      <EffectComposer multisampling={0} frameBufferType={THREE.HalfFloatType}>
-        <SMAA />
-        <Bloom
-          intensity={1.6 + audioIntensity * 1.1}
-          luminanceThreshold={0.28}
-          luminanceSmoothing={0.92}
-          radius={0.7}
-          mipmapBlur
-        />
-        <Vignette offset={0.32} darkness={0.7} />
-      </EffectComposer>
+      {/* Capture mode skips heavy post-processing so screenshots render fast. */}
+      {!capture && (
+        <EffectComposer multisampling={0} frameBufferType={THREE.HalfFloatType}>
+          <SMAA />
+          <Bloom
+            intensity={1.6 + audioIntensity * 1.1}
+            luminanceThreshold={0.28}
+            luminanceSmoothing={0.92}
+            radius={0.7}
+            mipmapBlur
+          />
+          <Vignette offset={0.32} darkness={0.7} />
+        </EffectComposer>
+      )}
     </>
   );
 }
 
-export default function HolographicEarth3D({ audioIntensity = 0 }: EarthProps) {
+export default function HolographicEarth3D({ audioIntensity = 0, capture = false }: EarthProps) {
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
 
@@ -353,6 +357,7 @@ export default function HolographicEarth3D({ audioIntensity = 0 }: EarthProps) {
     <Canvas
       camera={{ position: [0, 0.5, 6.0], fov: 45 }}
       dpr={[1, 1.5]}
+      frameloop={capture ? "demand" : "always"}
       gl={{ antialias: false, alpha: true, powerPreference: "high-performance" }}
       onCreated={({ gl }) => {
         gl.toneMapping = THREE.ACESFilmicToneMapping;
@@ -360,7 +365,7 @@ export default function HolographicEarth3D({ audioIntensity = 0 }: EarthProps) {
       }}
       style={{ background: "transparent" }}
     >
-      <EarthScene audioIntensity={audioIntensity} />
+      <EarthScene audioIntensity={audioIntensity} capture={capture} />
     </Canvas>
   );
 }
