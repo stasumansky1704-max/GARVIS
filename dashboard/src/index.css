@@ -886,20 +886,29 @@ body {
 .ihub-nodes { position: absolute; inset: 0; pointer-events: none; z-index: 8; perspective: 1500px; }
 .ihub-hex { pointer-events: auto; }
 
-/* per-card downward projection beam (the card "stands on" a light column) */
+/* holographic projector beam RISING from a floor emitter UP into the card —
+   it's the beam that "projects" the card. Bright at the emitter base + at the card. */
 .ihub-card-beam {
-  position: absolute; transform: translateX(-50%); transform-origin: top center;
-  width: 5px; height: 210px; z-index: 6; pointer-events: none; border-radius: 3px;
-  background: linear-gradient(to bottom,
-    color-mix(in srgb, var(--accent) 92%, #ffffff 8%) 0%,
-    color-mix(in srgb, var(--accent) 70%, transparent) 20%,
-    color-mix(in srgb, var(--accent) 32%, transparent) 52%,
-    transparent 100%);
-  filter: drop-shadow(0 0 9px color-mix(in srgb, var(--accent) 65%, transparent));
-  animation: ihub-beam-pulse 3.4s ease-in-out infinite;
+  position: absolute; transform: translateX(-50%); transform-origin: bottom center;
+  width: 6px; height: 158px; z-index: 6; pointer-events: none; border-radius: 3px;
+  background: linear-gradient(to top,
+    color-mix(in srgb, var(--accent) 96%, #ffffff 30%) 0%,    /* bright floor emitter */
+    color-mix(in srgb, var(--accent) 80%, transparent) 16%,
+    color-mix(in srgb, var(--accent) 42%, transparent) 52%,
+    color-mix(in srgb, var(--accent) 82%, #ffffff 12%) 100%); /* bright at the card */
+  filter: drop-shadow(0 0 11px color-mix(in srgb, var(--accent) 80%, transparent))
+          drop-shadow(0 0 4px #aee3ff);
+  animation: ihub-beam-pulse 3s ease-in-out infinite;
+}
+/* glowing floor emitter disc where the beam originates */
+.ihub-card-beam::after {
+  content: ""; position: absolute; bottom: -5px; left: 50%; transform: translateX(-50%);
+  width: 26px; height: 11px; border-radius: 50%;
+  background: radial-gradient(ellipse, color-mix(in srgb, var(--accent) 92%, #ffffff 35%) 0%, transparent 70%);
+  filter: blur(1px);
 }
 @keyframes ihub-beam-pulse {
-  0%, 100% { opacity: 0.7; }
+  0%, 100% { opacity: 0.78; }
   50% { opacity: 1; }
 }
 

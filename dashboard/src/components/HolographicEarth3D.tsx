@@ -268,9 +268,12 @@ function FloorBeams({ ai = 0 }: { ai?: number }) {
   // framed around the globe (left/right clusters + a few in the distance), avoiding center
   const pillars = useMemo(() => {
     const out: { x: number; z: number; h: number; w: number }[] = [];
-    const xs = [-9, -7.4, -6, 6, 7.4, 9, -4.6, 4.6, -8.2, 8.2];
+    const xs = [
+      -11, -10, -9, -8.2, -7.4, -6.6, -6, -5.2, -4.4, -3.6,
+      3.6, 4.4, 5.2, 6, 6.6, 7.4, 8.2, 9, 10, 11,
+    ];
     for (let i = 0; i < xs.length; i++) {
-      out.push({ x: xs[i], z: -1.5 - Math.random() * 7, h: 3.0 + Math.random() * 2.4, w: 0.09 + Math.random() * 0.04 });
+      out.push({ x: xs[i], z: -1.2 - Math.random() * 7.5, h: 3.0 + Math.random() * 2.6, w: 0.08 + Math.random() * 0.04 });
     }
     return out;
   }, []);
@@ -379,27 +382,6 @@ function HexFloor({ ai = 0 }: { ai?: number }) {
   );
 }
 
-// --- Holographic platform glow: a soft radial pool of light directly under the globe.
-// (No emitter rings — they read as a "ring around the planet"; the hex floor + its scan
-// wave provide the platform structure instead.)
-function Platform({ ai = 0 }: { ai?: number }) {
-  const glow = useRef<THREE.Mesh>(null);
-  useFrame(({ clock }) => {
-    const t = clock.getElapsedTime();
-    if (glow.current) {
-      (glow.current.material as THREE.MeshBasicMaterial).opacity = 0.4 + Math.sin(t * 1.4) * 0.06 + ai * 0.16;
-    }
-  });
-  return (
-    <group position={[GLOBE_POS[0], FLOOR_Y + 0.04, GLOBE_POS[2]]} rotation={[-Math.PI / 2, 0, 0]}>
-      <mesh ref={glow}>
-        <circleGeometry args={[3.2, 64]} />
-        <meshBasicMaterial color="#bfeaff" transparent opacity={0.42} blending={THREE.AdditiveBlending} depthWrite={false} />
-      </mesh>
-    </group>
-  );
-}
-
 // --- Overhead projection ENGINE: a tiered funnel of concentric neon rings narrowing down
 // to a bright emitter core (the detailed ceiling projector from the reference). ---
 function TopProjector() {
@@ -500,29 +482,28 @@ function EarthScene({ audioIntensity = 0, capture = false, showPillars = true }:
       <LightBeam />
       <HexFloor ai={audioIntensity} />
       {showPillars && <FloorBeams ai={audioIntensity} />}
-      <Platform ai={audioIntensity} />
       <ArcLines ai={audioIntensity} />
 
       {/* Capture mode: a single lightweight Bloom so screenshots still show the glow
           (fast on the demand frameloop). Normal mode: full cinematic chain. */}
       {capture ? (
         <EffectComposer multisampling={0} frameBufferType={THREE.HalfFloatType}>
-          <Bloom intensity={1.0} luminanceThreshold={0.42} luminanceSmoothing={0.9} radius={0.6} mipmapBlur />
+          <Bloom intensity={1.15} luminanceThreshold={0.4} luminanceSmoothing={0.9} radius={0.65} mipmapBlur />
         </EffectComposer>
       ) : (
         <EffectComposer multisampling={0} frameBufferType={THREE.HalfFloatType}>
           <SMAA />
           {/* bright emissive cores cross this threshold → they bloom into light, not stripes */}
           <Bloom
-            intensity={1.15 + audioIntensity * 0.8}
-            luminanceThreshold={0.42}
+            intensity={1.3 + audioIntensity * 0.8}
+            luminanceThreshold={0.4}
             luminanceSmoothing={0.9}
-            radius={0.72}
+            radius={0.74}
             mipmapBlur
           />
-          {/* color grade: punchier neon "trailer" look */}
-          <HueSaturation saturation={0.18} />
-          <BrightnessContrast brightness={0.02} contrast={0.12} />
+          {/* color grade: punchier neon-blue "trailer" look */}
+          <HueSaturation saturation={0.26} />
+          <BrightnessContrast brightness={0.02} contrast={0.14} />
           <Vignette offset={0.3} darkness={0.72} />
         </EffectComposer>
       )}
