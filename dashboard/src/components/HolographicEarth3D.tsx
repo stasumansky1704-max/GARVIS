@@ -94,20 +94,20 @@ function atmoMat(color: string, power: number, strength: number) {
 // A REALLY thin neon-blue rim hugging the limb (high power = concentrated at the edge),
 // plus a barely-there soft edge so it isn't a hard line. No fat halo.
 function Atmosphere({ ai = 0 }: { ai?: number }) {
-  const rim = useMemo(() => atmoMat("#4aa6ff", 5.2, 0.8), []);
-  const soft = useMemo(() => atmoMat("#2f8fe6", 3.6, 0.14), []);
+  const rim = useMemo(() => atmoMat("#4aa6ff", 6.5, 0.5), []);
+  const soft = useMemo(() => atmoMat("#2f8fe6", 4.0, 0.07), []);
   useEffect(() => () => { rim.dispose(); soft.dispose(); }, [rim, soft]);
   useFrame(() => {
-    rim.uniforms.uStrength.value = 0.78 + ai * 0.15;
+    rim.uniforms.uStrength.value = 0.48 + ai * 0.12;
   });
   return (
     <group position={GLOBE_POS}>
       <mesh>
-        <sphereGeometry args={[EARTH_R * 1.02, 64, 64]} />
+        <sphereGeometry args={[EARTH_R * 1.016, 64, 64]} />
         <primitive object={rim} attach="material" />
       </mesh>
       <mesh>
-        <sphereGeometry args={[EARTH_R * 1.05, 48, 48]} />
+        <sphereGeometry args={[EARTH_R * 1.04, 48, 48]} />
         <primitive object={soft} attach="material" />
       </mesh>
     </group>
@@ -270,15 +270,15 @@ function LightBeam() {
     <group ref={grp}>
       {beams.map((b, i) => (
         <group key={i} position={b.pos} quaternion={b.quat}>
-          {/* very thin faint halo so the beam still reads as light */}
+          {/* hairline faint halo so the beam still reads as light */}
           <mesh>
-            <coneGeometry args={[0.045, b.h, 10, 1, true]} />
-            <meshBasicMaterial color="#3ba6ff" transparent opacity={0.09} blending={THREE.AdditiveBlending} depthWrite={false} side={THREE.DoubleSide} />
+            <coneGeometry args={[0.028, b.h, 8, 1, true]} />
+            <meshBasicMaterial color="#3ba6ff" transparent opacity={0.07} blending={THREE.AdditiveBlending} depthWrite={false} side={THREE.DoubleSide} />
           </mesh>
-          {/* ultra-thin bright core */}
+          {/* hairline bright core (very thin + sharp) */}
           <mesh>
-            <coneGeometry args={[0.012, b.h, 8, 1, true]} />
-            <meshBasicMaterial color="#f4ffff" transparent opacity={0.98} blending={THREE.AdditiveBlending} depthWrite={false} side={THREE.DoubleSide} />
+            <coneGeometry args={[0.008, b.h, 6, 1, true]} />
+            <meshBasicMaterial color="#ffffff" transparent opacity={1} blending={THREE.AdditiveBlending} depthWrite={false} side={THREE.DoubleSide} />
           </mesh>
         </group>
       ))}
