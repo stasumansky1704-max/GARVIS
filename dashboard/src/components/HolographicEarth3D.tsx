@@ -1,5 +1,6 @@
 import { useRef, useMemo, useState, useEffect, Suspense } from "react";
 import { Canvas, useFrame, useLoader } from "@react-three/fiber";
+import { MeshReflectorMaterial } from "@react-three/drei";
 import { Bloom, Vignette, EffectComposer, SMAA, HueSaturation, BrightnessContrast } from "@react-three/postprocessing";
 import * as THREE from "three";
 
@@ -370,6 +371,29 @@ const HEX_FRAG = `
   }
 `;
 
+// --- Reflective base floor (glossy dark mirror) beneath the hex grid: the globe, beams
+// and pillars reflect in it for a real "holographic platform on a wet floor" look. ---
+function ReflectiveFloor() {
+  return (
+    <mesh rotation={[-Math.PI / 2, 0, 0]} position={[GLOBE_POS[0], FLOOR_Y - 0.02, GLOBE_POS[2]]}>
+      <planeGeometry args={[60, 60]} />
+      <MeshReflectorMaterial
+        resolution={512}
+        mirror={0.55}
+        mixBlur={1.4}
+        mixStrength={1.3}
+        blur={[420, 140]}
+        roughness={0.85}
+        metalness={0.5}
+        color="#06121f"
+        depthScale={1.1}
+        minDepthThreshold={0.4}
+        maxDepthThreshold={1.2}
+      />
+    </mesh>
+  );
+}
+
 function HexFloor({ ai = 0 }: { ai?: number }) {
   const material = useMemo(
     () =>
@@ -513,6 +537,7 @@ function EarthScene({ audioIntensity = 0, capture = false, showPillars = true }:
       <Atmosphere ai={audioIntensity} />
       <TopProjector />
       <LightBeam />
+      <ReflectiveFloor />
       <HexFloor ai={audioIntensity} />
       {showPillars && <FloorBeams ai={audioIntensity} />}
       <ArcLines ai={audioIntensity} />
