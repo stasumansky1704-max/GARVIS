@@ -43,32 +43,32 @@ interface Card {
 const CARDS: Card[] = [
   {
     id: "world", title: "WORLD INTELLIGENCE", glyph: "🌐", need: "news / event API",
-    state: "Not Connected", maturity: "Blueprint", accent: "#8a7bff", pos: { top: "12%", left: "26%" },
+    state: "Not Connected", maturity: "Blueprint", accent: "#8a7bff", pos: { top: "9%", left: "25%" },
     systems: ["Global event stream", "Geopolitical risk watch", "Region briefings"],
   },
   {
     id: "market", title: "MARKET NEXUS", glyph: "📈", need: "market data feeds",
-    state: "Not Connected", maturity: "Blueprint", accent: "#2ee6b0", pos: { top: "12%", left: "74%" },
+    state: "Not Connected", maturity: "Blueprint", accent: "#2ee6b0", pos: { top: "9%", left: "75%" },
     systems: ["Index & crypto tape", "Sector heatmap", "Volatility radar"],
   },
   {
     id: "social", title: "SOCIAL RADAR", glyph: "☻", need: "platform APIs",
-    state: "Not Connected", maturity: "Concept", accent: "#2f9bff", pos: { top: "46%", left: "9%" },
+    state: "Not Connected", maturity: "Concept", accent: "#2f9bff", pos: { top: "46%", left: "12%" },
     systems: ["Sentiment pulse", "Trend detection", "Narrative tracking"],
   },
   {
     id: "revenue", title: "REVENUE COMMAND", glyph: "$", need: "Stripe / PayPal / custom",
-    state: "Not Connected", maturity: "Blueprint", accent: "#ffb33e", pos: { top: "46%", left: "91%" },
+    state: "Not Connected", maturity: "Blueprint", accent: "#ffb33e", pos: { top: "46%", left: "88%" },
     systems: ["Revenue stream", "MRR / churn view", "Payout monitor"],
   },
   {
     id: "tech", title: "TECHNOLOGY WATCH", glyph: "⌬", need: "research / source feed",
-    state: "Not Connected", maturity: "Blueprint", accent: "#29d4ff", pos: { top: "80%", left: "26%" },
+    state: "Not Connected", maturity: "Blueprint", accent: "#29d4ff", pos: { top: "83%", left: "25%" },
     systems: ["Research digest", "Release radar", "Security advisories"],
   },
   {
     id: "ops", title: "OPERATIONS CENTER", glyph: "⚙", need: "ops telemetry",
-    state: "Not Connected", maturity: "Prototype", accent: "#19d39a", pos: { top: "80%", left: "74%" },
+    state: "Not Connected", maturity: "Prototype", accent: "#19d39a", pos: { top: "83%", left: "75%" },
     systems: ["Service health", "Job queue view", "Incident timeline"],
   },
 ];

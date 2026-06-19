@@ -19,7 +19,7 @@ const EARTH_R = 2;
 
 // Globe sits deeper (further from camera) and slightly higher in frame, floating above
 // the holographic platform. The light beam + floor glow track this same x/z.
-const GLOBE_POS: [number, number, number] = [0, 0.55, -1.1];
+const GLOBE_POS: [number, number, number] = [0, 0.55, -2.4];
 const FLOOR_Y = -3.4; // platform sits well below the globe (a clear floating gap)
 
 const CITIES = [
@@ -154,38 +154,95 @@ function TexturedEarth({ ai = 0 }: { ai?: number }) {
   );
 }
 
-// --- Overhead light beam (fixture + shaft bathing the globe from above) ---
+// --- Projector beams: a few crisp converging light shafts from above (NOT a dome). The
+// shafts read as projection beams hitting the globe, with a brighter inner core.
 function LightBeam({ ai = 0 }: { ai?: number }) {
-  const beam = useRef<THREE.Mesh>(null);
+  const grp = useRef<THREE.Group>(null);
+  // three projectors fanned slightly so the top of the globe reads as "lit by beams"
+  const beams = useMemo(
+    () => [
+      { rot: 0.0, x: 0.0 },
+      { rot: 0.16, x: 0.9 },
+      { rot: -0.16, x: -0.9 },
+    ],
+    []
+  );
   useFrame(({ clock }) => {
-    if (beam.current) {
-      const m = beam.current.material as THREE.MeshBasicMaterial;
-      m.opacity = 0.05 + (0.5 + 0.5 * Math.sin(clock.getElapsedTime() * 2)) * (0.035 + ai * 0.05);
-    }
+    if (!grp.current) return;
+    const t = clock.getElapsedTime();
+    grp.current.children.forEach((c, i) => {
+      const m = (c as THREE.Mesh).material as THREE.MeshBasicMaterial;
+      if (m) m.opacity = (i % 2 === 0 ? 0.16 : 0.07) + 0.03 * Math.sin(t * 2.2 + i) + ai * 0.06;
+    });
   });
   return (
-    <group position={[GLOBE_POS[0], 0, GLOBE_POS[2]]}>
-      {/* shaft: narrow at top (apex), widening down onto the globe */}
-      <mesh ref={beam} position={[0, 4.0, 0]}>
-        <coneGeometry args={[1.4, 3.4, 48, 1, true]} />
-        <meshBasicMaterial
-          color="#bff0ff"
-          transparent
-          opacity={0.06}
-          blending={THREE.AdditiveBlending}
-          depthWrite={false}
-          side={THREE.DoubleSide}
-        />
-      </mesh>
-      {/* fixture ring + glowing disc at the top */}
-      <mesh position={[0, 5.7, 0]} rotation={[Math.PI / 2, 0, 0]}>
-        <torusGeometry args={[0.6, 0.05, 12, 48]} />
-        <meshBasicMaterial color="#dff6ff" transparent opacity={0.85} blending={THREE.AdditiveBlending} />
-      </mesh>
-      <mesh position={[0, 5.7, 0]} rotation={[Math.PI / 2, 0, 0]}>
-        <circleGeometry args={[0.53, 48]} />
-        <meshBasicMaterial color="#9fe9ff" transparent opacity={0.35} blending={THREE.AdditiveBlending} depthWrite={false} />
-      </mesh>
+    <group ref={grp} position={[GLOBE_POS[0], GLOBE_POS[1] + 2.0, GLOBE_POS[2]]}>
+      {beams.map((b, i) => (
+        <group key={i} position={[b.x, 0, 0]} rotation={[0, 0, b.rot]}>
+          {/* outer soft shaft */}
+          <mesh position={[0, 1.6, 0]}>
+            <coneGeometry args={[0.95, 3.4, 40, 1, true]} />
+            <meshBasicMaterial color="#bff0ff" transparent opacity={0.07} blending={THREE.AdditiveBlending} depthWrite={false} side={THREE.DoubleSide} />
+          </mesh>
+          {/* crisp bright inner core */}
+          <mesh position={[0, 1.6, 0]}>
+            <coneGeometry args={[0.34, 3.4, 32, 1, true]} />
+            <meshBasicMaterial color="#e8fbff" transparent opacity={0.18} blending={THREE.AdditiveBlending} depthWrite={false} side={THREE.DoubleSide} />
+          </mesh>
+        </group>
+      ))}
+    </group>
+  );
+}
+
+// --- Sharp vertical light pillars rising from the floor (crisp projection columns) ---
+function FloorBeams({ ai = 0 }: { ai?: number }) {
+  // crisp vertical gradient: a bright thin core at the base, fading quickly upward
+  const grad = useMemo(() => {
+    const c = document.createElement("canvas");
+    c.width = 8; c.height = 128;
+    const ctx = c.getContext("2d")!;
+    const g = ctx.createLinearGradient(0, 128, 0, 0);
+    g.addColorStop(0, "rgba(210,240,255,1)");      // bright crisp base
+    g.addColorStop(0.18, "rgba(150,215,255,0.7)");
+    g.addColorStop(0.55, "rgba(90,180,255,0.18)");
+    g.addColorStop(1, "rgba(90,180,255,0)");
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, 8, 128);
+    const t = new THREE.CanvasTexture(c);
+    t.colorSpace = THREE.SRGBColorSpace;
+    return t;
+  }, []);
+  useEffect(() => () => grad.dispose(), [grad]);
+
+  // framed around the globe (left/right clusters + a few in the distance), avoiding center
+  const pillars = useMemo(() => {
+    const out: { x: number; z: number; h: number; w: number }[] = [];
+    const xs = [-9, -7.4, -6, 6, 7.4, 9, -4.6, 4.6, -8.2, 8.2];
+    for (let i = 0; i < xs.length; i++) {
+      out.push({ x: xs[i], z: -1.5 - Math.random() * 7, h: 3.0 + Math.random() * 2.4, w: 0.1 + Math.random() * 0.06 });
+    }
+    return out;
+  }, []);
+
+  const group = useRef<THREE.Group>(null);
+  useFrame(({ clock }) => {
+    if (!group.current) return;
+    const t = clock.getElapsedTime();
+    group.current.children.forEach((c, i) => {
+      const m = (c as THREE.Mesh).material as THREE.MeshBasicMaterial;
+      m.opacity = 0.55 + 0.25 * Math.sin(t * 1.4 + i) + ai * 0.25;
+    });
+  });
+
+  return (
+    <group ref={group} position={[GLOBE_POS[0], 0, GLOBE_POS[2]]}>
+      {pillars.map((p, i) => (
+        <mesh key={i} position={[p.x, FLOOR_Y + p.h / 2, p.z]}>
+          <planeGeometry args={[p.w, p.h]} />
+          <meshBasicMaterial map={grad} transparent opacity={0.6} blending={THREE.AdditiveBlending} depthWrite={false} side={THREE.DoubleSide} />
+        </mesh>
+      ))}
     </group>
   );
 }
@@ -319,7 +376,8 @@ function EarthScene({ audioIntensity = 0, capture = false }: EarthProps) {
       <hemisphereLight args={["#eaf7ff", "#0a2740", 1.35]} />
       <ambientLight intensity={0.55} />
       <pointLight position={[3, 2.5, 7]} intensity={3.2} color="#f2faff" />
-      <pointLight position={[0, 6, 1.5]} intensity={1.8} color="#ffffff" />
+      {/* softened top light so it reads as projector beams, not a bright white blob */}
+      <pointLight position={[0, 6, 1.5]} intensity={0.8} color="#ffffff" />
       {/* cool rim light from behind to carve the globe silhouette out of the dark */}
       <pointLight position={[-4, 1.5, -6]} intensity={2.4} color="#2f9bff" />
 
@@ -329,6 +387,7 @@ function EarthScene({ audioIntensity = 0, capture = false }: EarthProps) {
       <Atmosphere ai={audioIntensity} />
       <LightBeam ai={audioIntensity} />
       <HexFloor ai={audioIntensity} />
+      <FloorBeams ai={audioIntensity} />
       <Platform ai={audioIntensity} />
       <ArcLines ai={audioIntensity} />
 
@@ -368,8 +427,8 @@ export default function HolographicEarth3D({ audioIntensity = 0, capture = false
 
   return (
     <Canvas
-      camera={{ position: [0, 0.6, 6.7], fov: 44 }}
-      dpr={[1, 1.5]}
+      camera={{ position: [0, 0.6, 6.9], fov: 44 }}
+      dpr={capture ? 2.5 : [1, 1.5]}
       frameloop={capture ? "demand" : "always"}
       gl={{ antialias: false, alpha: true, powerPreference: "high-performance" }}
       onCreated={({ gl }) => {
