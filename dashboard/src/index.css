@@ -774,19 +774,22 @@ body {
     color-mix(in srgb, var(--accent) 80%, #ffffff 20%) 0%,
     color-mix(in srgb, var(--accent) 60%, #050f1c) 44%,
     color-mix(in srgb, var(--accent) 22%, #030a14) 100%);
-  transition: transform 0.3s cubic-bezier(0.22, 1, 0.36, 1);
-  animation: ihub-hex-breathe 5.5s ease-in-out infinite;
+  transform-style: preserve-3d;
+  animation: ihub-hex-breathe 5.5s ease-in-out infinite, ihub-hex-spin 9s ease-in-out infinite;
   will-change: transform, filter;
 }
-.ihub-hex:nth-of-type(2) { animation-delay: 0.7s; }
-.ihub-hex:nth-of-type(3) { animation-delay: 1.4s; }
-.ihub-hex:nth-of-type(4) { animation-delay: 2.1s; }
-.ihub-hex:nth-of-type(5) { animation-delay: 2.8s; }
-.ihub-hex:nth-of-type(6) { animation-delay: 3.5s; }
-.ihub-hex:hover, .ihub-hex:focus-visible {
-  transform: translate(-50%, calc(-50% - 7px)) scale(1.06); z-index: 13;
+.ihub-hex:nth-of-type(2) { animation-delay: 0.7s, 0.6s; }
+.ihub-hex:nth-of-type(3) { animation-delay: 1.4s, 1.5s; }
+.ihub-hex:nth-of-type(4) { animation-delay: 2.1s, 2.4s; }
+.ihub-hex:nth-of-type(5) { animation-delay: 2.8s, 3.3s; }
+.ihub-hex:nth-of-type(6) { animation-delay: 3.5s, 4.2s; }
+/* gentle holographic rotation (kept subtle so text stays readable) */
+@keyframes ihub-hex-spin {
+  0%, 100% { transform: translate(-50%, -50%) rotateY(-11deg); }
+  50% { transform: translate(-50%, -50%) rotateY(11deg); }
 }
-.ihub-hex.selected { transform: translate(-50%, calc(-50% - 4px)) scale(1.04); z-index: 12; }
+.ihub-hex:hover, .ihub-hex:focus-visible { z-index: 13; animation-play-state: paused; }
+.ihub-hex.selected { z-index: 12; }
 .ihub-hex-inner {
   width: 100%; height: 100%;
   clip-path: polygon(25% 1%, 75% 1%, 100% 50%, 75% 99%, 25% 99%, 0% 50%);
@@ -811,8 +814,8 @@ body {
     inset 0 1px 0 color-mix(in srgb, var(--accent) 75%, transparent),
     inset 0 0 38px color-mix(in srgb, var(--accent) 26%, transparent);
 }
-.ihub-hex-glyph { font-size: 23px; filter: drop-shadow(0 0 10px var(--accent)); }
-.ihub-hex h3 { font-family: var(--font-display); font-size: 12.5px; letter-spacing: 0.06em; color: var(--white); line-height: 1.25; }
+.ihub-hex-glyph { font-size: 23px; filter: drop-shadow(0 0 14px var(--accent)) drop-shadow(0 0 4px var(--accent)); }
+.ihub-hex h3 { font-family: var(--font-display); font-size: 12.5px; letter-spacing: 0.06em; color: var(--white); line-height: 1.25; text-shadow: 0 0 10px color-mix(in srgb, var(--accent) 55%, transparent); }
 .ihub-hex-metric { font-family: var(--font-mono); font-size: 11px; color: var(--text-dim); }
 .ihub-hex-state { display: flex; align-items: center; gap: 6px; font-size: 9.5px; letter-spacing: 0.08em; color: var(--accent); }
 .ihub-hex-state i { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 6px var(--accent); }
@@ -869,11 +872,28 @@ body {
 .ihub-stat-note { margin-left: auto; min-width: 0; color: var(--text-dim); font-size: 10px; letter-spacing: 0.06em; }
 
 /* node layer wraps the orbiting hexes + connector lines (absolute over the globe) */
-.ihub-nodes { position: absolute; inset: 0; pointer-events: none; z-index: 8; }
+.ihub-nodes { position: absolute; inset: 0; pointer-events: none; z-index: 8; perspective: 1500px; }
 .ihub-hex { pointer-events: auto; }
 
+/* per-card downward projection beam (the card "stands on" a light column) */
+.ihub-card-beam {
+  position: absolute; transform: translateX(-50%); transform-origin: top center;
+  width: 5px; height: 210px; z-index: 6; pointer-events: none; border-radius: 3px;
+  background: linear-gradient(to bottom,
+    color-mix(in srgb, var(--accent) 92%, #ffffff 8%) 0%,
+    color-mix(in srgb, var(--accent) 70%, transparent) 20%,
+    color-mix(in srgb, var(--accent) 32%, transparent) 52%,
+    transparent 100%);
+  filter: drop-shadow(0 0 9px color-mix(in srgb, var(--accent) 65%, transparent));
+  animation: ihub-beam-pulse 3.4s ease-in-out infinite;
+}
+@keyframes ihub-beam-pulse {
+  0%, 100% { opacity: 0.7; }
+  50% { opacity: 1; }
+}
+
 /* ----- collapsible side panels (holographic drawers) ----- */
-.ihub-side { position: relative; overflow: hidden; transition: padding 0.3s ease; }
+.ihub-side { position: relative; overflow: visible; transition: padding 0.3s ease; }
 .ihub-side.collapsed { padding-left: 8px; padding-right: 8px; }
 .ihub-side.collapsed .ihub-logo { justify-content: center; }
 .ihub-side.collapsed .ihub-logo-when-open,
@@ -883,18 +903,18 @@ body {
 .ihub-logo-when-open { min-width: 0; }
 
 .ihub-rail-toggle {
-  position: absolute; top: 20px; z-index: 22;
-  width: 24px; height: 24px; border-radius: 50%;
+  position: absolute; top: 50%; transform: translateY(-50%); z-index: 22;
+  width: 30px; height: 50px; border-radius: 9px;
   display: grid; place-items: center; cursor: pointer; line-height: 1;
   background: rgba(8, 18, 32, 0.92); color: var(--cyan);
   border: 1px solid rgba(0, 212, 255, 0.38);
-  box-shadow: 0 0 12px rgba(0, 212, 255, 0.28);
-  font-size: 14px; transition: background 0.2s ease, transform 0.2s ease;
+  box-shadow: 0 0 14px rgba(0, 212, 255, 0.3), inset 0 0 10px rgba(0, 212, 255, 0.12);
+  font-size: 18px; transition: background 0.2s ease, color 0.2s ease;
 }
-.ihub-rail-toggle:hover { background: rgba(0, 212, 255, 0.16); transform: scale(1.08); }
+.ihub-rail-toggle:hover { background: rgba(0, 212, 255, 0.18); color: var(--white); }
 .ihub-rail-toggle:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
-.ihub-rail-toggle-left { right: 12px; }
-.ihub-rail-toggle-right { left: -12px; top: 20px; }
+.ihub-rail-toggle-left { right: -15px; }
+.ihub-rail-toggle-right { left: -15px; }
 
 /* ----- card detail drawer ----- */
 .ihub-drawer-scrim { position: fixed; inset: 0; background: rgba(2, 6, 14, 0.5); z-index: 40; animation: ihub-fade 0.2s ease; }
@@ -964,7 +984,8 @@ body {
   .ihub-globe { position: relative; height: 300px; }
   .ihub-nodes { position: static; display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; padding-top: 16px; }
   .ihub-links { display: none; }
-  .ihub-hex { position: static !important; transform: none !important; width: 100%; height: 124px; }
+  .ihub-hex { position: static !important; transform: none !important; animation: none !important; width: 100%; height: 124px; }
+  .ihub-card-beam { display: none; }
   .ihub-stats { flex-wrap: wrap; height: auto; gap: 16px 24px; padding: 14px 18px; }
   .ihub-stat-note { margin-left: 0; flex-basis: 100%; }
 }
