@@ -159,31 +159,60 @@ function TexturedEarth({ ai = 0 }: { ai?: number }) {
 // (sharp — NOT a wide washed-out wall of light). Each beam = a faint narrow halo + a
 // bright defined core. ---
 function LightBeam() {
-  // tighter, more vertical fan so they read as a few clean projector shafts
-  const beams = useMemo(
-    () => [
-      { x: 0.0, rot: 0.0 },
-      { x: 0.7, rot: 0.1 },
-      { x: -0.7, rot: -0.1 },
-    ],
-    []
-  );
+  // Emitter at the projector's mouth; many THIN sharp neon rays fan down onto the globe.
+  const apex = useMemo(() => new THREE.Vector3(GLOBE_POS[0], GLOBE_POS[1] + 3.4, GLOBE_POS[2]), []);
+
+  const rayGeo = useMemo(() => {
+    const pts: THREE.Vector3[] = [];
+    const N = 34;
+    for (let i = 0; i < N; i++) {
+      const a = (i / N) * Math.PI * 2;
+      const r = 1.45 + (i % 4) * 0.12;           // slight radius variation = denser look
+      const end = new THREE.Vector3(
+        GLOBE_POS[0] + Math.cos(a) * r,
+        GLOBE_POS[1] + 1.0,                        // land near the globe's upper hemisphere
+        GLOBE_POS[2] + Math.sin(a) * r
+      );
+      pts.push(apex.clone(), end);
+    }
+    // a few dead-straight bright central rays
+    for (let i = 0; i < 4; i++) {
+      pts.push(apex.clone(), new THREE.Vector3(GLOBE_POS[0] + (i - 1.5) * 0.18, GLOBE_POS[1] + 0.4, GLOBE_POS[2]));
+    }
+    return new THREE.BufferGeometry().setFromPoints(pts);
+  }, [apex]);
+  useEffect(() => () => rayGeo.dispose(), [rayGeo]);
+
+  // sparkle particles drifting inside the beam cone
+  const sparkGeo = useMemo(() => {
+    const arr: number[] = [];
+    for (let i = 0; i < 70; i++) {
+      const t = Math.random();
+      const a = Math.random() * Math.PI * 2;
+      const r = t * 1.4;
+      arr.push(GLOBE_POS[0] + Math.cos(a) * r, GLOBE_POS[1] + 3.2 - t * 2.4, GLOBE_POS[2] + Math.sin(a) * r);
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute("position", new THREE.Float32BufferAttribute(arr, 3));
+    return g;
+  }, []);
+  useEffect(() => () => sparkGeo.dispose(), [sparkGeo]);
+
   return (
-    <group position={[GLOBE_POS[0], GLOBE_POS[1] + 1.8, GLOBE_POS[2]]}>
-      {beams.map((b, i) => (
-        <group key={i} position={[b.x, 0, 0]} rotation={[0, 0, b.rot]}>
-          {/* thin faint outer glow */}
-          <mesh position={[0, 1.2, 0]}>
-            <coneGeometry args={[0.24, 2.6, 32, 1, true]} />
-            <meshBasicMaterial color="#bfeeff" transparent opacity={0.05} blending={THREE.AdditiveBlending} depthWrite={false} side={THREE.DoubleSide} />
-          </mesh>
-          {/* crisp bright defined core */}
-          <mesh position={[0, 1.2, 0]}>
-            <coneGeometry args={[0.07, 2.6, 24, 1, true]} />
-            <meshBasicMaterial color="#eaffff" transparent opacity={0.26} blending={THREE.AdditiveBlending} depthWrite={false} side={THREE.DoubleSide} />
-          </mesh>
-        </group>
-      ))}
+    <group>
+      {/* faint volumetric body so the rays sit in a soft cone */}
+      <mesh position={[GLOBE_POS[0], GLOBE_POS[1] + 1.9, GLOBE_POS[2]]}>
+        <coneGeometry args={[1.25, 2.9, 48, 1, true]} />
+        <meshBasicMaterial color="#bfeeff" transparent opacity={0.035} blending={THREE.AdditiveBlending} depthWrite={false} side={THREE.DoubleSide} />
+      </mesh>
+      {/* many thin sharp neon rays */}
+      <lineSegments geometry={rayGeo}>
+        <lineBasicMaterial color="#5cc8ff" transparent opacity={0.68} blending={THREE.AdditiveBlending} depthWrite={false} />
+      </lineSegments>
+      {/* sparkles */}
+      <points geometry={sparkGeo}>
+        <pointsMaterial color="#cfeeff" size={0.045} sizeAttenuation transparent opacity={0.85} blending={THREE.AdditiveBlending} depthWrite={false} />
+      </points>
     </group>
   );
 }
@@ -344,28 +373,43 @@ function Platform({ ai = 0 }: { ai?: number }) {
   );
 }
 
-// --- Overhead projector fixture: concentric emitter rings + glowing core above the globe
-// (the ceiling "projector" from the reference; the beams come from LightBeam). ---
+// --- Overhead projection ENGINE: a tiered funnel of concentric neon rings narrowing down
+// to a bright emitter core (the detailed ceiling projector from the reference). ---
 function TopProjector() {
   const grp = useRef<THREE.Group>(null);
-  const rings = useMemo(() => [0.7, 1.15, 1.6], []);
+  const grp2 = useRef<THREE.Group>(null);
+  const rings = useMemo(() => {
+    const out: { r: number; z: number; op: number }[] = [];
+    for (let i = 0; i < 7; i++) out.push({ r: 2.15 - i * 0.25, z: -i * 0.16, op: 0.62 - i * 0.06 });
+    return out;
+  }, []);
   useFrame(({ clock }) => {
-    if (grp.current) grp.current.rotation.z = clock.getElapsedTime() * 0.25; // slow spin
+    const t = clock.getElapsedTime();
+    if (grp.current) grp.current.rotation.z = t * 0.2;
+    if (grp2.current) grp2.current.rotation.z = -t * 0.35; // counter-spin inner ring
   });
   return (
-    <group position={[GLOBE_POS[0], GLOBE_POS[1] + 4.2, GLOBE_POS[2]]} rotation={[-Math.PI / 2, 0, 0]}>
+    <group position={[GLOBE_POS[0], GLOBE_POS[1] + 4.4, GLOBE_POS[2]]} rotation={[-Math.PI / 2, 0, 0]}>
+      {/* tiered funnel of rings (widest at top, narrowing toward the emitter) */}
       <group ref={grp}>
-        {rings.map((r, i) => (
-          <mesh key={i}>
-            <ringGeometry args={[r, r + 0.035, 96]} />
-            <meshBasicMaterial color="#8fe2ff" transparent opacity={0.5 - i * 0.1} blending={THREE.AdditiveBlending} depthWrite={false} side={THREE.DoubleSide} />
+        {rings.map((rg, i) => (
+          <mesh key={i} position={[0, 0, rg.z]}>
+            <ringGeometry args={[rg.r, rg.r + 0.028, 128]} />
+            <meshBasicMaterial color="#7fd8ff" transparent opacity={rg.op} blending={THREE.AdditiveBlending} depthWrite={false} side={THREE.DoubleSide} />
           </mesh>
         ))}
       </group>
-      {/* bright central emitter */}
-      <mesh>
-        <circleGeometry args={[0.46, 48]} />
-        <meshBasicMaterial color="#dff6ff" transparent opacity={0.5} blending={THREE.AdditiveBlending} depthWrite={false} />
+      {/* counter-rotating bright inner ring near the emitter */}
+      <group ref={grp2}>
+        <mesh position={[0, 0, -0.85]}>
+          <ringGeometry args={[0.62, 0.7, 96]} />
+          <meshBasicMaterial color="#e6fbff" transparent opacity={0.7} blending={THREE.AdditiveBlending} depthWrite={false} side={THREE.DoubleSide} />
+        </mesh>
+      </group>
+      {/* bright emitter core at the funnel mouth */}
+      <mesh position={[0, 0, -0.95]}>
+        <circleGeometry args={[0.4, 48]} />
+        <meshBasicMaterial color="#eaffff" transparent opacity={0.8} blending={THREE.AdditiveBlending} depthWrite={false} />
       </mesh>
     </group>
   );
