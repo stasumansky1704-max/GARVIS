@@ -461,7 +461,7 @@ function TopProjector() {
     const N = 16;
     for (let i = 0; i < N; i++) {
       const f = i / (N - 1);                 // 0 outer → 1 inner
-      out.push({ r: 2.35 - f * 2.0, z: -f * 1.15, op: 0.4 + f * 0.55, w: 0.02 + f * 0.045 });
+      out.push({ r: 2.35 - f * 2.0, z: (f - 1.0) * 1.15, op: 0.4 + f * 0.55, w: 0.02 + f * 0.045 });
     }
     return out;
   }, []);
