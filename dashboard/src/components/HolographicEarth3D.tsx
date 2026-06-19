@@ -79,9 +79,9 @@ function Atmosphere({ ai = 0 }: { ai?: number }) {
     () =>
       new THREE.ShaderMaterial({
         uniforms: {
-          uColor: { value: new THREE.Color("#4aa6f0") },
+          uColor: { value: new THREE.Color("#5cb6ff") },
           uPower: { value: 1.7 },      // broad, diffuse falloff (a soft halo, never a defined ring)
-          uStrength: { value: 0.26 },
+          uStrength: { value: 0.42 },
         },
         vertexShader: ATMO_VERT,
         fragmentShader: ATMO_FRAG,
@@ -94,11 +94,11 @@ function Atmosphere({ ai = 0 }: { ai?: number }) {
   );
   useEffect(() => () => material.dispose(), [material]);
   useFrame(() => {
-    material.uniforms.uStrength.value = 0.24 + ai * 0.14;
+    material.uniforms.uStrength.value = 0.4 + ai * 0.16;
   });
   return (
     <mesh position={GLOBE_POS}>
-      <sphereGeometry args={[EARTH_R * 1.06, 64, 64]} />
+      <sphereGeometry args={[EARTH_R * 1.07, 64, 64]} />
       <primitive object={material} attach="material" />
     </mesh>
   );
@@ -481,6 +481,18 @@ function FallbackGlobe() {
   );
 }
 
+// --- Subtle cinematic camera drift/sway (eased) so the whole scene breathes ---
+function CameraRig() {
+  useFrame((state) => {
+    const t = state.clock.getElapsedTime();
+    const cam = state.camera;
+    cam.position.x += (Math.sin(t * 0.16) * 0.45 - cam.position.x) * 0.02;
+    cam.position.y += (0.6 + Math.sin(t * 0.22) * 0.22 - cam.position.y) * 0.02;
+    cam.lookAt(0, 0.2, -1.8);
+  });
+  return null;
+}
+
 function EarthScene({ audioIntensity = 0, capture = false, showPillars = true }: EarthProps) {
   return (
     <>
@@ -493,6 +505,7 @@ function EarthScene({ audioIntensity = 0, capture = false, showPillars = true }:
       {/* cool rim light from behind to carve the globe silhouette out of the dark */}
       <pointLight position={[-4, 1.5, -6]} intensity={2.4} color="#2f9bff" />
 
+      {!capture && <CameraRig />}
       <Suspense fallback={<FallbackGlobe />}>
         <TexturedEarth ai={audioIntensity} />
         <Clouds />
