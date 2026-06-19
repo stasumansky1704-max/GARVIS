@@ -892,7 +892,10 @@ body {
    it's the beam that "projects" the card. Bright at the emitter base + at the card. */
 .ihub-card-beam {
   position: absolute; transform: translateX(-50%); transform-origin: bottom center;
-  width: 6px; height: 158px; z-index: 6; pointer-events: none; border-radius: 3px;
+  /* anchored from the card (inline `top`) down to the floor line, so every beam reaches
+     the floor regardless of the card's height (top cards no longer stop mid-air) */
+  bottom: 13%;
+  width: 6px; z-index: 6; pointer-events: none; border-radius: 3px;
   background: linear-gradient(to top,
     color-mix(in srgb, var(--accent) 96%, #ffffff 30%) 0%,    /* bright floor emitter */
     color-mix(in srgb, var(--accent) 80%, transparent) 16%,
