@@ -189,6 +189,31 @@ export default function IntelHub({ audioIntensity = 0, page, onNavigate }: Props
   const [leftOpen, setLeftOpen] = useState(true);
   const [rightOpen, setRightOpen] = useState(true);
   const [showPillars, setShowPillars] = useState(true);
+  // desktop (wide) → render the cards as real 3D meshes in the scene; mobile → HTML grid
+  const [wide, setWide] = useState(true);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const mq = window.matchMedia("(min-width: 1025px)");
+    const on = () => setWide(mq.matches);
+    on();
+    mq.addEventListener("change", on);
+    return () => mq.removeEventListener("change", on);
+  }, []);
+
+  // 3D world positions for the six cards (around the globe, facing the camera)
+  const cards3d = useMemo(
+    () => {
+      const POS: Record<string, [number, number, number]> = {
+        world: [-2.7, 2.2, -0.6], market: [2.7, 2.2, -0.6],
+        social: [-3.8, 0.4, -0.6], revenue: [3.8, 0.4, -0.6],
+        tech: [-2.7, -1.5, -0.6], ops: [2.7, -1.5, -0.6],
+      };
+      return CARDS.map((c) => ({
+        id: c.id, title: c.title, state: c.state, maturity: c.maturity, accent: c.accent, pos: POS[c.id],
+      }));
+    },
+    []
+  );
 
   useEffect(() => {
     if (capture) { setClock("00:00:00"); return; }
@@ -268,7 +293,14 @@ export default function IntelHub({ audioIntensity = 0, page, onNavigate }: Props
 
           <div className="ihub-stage">
             <div className="ihub-globe">
-              <HolographicEarth3D audioIntensity={capture ? 0 : audioIntensity} capture={capture} showPillars={showPillars} />
+              <HolographicEarth3D
+                audioIntensity={capture ? 0 : audioIntensity}
+                capture={capture}
+                showPillars={showPillars}
+                cards3d={wide ? cards3d : undefined}
+                onSelectCard={(id) => setActiveCard(CARDS.find((c) => c.id === id) ?? null)}
+                activeCardId={activeCard?.id ?? null}
+              />
             </div>
 
             <button
@@ -281,6 +313,7 @@ export default function IntelHub({ audioIntensity = 0, page, onNavigate }: Props
               LIGHT PILLARS · {showPillars ? "ON" : "OFF"}
             </button>
 
+            {!wide && (
             <div className="ihub-nodes">
               <svg className="ihub-links" viewBox="0 0 100 100" preserveAspectRatio="none">
                 {cards.map((c) => (
@@ -327,6 +360,7 @@ export default function IntelHub({ audioIntensity = 0, page, onNavigate }: Props
                 </Fragment>
               ))}
             </div>
+            )}
           </div>
 
           <div className="ihub-command">

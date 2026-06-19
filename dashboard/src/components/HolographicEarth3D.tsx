@@ -1,6 +1,6 @@
 import { useRef, useMemo, useState, useEffect, Suspense } from "react";
 import { Canvas, useFrame, useLoader } from "@react-three/fiber";
-import { MeshReflectorMaterial } from "@react-three/drei";
+import { MeshReflectorMaterial, Text } from "@react-three/drei";
 import { Bloom, Vignette, EffectComposer, SMAA, HueSaturation, BrightnessContrast } from "@react-three/postprocessing";
 import * as THREE from "three";
 
@@ -11,10 +11,22 @@ import * as THREE from "three";
 // Same export + props as before; this component is used ONLY by the Intelligence Hub
 // (Home / Living Core are untouched).
 
+export interface Card3DData {
+  id: string;
+  title: string;
+  state: string;
+  maturity: string;
+  accent: string;
+  pos: [number, number, number];
+}
+
 interface EarthProps {
   audioIntensity?: number;
   capture?: boolean; // screenshot-friendly: no post-processing, render-on-demand
   showPillars?: boolean; // toggle the floor light pillars on/off
+  cards3d?: Card3DData[]; // when provided, render the cards as real 3D meshes in-scene
+  onSelectCard?: (id: string) => void;
+  activeCardId?: string | null;
 }
 
 const EARTH_R = 2;
@@ -561,7 +573,68 @@ function CameraRig() {
   return null;
 }
 
-function EarthScene({ audioIntensity = 0, capture = false, showPillars = true }: EarthProps) {
+// --- Real 3D hex cards: extruded glass-metal meshes with emissive neon rim + 3D text,
+// rotating in true perspective. Click opens the (HTML) detail drawer. ---
+const HEX_SHAPE = (() => {
+  const w = 0.74, h = 0.8;
+  const s = new THREE.Shape();
+  s.moveTo(-w, 0); s.lineTo(-w * 0.5, h); s.lineTo(w * 0.5, h); s.lineTo(w, 0);
+  s.lineTo(w * 0.5, -h); s.lineTo(-w * 0.5, -h); s.closePath();
+  return s;
+})();
+const HEX_GEO = new THREE.ExtrudeGeometry(HEX_SHAPE, {
+  depth: 0.16, bevelEnabled: true, bevelThickness: 0.05, bevelSize: 0.05, bevelSegments: 2,
+});
+
+function Card3DItem({ card, onSelect, active }: { card: Card3DData; onSelect?: (id: string) => void; active: boolean }) {
+  const ref = useRef<THREE.Group>(null);
+  const [hover, setHover] = useState(false);
+  const phase = useMemo(() => Math.random() * 6, []);
+  useFrame(({ clock }) => {
+    if (!ref.current) return;
+    ref.current.rotation.y = Math.sin(clock.getElapsedTime() * 0.5 + phase) * 0.35; // real 3D turn
+    const target = active || hover ? 1.14 : 1.0;
+    const s = ref.current.scale.x + (target - ref.current.scale.x) * 0.15;
+    ref.current.scale.set(s, s, s);
+  });
+  return (
+    <group ref={ref} position={card.pos}>
+      <mesh
+        geometry={HEX_GEO}
+        onClick={(e) => { e.stopPropagation(); onSelect?.(card.id); }}
+        onPointerOver={(e) => { e.stopPropagation(); setHover(true); document.body.style.cursor = "pointer"; }}
+        onPointerOut={() => { setHover(false); document.body.style.cursor = "auto"; }}
+      >
+        <meshStandardMaterial
+          color="#0a1626"
+          emissive={new THREE.Color(card.accent)}
+          emissiveIntensity={hover || active ? 0.95 : 0.5}
+          metalness={0.55}
+          roughness={0.38}
+        />
+      </mesh>
+      <lineSegments>
+        <edgesGeometry args={[HEX_GEO]} />
+        <lineBasicMaterial color={card.accent} transparent opacity={0.9} />
+      </lineSegments>
+      <Text position={[0, 0.12, 0.26]} fontSize={0.12} maxWidth={1.15} textAlign="center" anchorX="center" anchorY="middle" color="#ffffff" outlineWidth={0.004} outlineColor={card.accent}>
+        {card.title}
+      </Text>
+      <Text position={[0, -0.2, 0.26]} fontSize={0.08} anchorX="center" anchorY="middle" color={card.accent}>
+        {card.state}
+      </Text>
+      <Text position={[0, -0.36, 0.26]} fontSize={0.058} letterSpacing={0.08} anchorX="center" anchorY="middle" color="#7c8b9c">
+        {card.maturity.toUpperCase()}
+      </Text>
+    </group>
+  );
+}
+
+function Cards3D({ cards, onSelect, activeId }: { cards: Card3DData[]; onSelect?: (id: string) => void; activeId?: string | null }) {
+  return <group>{cards.map((c) => <Card3DItem key={c.id} card={c} onSelect={onSelect} active={activeId === c.id} />)}</group>;
+}
+
+function EarthScene({ audioIntensity = 0, capture = false, showPillars = true, cards3d, onSelectCard, activeCardId }: EarthProps) {
   return (
     <>
       {/* even, bright key illumination so the visible hemisphere reads as real Earth */}
@@ -584,6 +657,7 @@ function EarthScene({ audioIntensity = 0, capture = false, showPillars = true }:
       <HexFloor ai={audioIntensity} />
       {showPillars && <FloorBeams ai={audioIntensity} />}
       <ArcLines ai={audioIntensity} />
+      {cards3d && cards3d.length > 0 && <Cards3D cards={cards3d} onSelect={onSelectCard} activeId={activeCardId} />}
 
       {/* Capture mode: a single lightweight Bloom so screenshots still show the glow
           (fast on the demand frameloop). Normal mode: full cinematic chain. */}
@@ -612,7 +686,7 @@ function EarthScene({ audioIntensity = 0, capture = false, showPillars = true }:
   );
 }
 
-export default function HolographicEarth3D({ audioIntensity = 0, capture = false, showPillars = true }: EarthProps) {
+export default function HolographicEarth3D({ audioIntensity = 0, capture = false, showPillars = true, cards3d, onSelectCard, activeCardId }: EarthProps) {
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
 
@@ -640,7 +714,7 @@ export default function HolographicEarth3D({ audioIntensity = 0, capture = false
       }}
       style={{ background: "transparent" }}
     >
-      <EarthScene audioIntensity={audioIntensity} capture={capture} showPillars={showPillars} />
+      <EarthScene audioIntensity={audioIntensity} capture={capture} showPillars={showPillars} cards3d={cards3d} onSelectCard={onSelectCard} activeCardId={activeCardId} />
     </Canvas>
   );
 }
