@@ -63,12 +63,12 @@ const CARDS: Card[] = [
   },
   {
     id: "tech", title: "TECHNOLOGY WATCH", glyph: "⌬", need: "research / source feed",
-    state: "Not Connected", maturity: "Blueprint", accent: "#1fe2ff", pos: { top: "83%", left: "25%" },
+    state: "Not Connected", maturity: "Blueprint", accent: "#1fe2ff", pos: { top: "76%", left: "25%" },
     systems: ["Research digest", "Release radar", "Security advisories"],
   },
   {
     id: "ops", title: "OPERATIONS CENTER", glyph: "⚙", need: "ops telemetry",
-    state: "Not Connected", maturity: "Prototype", accent: "#00d9ad", pos: { top: "83%", left: "75%" },
+    state: "Not Connected", maturity: "Prototype", accent: "#ff4d4d", pos: { top: "76%", left: "75%" },
     systems: ["Service health", "Job queue view", "Incident timeline"],
   },
 ];
