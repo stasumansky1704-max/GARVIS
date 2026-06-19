@@ -678,7 +678,11 @@ body {
   min-height: 0;
   display: grid;
   grid-template-columns: 248px 1fr 340px;
+  transition: grid-template-columns 0.42s cubic-bezier(0.22, 1, 0.36, 1);
 }
+.ihub-body.left-collapsed { grid-template-columns: 66px 1fr 340px; }
+.ihub-body.right-collapsed { grid-template-columns: 248px 1fr 56px; }
+.ihub-body.left-collapsed.right-collapsed { grid-template-columns: 66px 1fr 56px; }
 
 /* ----- sidebar ----- */
 .ihub-side {
@@ -744,26 +748,61 @@ body {
 .ihub-globe { position: absolute; inset: 0; }
 .ihub-links { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 5; }
 
+/* 3D holographic hex cards — beveled glass, per-accent identity, depth + breathing */
 .ihub-hex {
-  position: absolute; transform: translate(-50%, -50%); width: 152px; height: 158px;
-  z-index: 10;
+  position: absolute; transform: translate(-50%, -50%); width: 162px; height: 170px;
+  z-index: 10; cursor: pointer; outline: none;
   clip-path: polygon(25% 1%, 75% 1%, 100% 50%, 75% 99%, 25% 99%, 0% 50%);
-  background: var(--accent);
-  filter: drop-shadow(0 0 12px color-mix(in srgb, var(--accent) 45%, transparent));
+  /* beveled accent rim: bright top-left edge fading to a dark lower-right */
+  background: linear-gradient(155deg,
+    color-mix(in srgb, var(--accent) 90%, #ffffff 10%) 0%,
+    color-mix(in srgb, var(--accent) 60%, #04101e) 46%,
+    color-mix(in srgb, var(--accent) 28%, #030a14) 100%);
+  transition: transform 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+  animation: ihub-hex-breathe 5.5s ease-in-out infinite;
+  will-change: transform, filter;
 }
+.ihub-hex:nth-of-type(2) { animation-delay: 0.7s; }
+.ihub-hex:nth-of-type(3) { animation-delay: 1.4s; }
+.ihub-hex:nth-of-type(4) { animation-delay: 2.1s; }
+.ihub-hex:nth-of-type(5) { animation-delay: 2.8s; }
+.ihub-hex:nth-of-type(6) { animation-delay: 3.5s; }
+.ihub-hex:hover, .ihub-hex:focus-visible {
+  transform: translate(-50%, calc(-50% - 7px)) scale(1.06); z-index: 13;
+}
+.ihub-hex.selected { transform: translate(-50%, calc(-50% - 4px)) scale(1.04); z-index: 12; }
 .ihub-hex-inner {
   width: 100%; height: 100%;
   clip-path: polygon(25% 1%, 75% 1%, 100% 50%, 75% 99%, 25% 99%, 0% 50%);
-  background: rgba(6, 13, 24, 0.92);
+  /* glass body with a faint accent wash toward the lower edge */
+  background: linear-gradient(160deg,
+    rgba(11, 21, 36, 0.94) 0%,
+    rgba(6, 12, 22, 0.96) 52%,
+    color-mix(in srgb, var(--accent) 16%, rgba(6, 12, 22, 0.96)) 100%);
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--accent) 55%, transparent),
+    inset 0 0 26px color-mix(in srgb, var(--accent) 14%, transparent);
   display: flex; flex-direction: column; align-items: center; justify-content: center;
-  gap: 6px; text-align: center; padding: 0 22px;
-  transform: scale(0.985);
+  gap: 6px; text-align: center; padding: 0 24px;
+  transform: scale(0.978);
+  transition: box-shadow 0.3s ease;
 }
-.ihub-hex-glyph { font-size: 22px; filter: drop-shadow(0 0 8px var(--accent)); }
+.ihub-hex:hover .ihub-hex-inner,
+.ihub-hex.selected .ihub-hex-inner {
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--accent) 75%, transparent),
+    inset 0 0 38px color-mix(in srgb, var(--accent) 26%, transparent);
+}
+.ihub-hex-glyph { font-size: 23px; filter: drop-shadow(0 0 10px var(--accent)); }
 .ihub-hex h3 { font-family: var(--font-display); font-size: 12.5px; letter-spacing: 0.06em; color: var(--white); line-height: 1.25; }
-.ihub-hex-metric { font-family: var(--font-mono); font-size: 12px; color: var(--text); }
+.ihub-hex-metric { font-family: var(--font-mono); font-size: 11px; color: var(--text-dim); }
 .ihub-hex-state { display: flex; align-items: center; gap: 6px; font-size: 9.5px; letter-spacing: 0.08em; color: var(--accent); }
 .ihub-hex-state i { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 6px var(--accent); }
+/* breathing = a gentle depth-shadow + accent-halo pulse (no transform conflict with hover) */
+@keyframes ihub-hex-breathe {
+  0%, 100% { filter: drop-shadow(0 10px 16px rgba(0, 0, 0, 0.55)) drop-shadow(0 0 9px color-mix(in srgb, var(--accent) 32%, transparent)); }
+  50% { filter: drop-shadow(0 13px 20px rgba(0, 0, 0, 0.6)) drop-shadow(0 0 18px color-mix(in srgb, var(--accent) 55%, transparent)); }
+}
 
 .ihub-command { display: flex; align-items: center; gap: 12px; justify-content: center; padding: 14px 0 18px; }
 .ihub-command-wave { color: var(--green); font-size: 18px; }
@@ -771,10 +810,14 @@ body {
 .ihub-command small { display: block; color: var(--text-dim); font-size: 10px; letter-spacing: 0.12em; margin-top: 2px; }
 
 /* ----- right rail ----- */
-.ihub-right { display: flex; flex-direction: column; gap: 14px; padding: 22px 18px; border-left: 1px solid rgba(0, 212, 255, 0.1); min-height: 0; }
+.ihub-right { position: relative; display: flex; flex-direction: column; gap: 14px; padding: 22px 18px; border-left: 1px solid rgba(0, 212, 255, 0.1); min-height: 0; transition: padding 0.3s ease; }
+.ihub-right-inner { display: flex; flex-direction: column; gap: 14px; flex: 1; min-height: 0; transition: opacity 0.28s ease; }
+.ihub-right.collapsed { padding-left: 6px; padding-right: 6px; }
+.ihub-right.collapsed .ihub-right-inner { opacity: 0; visibility: hidden; pointer-events: none; }
 .ihub-panel { background: var(--bg-panel); border: 1px solid var(--border); border-radius: 14px; padding: 14px; backdrop-filter: blur(16px); }
 .ihub-panel-grow { flex: 1; min-height: 0; display: flex; flex-direction: column; }
-.ihub-panel-head { font-family: var(--font-display); font-size: 12px; letter-spacing: 0.1em; color: var(--cyan); margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; }
+.ihub-panel-head { position: relative; padding-left: 12px; font-family: var(--font-display); font-size: 12px; letter-spacing: 0.12em; color: var(--cyan); margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; text-transform: uppercase; }
+.ihub-panel-head::before { content: ""; position: absolute; left: 0; top: 1px; bottom: 1px; width: 3px; border-radius: 2px; background: var(--cyan); box-shadow: 0 0 8px var(--cyan); }
 .ihub-demo { font-family: var(--font-mono); font-size: 8px; color: var(--text-dim); border: 1px solid var(--border); border-radius: 6px; padding: 2px 6px; letter-spacing: 0.1em; }
 .ihub-map {
   height: 92px; border-radius: 10px; margin-bottom: 12px;
@@ -811,23 +854,87 @@ body {
 .ihub-nodes { position: absolute; inset: 0; pointer-events: none; z-index: 8; }
 .ihub-hex { pointer-events: auto; }
 
+/* ----- collapsible side panels (holographic drawers) ----- */
+.ihub-side { position: relative; overflow: hidden; transition: padding 0.3s ease; }
+.ihub-side.collapsed { padding-left: 8px; padding-right: 8px; }
+.ihub-side.collapsed .ihub-logo { justify-content: center; }
+.ihub-side.collapsed .ihub-logo-when-open,
+.ihub-side.collapsed .ihub-nav-label,
+.ihub-side.collapsed .ihub-side-foot { display: none; }
+.ihub-side.collapsed .ihub-nav-item { justify-content: center; padding: 11px 0; gap: 0; }
+.ihub-logo-when-open { min-width: 0; }
+
+.ihub-rail-toggle {
+  position: absolute; top: 20px; z-index: 22;
+  width: 24px; height: 24px; border-radius: 50%;
+  display: grid; place-items: center; cursor: pointer; line-height: 1;
+  background: rgba(8, 18, 32, 0.92); color: var(--cyan);
+  border: 1px solid rgba(0, 212, 255, 0.38);
+  box-shadow: 0 0 12px rgba(0, 212, 255, 0.28);
+  font-size: 14px; transition: background 0.2s ease, transform 0.2s ease;
+}
+.ihub-rail-toggle:hover { background: rgba(0, 212, 255, 0.16); transform: scale(1.08); }
+.ihub-rail-toggle:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
+.ihub-rail-toggle-left { right: 12px; }
+.ihub-rail-toggle-right { left: -12px; top: 20px; }
+
+/* ----- card detail drawer ----- */
+.ihub-drawer-scrim { position: fixed; inset: 0; background: rgba(2, 6, 14, 0.5); z-index: 40; animation: ihub-fade 0.2s ease; }
+@keyframes ihub-fade { from { opacity: 0; } to { opacity: 1; } }
+.ihub-drawer {
+  position: fixed; top: 0; right: 0; height: 100vh; width: 366px; z-index: 41;
+  background: linear-gradient(165deg, rgba(8, 16, 30, 0.97), rgba(4, 9, 18, 0.98));
+  border-left: 1px solid color-mix(in srgb, var(--accent) 55%, transparent);
+  box-shadow: -22px 0 60px rgba(0, 0, 0, 0.6), inset 1px 0 0 color-mix(in srgb, var(--accent) 45%, transparent);
+  backdrop-filter: blur(18px);
+  padding: 24px; display: flex; flex-direction: column; gap: 18px;
+  transform: translateX(100%); animation: ihub-drawer-in 0.36s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+@keyframes ihub-drawer-in { to { transform: translateX(0); } }
+.ihub-drawer-head { display: flex; gap: 12px; align-items: flex-start; }
+.ihub-drawer-glyph { font-size: 28px; filter: drop-shadow(0 0 10px var(--accent)); }
+.ihub-drawer-head h2 { font-family: var(--font-display); font-size: 17px; letter-spacing: 0.07em; color: var(--white); line-height: 1.2; }
+.ihub-drawer-sub { font-size: 10px; letter-spacing: 0.12em; color: var(--text-dim); margin-top: 5px; text-transform: uppercase; }
+.ihub-drawer-x { margin-left: auto; background: transparent; border: 1px solid var(--border); color: var(--text-dim); width: 30px; height: 30px; border-radius: 8px; cursor: pointer; font-size: 13px; }
+.ihub-drawer-x:hover { color: var(--white); border-color: var(--accent); }
+.ihub-drawer-state { display: inline-flex; align-items: center; gap: 8px; align-self: flex-start; font-size: 11px; letter-spacing: 0.08em; color: var(--accent); border: 1px solid color-mix(in srgb, var(--accent) 42%, transparent); border-radius: 999px; padding: 5px 13px; background: color-mix(in srgb, var(--accent) 10%, transparent); }
+.ihub-drawer-state i { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 8px var(--accent); }
+.ihub-drawer-sec h3 { font-family: var(--font-display); font-size: 12px; letter-spacing: 0.1em; color: var(--cyan); margin-bottom: 9px; display: flex; gap: 8px; align-items: center; text-transform: uppercase; }
+.ihub-drawer-need { font-family: var(--font-mono); font-size: 13px; color: var(--text); margin-bottom: 9px; }
+.ihub-drawer-list { list-style: none; display: flex; flex-direction: column; gap: 9px; }
+.ihub-drawer-list li { display: flex; align-items: center; gap: 9px; font-size: 12.5px; color: var(--text); }
+.ihub-drawer-list em { margin-left: auto; font-style: normal; font-size: 8.5px; letter-spacing: 0.1em; color: #ffb33e; border: 1px dashed rgba(255, 179, 62, 0.4); border-radius: 6px; padding: 2px 7px; }
+.ihub-drawer-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 6px var(--accent); flex: none; }
+.ihub-drawer-foot { margin-top: auto; display: flex; align-items: center; gap: 10px; color: var(--green); font-size: 12px; letter-spacing: 0.05em; border-top: 1px solid var(--border); padding-top: 14px; }
+.ihub-drawer-wave { font-size: 16px; }
+
 /* ----- capture mode (?capture=1): drop backdrop blur so screenshots render fast ----- */
 .ihub-capture .ihub-panel,
+.ihub-capture .ihub-drawer,
 .ihub-capture .ihub-status-card { backdrop-filter: none; background: rgba(8, 16, 30, 0.96); }
 
 /* ----- responsive: tighten, then stack cleanly on narrow widths ----- */
 @media (max-width: 1280px) {
   .ihub-body { grid-template-columns: 208px 1fr 300px; }
   .ihub-top h1 { font-size: 24px; }
-  .ihub-hex { width: 132px; height: 138px; }
+  .ihub-hex { width: 142px; height: 150px; }
   .ihub-hex h3 { font-size: 11px; }
 }
 @media (max-width: 1024px) {
   /* block flow so the bottom stats never overlap the globe and panels keep height */
   .ihub { display: block; height: auto; min-height: 100vh; overflow-y: auto; }
   .ihub-body { display: flex; flex-direction: column; }
-  .ihub-side, .ihub-right { border: none; width: 100%; }
+  .ihub-side, .ihub-right { border: none; width: 100%; overflow: visible; }
   .ihub-right { display: block; }
+  /* stacked layout: collapse controls are not used; force everything visible */
+  .ihub-rail-toggle { display: none; }
+  .ihub-side.collapsed { padding: 16px; }
+  .ihub-side.collapsed .ihub-logo-when-open,
+  .ihub-side.collapsed .ihub-side-foot { display: block; }
+  .ihub-side.collapsed .ihub-nav-label { display: inline; }
+  .ihub-right.collapsed { padding: 16px; }
+  .ihub-right-inner { opacity: 1 !important; visibility: visible !important; pointer-events: auto !important; display: block; }
+  .ihub-drawer { width: 100vw; }
   .ihub-panel { margin-bottom: 14px; }
   .ihub-panel-grow { flex: none; }
   .ihub-feed { overflow: visible; flex: none; }
