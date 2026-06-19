@@ -143,9 +143,11 @@ function TexturedEarth({ ai = 0 }: { ai?: number }) {
           void main() {
             vec3 day = texture2D(dayMap, vUv).rgb;
             vec3 night = texture2D(nightMap, vUv).rgb;
+            // lift + slightly cool-boost the oceans so they read brighter/bluer
+            day = day * 1.7 + vec3(0.02, 0.05, 0.09);
             float d = dot(normalize(vNormalW), normalize(sunDir));
-            float mixf = smoothstep(-0.18, 0.38, d);                 // 0 night, 1 day
-            vec3 col = mix(night * 1.7, day * 1.35, mixf);           // bright, vivid
+            float mixf = smoothstep(-0.28, 0.34, d);                 // wider lit hemisphere = brighter
+            vec3 col = mix(night * 2.3, day, mixf);                  // brighter day, punchier city lights
             gl_FragColor = vec4(col, 1.0);
           }
         `,
@@ -174,6 +176,23 @@ function TexturedEarth({ ai = 0 }: { ai?: number }) {
         </mesh>
       </group>
     </group>
+  );
+}
+
+// --- Drifting white cloud layer (slightly faster than the surface = the planet feels alive) ---
+function Clouds() {
+  const ref = useRef<THREE.Mesh>(null);
+  const tex = useLoader(THREE.TextureLoader, "/textures/earth_clouds.png");
+  tex.anisotropy = 8;
+  tex.colorSpace = THREE.NoColorSpace; // used as an alpha mask
+  useFrame(({ clock }) => {
+    if (ref.current) ref.current.rotation.y = GLOBE_START_ROT + clock.getElapsedTime() * 0.058;
+  });
+  return (
+    <mesh ref={ref} position={GLOBE_POS} rotation={[0.18, GLOBE_START_ROT, 0]} scale={1.015}>
+      <sphereGeometry args={[EARTH_R, 96, 96]} />
+      <meshBasicMaterial color="#eef6ff" alphaMap={tex} transparent opacity={0.6} depthWrite={false} />
+    </mesh>
   );
 }
 
@@ -476,6 +495,7 @@ function EarthScene({ audioIntensity = 0, capture = false, showPillars = true }:
 
       <Suspense fallback={<FallbackGlobe />}>
         <TexturedEarth ai={audioIntensity} />
+        <Clouds />
       </Suspense>
       <Atmosphere ai={audioIntensity} />
       <TopProjector />
