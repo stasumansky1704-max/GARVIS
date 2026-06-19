@@ -154,40 +154,32 @@ function TexturedEarth({ ai = 0 }: { ai?: number }) {
   );
 }
 
-// --- Projector beams: a few crisp converging light shafts from above (NOT a dome). The
-// shafts read as projection beams hitting the globe, with a brighter inner core.
-function LightBeam({ ai = 0 }: { ai?: number }) {
-  const grp = useRef<THREE.Group>(null);
-  // three projectors fanned slightly so the top of the globe reads as "lit by beams"
+// --- Projector beams: THIN, crisp, well-defined light shafts converging on the globe top
+// (sharp — NOT a wide washed-out wall of light). Each beam = a faint narrow halo + a
+// bright defined core. ---
+function LightBeam() {
+  // tighter, more vertical fan so they read as a few clean projector shafts
   const beams = useMemo(
     () => [
-      { rot: 0.0, x: 0.0 },
-      { rot: 0.16, x: 0.9 },
-      { rot: -0.16, x: -0.9 },
+      { x: 0.0, rot: 0.0 },
+      { x: 0.7, rot: 0.1 },
+      { x: -0.7, rot: -0.1 },
     ],
     []
   );
-  useFrame(({ clock }) => {
-    if (!grp.current) return;
-    const t = clock.getElapsedTime();
-    grp.current.children.forEach((c, i) => {
-      const m = (c as THREE.Mesh).material as THREE.MeshBasicMaterial;
-      if (m) m.opacity = (i % 2 === 0 ? 0.16 : 0.07) + 0.03 * Math.sin(t * 2.2 + i) + ai * 0.06;
-    });
-  });
   return (
-    <group ref={grp} position={[GLOBE_POS[0], GLOBE_POS[1] + 2.0, GLOBE_POS[2]]}>
+    <group position={[GLOBE_POS[0], GLOBE_POS[1] + 1.8, GLOBE_POS[2]]}>
       {beams.map((b, i) => (
         <group key={i} position={[b.x, 0, 0]} rotation={[0, 0, b.rot]}>
-          {/* outer soft shaft */}
-          <mesh position={[0, 1.6, 0]}>
-            <coneGeometry args={[0.95, 3.4, 40, 1, true]} />
-            <meshBasicMaterial color="#bff0ff" transparent opacity={0.07} blending={THREE.AdditiveBlending} depthWrite={false} side={THREE.DoubleSide} />
+          {/* thin faint outer glow */}
+          <mesh position={[0, 1.2, 0]}>
+            <coneGeometry args={[0.24, 2.6, 32, 1, true]} />
+            <meshBasicMaterial color="#bfeeff" transparent opacity={0.05} blending={THREE.AdditiveBlending} depthWrite={false} side={THREE.DoubleSide} />
           </mesh>
-          {/* crisp bright inner core */}
-          <mesh position={[0, 1.6, 0]}>
-            <coneGeometry args={[0.34, 3.4, 32, 1, true]} />
-            <meshBasicMaterial color="#e8fbff" transparent opacity={0.18} blending={THREE.AdditiveBlending} depthWrite={false} side={THREE.DoubleSide} />
+          {/* crisp bright defined core */}
+          <mesh position={[0, 1.2, 0]}>
+            <coneGeometry args={[0.07, 2.6, 24, 1, true]} />
+            <meshBasicMaterial color="#eaffff" transparent opacity={0.26} blending={THREE.AdditiveBlending} depthWrite={false} side={THREE.DoubleSide} />
           </mesh>
         </group>
       ))}
@@ -385,7 +377,7 @@ function EarthScene({ audioIntensity = 0, capture = false }: EarthProps) {
         <TexturedEarth ai={audioIntensity} />
       </Suspense>
       <Atmosphere ai={audioIntensity} />
-      <LightBeam ai={audioIntensity} />
+      <LightBeam />
       <HexFloor ai={audioIntensity} />
       <FloorBeams ai={audioIntensity} />
       <Platform ai={audioIntensity} />
