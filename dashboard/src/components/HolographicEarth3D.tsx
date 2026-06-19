@@ -212,7 +212,7 @@ function TexturedEarth({ ai = 0 }: { ai?: number }) {
 // bright defined core. ---
 function LightBeam() {
   // Emitter at the projector's mouth; many THIN sharp neon rays fan down onto the globe.
-  const apex = useMemo(() => new THREE.Vector3(GLOBE_POS[0], GLOBE_POS[1] + 2.5, GLOBE_POS[2]), []);
+  const apex = useMemo(() => new THREE.Vector3(GLOBE_POS[0], GLOBE_POS[1] - 2.0, GLOBE_POS[2]), []);
 
   // oriented glowing beam shafts (soft halo + bright core) fanning onto the globe
   const beams = useMemo(() => {
@@ -224,7 +224,7 @@ function LightBeam() {
       const r = 1.45 + (i % 3) * 0.12;
       const end = new THREE.Vector3(
         GLOBE_POS[0] + Math.cos(a) * r,
-        GLOBE_POS[1] + 0.9,
+        GLOBE_POS[1] - 0.9,
         GLOBE_POS[2] + Math.sin(a) * r
       );
       const mid = apex.clone().add(end).multiplyScalar(0.5);
@@ -242,7 +242,7 @@ function LightBeam() {
       const t = Math.random();
       const a = Math.random() * Math.PI * 2;
       const r = t * 1.4;
-      arr.push(GLOBE_POS[0] + Math.cos(a) * r, GLOBE_POS[1] + 3.2 - t * 2.4, GLOBE_POS[2] + Math.sin(a) * r);
+      arr.push(GLOBE_POS[0] + Math.cos(a) * r, GLOBE_POS[1] - 2.8 + t * 2.2, GLOBE_POS[2] + Math.sin(a) * r);
     }
     const g = new THREE.BufferGeometry();
     g.setAttribute("position", new THREE.Float32BufferAttribute(arr, 3));
@@ -461,7 +461,7 @@ function TopProjector() {
     const N = 16;
     for (let i = 0; i < N; i++) {
       const f = i / (N - 1);                 // 0 outer → 1 inner
-      out.push({ r: 2.35 - f * 2.0, z: (f - 1.0) * 1.15, op: 0.4 + f * 0.55, w: 0.02 + f * 0.045 });
+      out.push({ r: 2.35 - f * 2.0, z: (1.0 - f) * 1.15, op: 0.4 + f * 0.55, w: 0.02 + f * 0.045 });
     }
     return out;
   }, []);
@@ -471,9 +471,9 @@ function TopProjector() {
     if (grp2.current) grp2.current.rotation.z = -t * 0.3; // counter-spin
   });
   return (
-    <group position={[GLOBE_POS[0], GLOBE_POS[1] + 3.7, GLOBE_POS[2]]} rotation={[-Math.PI / 2, 0, 0]}>
+    <group position={[GLOBE_POS[0], GLOBE_POS[1] - 3.0, GLOBE_POS[2]]} rotation={[-Math.PI / 2, 0, 0]}>
       {/* soft glow halo behind the whole fixture */}
-      <mesh position={[0, 0, -1.0]}>
+      <mesh position={[0, 0, 1.0]}>
         <circleGeometry args={[2.6, 64]} />
         <meshBasicMaterial color="#1c6fd0" transparent opacity={0.22} blending={THREE.AdditiveBlending} depthWrite={false} />
       </mesh>
@@ -488,17 +488,17 @@ function TopProjector() {
       </group>
       {/* counter-rotating bright accent ring deep in the tunnel */}
       <group ref={grp2}>
-        <mesh position={[0, 0, -0.95]}>
+        <mesh position={[0, 0, 0.95]}>
           <ringGeometry args={[0.78, 0.86, 96]} />
           <meshBasicMaterial color="#e6fbff" transparent opacity={0.8} blending={THREE.AdditiveBlending} depthWrite={false} side={THREE.DoubleSide} />
         </mesh>
       </group>
-      {/* brilliant emitter core — the beam source */}
-      <mesh position={[0, 0, -1.18]}>
+      {/* brilliant emitter core — the beam source (faces up toward the globe) */}
+      <mesh position={[0, 0, 1.18]}>
         <circleGeometry args={[0.95, 48]} />
         <meshBasicMaterial color="#bfeaff" transparent opacity={0.45} blending={THREE.AdditiveBlending} depthWrite={false} />
       </mesh>
-      <mesh position={[0, 0, -1.2]}>
+      <mesh position={[0, 0, 1.2]}>
         <circleGeometry args={[0.5, 48]} />
         <meshBasicMaterial color="#ffffff" transparent opacity={0.95} blending={THREE.AdditiveBlending} depthWrite={false} />
       </mesh>
