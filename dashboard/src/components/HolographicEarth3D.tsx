@@ -240,8 +240,24 @@ function LightBeam() {
   }, []);
   useEffect(() => () => sparkGeo.dispose(), [sparkGeo]);
 
+  // life: each beam core flickers on its own phase; sparkles twinkle
+  const grp = useRef<THREE.Group>(null);
+  useFrame(({ clock }) => {
+    if (!grp.current) return;
+    const t = clock.getElapsedTime();
+    grp.current.children.forEach((c, i) => {
+      const pts = c as THREE.Points;
+      if (pts.isPoints) {
+        (pts.material as THREE.PointsMaterial).opacity = 0.7 + 0.25 * Math.sin(t * 3 + i);
+        return;
+      }
+      const core = (c as THREE.Group).children?.[1] as THREE.Mesh | undefined;
+      if (core) (core.material as THREE.MeshBasicMaterial).opacity = 0.82 + 0.16 * Math.sin(t * 6 + i * 0.9);
+    });
+  });
+
   return (
-    <group>
+    <group ref={grp}>
       {beams.map((b, i) => (
         <group key={i} position={b.pos} quaternion={b.quat}>
           {/* soft halo gives the beam volume so it reads as light, not a flat line */}
