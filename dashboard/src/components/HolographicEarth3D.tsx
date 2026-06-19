@@ -75,33 +75,41 @@ const ATMO_FRAG = `
   }
 `;
 
+function atmoMat(color: string, power: number, strength: number) {
+  return new THREE.ShaderMaterial({
+    uniforms: {
+      uColor: { value: new THREE.Color(color) },
+      uPower: { value: power },
+      uStrength: { value: strength },
+    },
+    vertexShader: ATMO_VERT,
+    fragmentShader: ATMO_FRAG,
+    transparent: true,
+    blending: THREE.AdditiveBlending,
+    side: THREE.BackSide,
+    depthWrite: false,
+  });
+}
+
+// Layered atmosphere "envelope": a bright blue limb rim hugging the globe + a soft outer halo.
 function Atmosphere({ ai = 0 }: { ai?: number }) {
-  const material = useMemo(
-    () =>
-      new THREE.ShaderMaterial({
-        uniforms: {
-          uColor: { value: new THREE.Color("#5cb6ff") },
-          uPower: { value: 1.7 },      // broad, diffuse falloff (a soft halo, never a defined ring)
-          uStrength: { value: 0.42 },
-        },
-        vertexShader: ATMO_VERT,
-        fragmentShader: ATMO_FRAG,
-        transparent: true,
-        blending: THREE.AdditiveBlending,
-        side: THREE.BackSide,
-        depthWrite: false,
-      }),
-    []
-  );
-  useEffect(() => () => material.dispose(), [material]);
+  const inner = useMemo(() => atmoMat("#7cc6ff", 2.6, 0.9), []);
+  const outer = useMemo(() => atmoMat("#3aa0ff", 1.5, 0.38), []);
+  useEffect(() => () => { inner.dispose(); outer.dispose(); }, [inner, outer]);
   useFrame(() => {
-    material.uniforms.uStrength.value = 0.4 + ai * 0.16;
+    inner.uniforms.uStrength.value = 0.9 + ai * 0.2;
   });
   return (
-    <mesh position={GLOBE_POS}>
-      <sphereGeometry args={[EARTH_R * 1.07, 64, 64]} />
-      <primitive object={material} attach="material" />
-    </mesh>
+    <group position={GLOBE_POS}>
+      <mesh>
+        <sphereGeometry args={[EARTH_R * 1.04, 64, 64]} />
+        <primitive object={inner} attach="material" />
+      </mesh>
+      <mesh>
+        <sphereGeometry args={[EARTH_R * 1.22, 48, 48]} />
+        <primitive object={outer} attach="material" />
+      </mesh>
+    </group>
   );
 }
 
@@ -109,14 +117,17 @@ function Atmosphere({ ai = 0 }: { ai?: number }) {
 function TexturedEarth({ ai = 0 }: { ai?: number }) {
   const ref = useRef<THREE.Group>(null);
   // Blue-Marble DAY map + city-lights NIGHT map; blended by sun direction in a shader.
-  const [dayTex, nightTex] = useLoader(THREE.TextureLoader, [
+  const [dayTex, nightTex, cloudTex] = useLoader(THREE.TextureLoader, [
     "/textures/earth_day.jpg",
     "/textures/earth_night.jpg",
+    "/textures/earth_clouds.png",
   ]);
   [dayTex, nightTex].forEach((t) => {
     t.colorSpace = THREE.SRGBColorSpace;
     t.anisotropy = 16;
   });
+  cloudTex.anisotropy = 8;
+  cloudTex.wrapS = THREE.RepeatWrapping;
 
   const material = useMemo(
     () =>
@@ -124,7 +135,9 @@ function TexturedEarth({ ai = 0 }: { ai?: number }) {
         uniforms: {
           dayMap: { value: dayTex },
           nightMap: { value: nightTex },
+          cloudMap: { value: cloudTex },
           sunDir: { value: new THREE.Vector3(0.6, 0.22, 0.9).normalize() },
+          uTime: { value: 0 },
         },
         vertexShader: `
           varying vec2 vUv;
@@ -138,7 +151,9 @@ function TexturedEarth({ ai = 0 }: { ai?: number }) {
         fragmentShader: `
           uniform sampler2D dayMap;
           uniform sampler2D nightMap;
+          uniform sampler2D cloudMap;
           uniform vec3 sunDir;
+          uniform float uTime;
           varying vec2 vUv;
           varying vec3 vNormalW;
           void main() {
@@ -149,16 +164,21 @@ function TexturedEarth({ ai = 0 }: { ai?: number }) {
             float d = dot(normalize(vNormalW), normalize(sunDir));
             float mixf = smoothstep(-0.28, 0.34, d);                 // wider lit hemisphere = brighter
             vec3 col = mix(night * 2.3, day, mixf);                  // brighter day, punchier city lights
+            // clouds INTEGRATED into the surface: lit by the sun, drifting slowly in longitude
+            float cloud = texture2D(cloudMap, vUv + vec2(uTime * 0.0035, 0.0)).r;
+            col += cloud * (0.18 + 0.82 * mixf) * 0.85;              // white on the day side, faint at night
             gl_FragColor = vec4(col, 1.0);
           }
         `,
       }),
-    [dayTex, nightTex]
+    [dayTex, nightTex, cloudTex]
   );
   useEffect(() => () => material.dispose(), [material]);
 
   useFrame(({ clock }) => {
-    if (ref.current) ref.current.rotation.y = GLOBE_START_ROT + clock.getElapsedTime() * 0.045;
+    const t = clock.getElapsedTime();
+    material.uniforms.uTime.value = t;
+    if (ref.current) ref.current.rotation.y = GLOBE_START_ROT + t * 0.045;
   });
 
   return (
@@ -177,23 +197,6 @@ function TexturedEarth({ ai = 0 }: { ai?: number }) {
         </mesh>
       </group>
     </group>
-  );
-}
-
-// --- Drifting white cloud layer (slightly faster than the surface = the planet feels alive) ---
-function Clouds() {
-  const ref = useRef<THREE.Mesh>(null);
-  const tex = useLoader(THREE.TextureLoader, "/textures/earth_clouds.png");
-  tex.anisotropy = 8;
-  tex.colorSpace = THREE.NoColorSpace; // used as an alpha mask
-  useFrame(({ clock }) => {
-    if (ref.current) ref.current.rotation.y = GLOBE_START_ROT + clock.getElapsedTime() * 0.058;
-  });
-  return (
-    <mesh ref={ref} position={GLOBE_POS} rotation={[0.18, GLOBE_START_ROT, 0]} scale={1.015}>
-      <sphereGeometry args={[EARTH_R, 96, 96]} />
-      <meshBasicMaterial color="#eef6ff" alphaMap={tex} transparent opacity={0.6} depthWrite={false} />
-    </mesh>
   );
 }
 
@@ -441,48 +444,56 @@ function HexFloor({ ai = 0 }: { ai?: number }) {
   );
 }
 
-// --- Overhead projection ENGINE: a tiered funnel of concentric neon rings narrowing down
-// to a bright emitter core (the detailed ceiling projector from the reference). ---
+// --- Overhead projection ENGINE (reference 2): a dense iris of concentric rings forming a
+// tunnel that narrows to a brilliant emitter core — the source the beams pour out of. ---
 function TopProjector() {
   const grp = useRef<THREE.Group>(null);
   const grp2 = useRef<THREE.Group>(null);
   const rings = useMemo(() => {
-    const out: { r: number; z: number; op: number }[] = [];
-    for (let i = 0; i < 7; i++) out.push({ r: 2.15 - i * 0.25, z: -i * 0.16, op: 0.88 - i * 0.07 });
+    const out: { r: number; z: number; op: number; w: number }[] = [];
+    const N = 16;
+    for (let i = 0; i < N; i++) {
+      const f = i / (N - 1);                 // 0 outer → 1 inner
+      out.push({ r: 2.35 - f * 2.0, z: -f * 1.15, op: 0.4 + f * 0.55, w: 0.02 + f * 0.045 });
+    }
     return out;
   }, []);
   useFrame(({ clock }) => {
     const t = clock.getElapsedTime();
-    if (grp.current) grp.current.rotation.z = t * 0.2;
-    if (grp2.current) grp2.current.rotation.z = -t * 0.35; // counter-spin inner ring
+    if (grp.current) grp.current.rotation.z = t * 0.12;
+    if (grp2.current) grp2.current.rotation.z = -t * 0.3; // counter-spin
   });
   return (
     <group position={[GLOBE_POS[0], GLOBE_POS[1] + 4.4, GLOBE_POS[2]]} rotation={[-Math.PI / 2, 0, 0]}>
-      {/* tiered funnel of rings (widest at top, narrowing toward the emitter) */}
-      {/* soft glow disc behind the fixture so the engine reads as a glowing structure */}
-      <mesh position={[0, 0, -0.4]}>
-        <circleGeometry args={[2.3, 64]} />
-        <meshBasicMaterial color="#1c6fd0" transparent opacity={0.16} blending={THREE.AdditiveBlending} depthWrite={false} />
+      {/* soft glow halo behind the whole fixture */}
+      <mesh position={[0, 0, -1.0]}>
+        <circleGeometry args={[2.6, 64]} />
+        <meshBasicMaterial color="#1c6fd0" transparent opacity={0.22} blending={THREE.AdditiveBlending} depthWrite={false} />
       </mesh>
+      {/* dense concentric ring iris (tunnel narrowing toward the emitter) */}
       <group ref={grp}>
         {rings.map((rg, i) => (
           <mesh key={i} position={[0, 0, rg.z]}>
-            <ringGeometry args={[rg.r, rg.r + 0.055, 128]} />
+            <ringGeometry args={[rg.r, rg.r + rg.w, 128]} />
             <meshBasicMaterial color="#8fe0ff" transparent opacity={rg.op} blending={THREE.AdditiveBlending} depthWrite={false} side={THREE.DoubleSide} />
           </mesh>
         ))}
       </group>
-      {/* counter-rotating bright inner ring near the emitter */}
+      {/* counter-rotating bright accent ring deep in the tunnel */}
       <group ref={grp2}>
-        <mesh position={[0, 0, -0.85]}>
-          <ringGeometry args={[0.62, 0.7, 96]} />
-          <meshBasicMaterial color="#e6fbff" transparent opacity={0.7} blending={THREE.AdditiveBlending} depthWrite={false} side={THREE.DoubleSide} />
+        <mesh position={[0, 0, -0.95]}>
+          <ringGeometry args={[0.78, 0.86, 96]} />
+          <meshBasicMaterial color="#e6fbff" transparent opacity={0.8} blending={THREE.AdditiveBlending} depthWrite={false} side={THREE.DoubleSide} />
         </mesh>
       </group>
-      {/* bright emitter core at the funnel mouth */}
-      <mesh position={[0, 0, -0.95]}>
-        <circleGeometry args={[0.4, 48]} />
-        <meshBasicMaterial color="#eaffff" transparent opacity={0.8} blending={THREE.AdditiveBlending} depthWrite={false} />
+      {/* brilliant emitter core — the beam source */}
+      <mesh position={[0, 0, -1.18]}>
+        <circleGeometry args={[0.95, 48]} />
+        <meshBasicMaterial color="#bfeaff" transparent opacity={0.45} blending={THREE.AdditiveBlending} depthWrite={false} />
+      </mesh>
+      <mesh position={[0, 0, -1.2]}>
+        <circleGeometry args={[0.5, 48]} />
+        <meshBasicMaterial color="#ffffff" transparent opacity={0.95} blending={THREE.AdditiveBlending} depthWrite={false} />
       </mesh>
     </group>
   );
@@ -548,7 +559,6 @@ function EarthScene({ audioIntensity = 0, capture = false, showPillars = true }:
       {!capture && <CameraRig />}
       <Suspense fallback={<FallbackGlobe />}>
         <TexturedEarth ai={audioIntensity} />
-        <Clouds />
       </Suspense>
       <Atmosphere ai={audioIntensity} />
       <TopProjector />
@@ -562,22 +572,22 @@ function EarthScene({ audioIntensity = 0, capture = false, showPillars = true }:
           (fast on the demand frameloop). Normal mode: full cinematic chain. */}
       {capture ? (
         <EffectComposer multisampling={0} frameBufferType={THREE.HalfFloatType}>
-          <Bloom intensity={1.15} luminanceThreshold={0.4} luminanceSmoothing={0.9} radius={0.65} mipmapBlur />
+          <Bloom intensity={1.4} luminanceThreshold={0.38} luminanceSmoothing={0.9} radius={0.7} mipmapBlur />
         </EffectComposer>
       ) : (
         <EffectComposer multisampling={0} frameBufferType={THREE.HalfFloatType}>
           <SMAA />
           {/* bright emissive cores cross this threshold → they bloom into light, not stripes */}
           <Bloom
-            intensity={1.3 + audioIntensity * 0.8}
-            luminanceThreshold={0.4}
+            intensity={1.6 + audioIntensity * 0.9}
+            luminanceThreshold={0.38}
             luminanceSmoothing={0.9}
-            radius={0.74}
+            radius={0.78}
             mipmapBlur
           />
           {/* color grade: punchier neon-blue "trailer" look */}
-          <HueSaturation saturation={0.26} />
-          <BrightnessContrast brightness={0.02} contrast={0.14} />
+          <HueSaturation saturation={0.3} />
+          <BrightnessContrast brightness={0.03} contrast={0.15} />
           <Vignette offset={0.3} darkness={0.72} />
         </EffectComposer>
       )}
