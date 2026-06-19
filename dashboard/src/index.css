@@ -783,10 +783,10 @@ body {
 .ihub-hex:nth-of-type(4) { animation-delay: 2.1s, 2.4s; }
 .ihub-hex:nth-of-type(5) { animation-delay: 2.8s, 3.3s; }
 .ihub-hex:nth-of-type(6) { animation-delay: 3.5s, 4.2s; }
-/* gentle holographic rotation (kept subtle so text stays readable) */
+/* stronger holographic 3D rotation (still readable — oscillates, doesn't flip) */
 @keyframes ihub-hex-spin {
-  0%, 100% { transform: translate(-50%, -50%) rotateY(-11deg); }
-  50% { transform: translate(-50%, -50%) rotateY(11deg); }
+  0%, 100% { transform: translate(-50%, -50%) rotateY(-18deg) rotateX(4deg); }
+  50% { transform: translate(-50%, -50%) rotateY(18deg) rotateX(-4deg); }
 }
 .ihub-hex:hover, .ihub-hex:focus-visible { z-index: 13; animation-play-state: paused; }
 .ihub-hex.selected { z-index: 12; }
@@ -808,7 +808,24 @@ body {
   gap: 6px; text-align: center; padding: 0 26px;
   transform: scale(0.965);
   transition: box-shadow 0.3s ease;
+  position: relative;
 }
+/* glossy AAA light sheen sweeping diagonally across each card */
+.ihub-hex-inner::after {
+  content: ""; position: absolute; inset: 0; pointer-events: none; mix-blend-mode: screen;
+  background: linear-gradient(115deg, transparent 38%, color-mix(in srgb, var(--accent) 22%, #ffffff 78%) 49%, transparent 60%);
+  opacity: 0; animation: ihub-hex-sheen 7s ease-in-out infinite;
+}
+@keyframes ihub-hex-sheen {
+  0%, 72%, 100% { opacity: 0; transform: translateX(-55%); }
+  80% { opacity: 0.5; }
+  88% { opacity: 0; transform: translateX(55%); }
+}
+.ihub-hex:nth-of-type(2) .ihub-hex-inner::after { animation-delay: 1.1s; }
+.ihub-hex:nth-of-type(3) .ihub-hex-inner::after { animation-delay: 2.2s; }
+.ihub-hex:nth-of-type(4) .ihub-hex-inner::after { animation-delay: 3.3s; }
+.ihub-hex:nth-of-type(5) .ihub-hex-inner::after { animation-delay: 4.4s; }
+.ihub-hex:nth-of-type(6) .ihub-hex-inner::after { animation-delay: 5.5s; }
 .ihub-hex:hover .ihub-hex-inner,
 .ihub-hex.selected .ihub-hex-inner {
   box-shadow:

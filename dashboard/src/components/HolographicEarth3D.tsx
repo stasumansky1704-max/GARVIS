@@ -169,11 +169,11 @@ function TexturedEarth({ ai = 0 }: { ai?: number }) {
             float d = dot(normalize(vNormalW), normalize(sunDir));
             float mixf = smoothstep(-0.28, 0.34, d);                 // wider lit hemisphere = brighter
             vec3 col = mix(night * 2.3, day, mixf);                  // brighter day, punchier city lights
-            // clouds: locked to the surface UV → they rotate TOGETHER with the Earth.
-            // very thin + sparse + translucent, hugging the surface, mostly over oceans.
+            // clouds: locked to the surface UV → rotate WITH the Earth. Embedded by BLENDING
+            // into the surface (not added on top), lit by the sun, sparse, mostly over oceans.
             float cloud = texture2D(cloudMap, vUv).r;
-            float c = smoothstep(0.52, 0.92, cloud) * mix(0.22, 1.0, oceanMask);
-            col += c * (0.06 + 0.34 * mixf) * 0.4;                   // fainter, see-through
+            float cAmt = smoothstep(0.55, 0.95, cloud) * mix(0.18, 1.0, oceanMask) * (0.22 + 0.5 * mixf);
+            col = mix(col, vec3(0.9, 0.94, 1.0), cAmt * 0.5);        // blended into the surface
             gl_FragColor = vec4(col, 1.0);
           }
         `,
