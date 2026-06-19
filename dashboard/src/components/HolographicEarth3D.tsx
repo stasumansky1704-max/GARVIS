@@ -49,7 +49,7 @@ function latLonToVec3(lat: number, lon: number, radius: number): THREE.Vector3 {
 }
 
 // Initial spin so a recognizable view (Africa / Europe / Atlantic) faces the camera.
-const GLOBE_START_ROT = 0.6;
+const GLOBE_START_ROT = 3.5;
 
 // --- Fresnel atmosphere: a soft view-dependent halo hugging the globe's limb (not a ring).
 const ATMO_VERT = `
@@ -107,12 +107,52 @@ function Atmosphere({ ai = 0 }: { ai?: number }) {
 // --- Realistic Earth: the map is the surface; lighting reveals real continents/oceans.
 function TexturedEarth({ ai = 0 }: { ai?: number }) {
   const ref = useRef<THREE.Group>(null);
-  // Real equirectangular Blue Marble map (continents + oceans).
-  const texture = useLoader(THREE.TextureLoader, "/textures/earth_map.jpg");
-  texture.colorSpace = THREE.SRGBColorSpace;
-  texture.anisotropy = 16;
-  texture.generateMipmaps = true;
-  texture.minFilter = THREE.LinearMipmapLinearFilter;
+  // Blue-Marble DAY map + city-lights NIGHT map; blended by sun direction in a shader.
+  const [dayTex, nightTex] = useLoader(THREE.TextureLoader, [
+    "/textures/earth_day.jpg",
+    "/textures/earth_night.jpg",
+  ]);
+  [dayTex, nightTex].forEach((t) => {
+    t.colorSpace = THREE.SRGBColorSpace;
+    t.anisotropy = 16;
+  });
+
+  const material = useMemo(
+    () =>
+      new THREE.ShaderMaterial({
+        uniforms: {
+          dayMap: { value: dayTex },
+          nightMap: { value: nightTex },
+          sunDir: { value: new THREE.Vector3(0.6, 0.22, 0.9).normalize() },
+        },
+        vertexShader: `
+          varying vec2 vUv;
+          varying vec3 vNormalW;
+          void main() {
+            vUv = uv;
+            vNormalW = normalize(mat3(modelMatrix) * normal);
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+          }
+        `,
+        fragmentShader: `
+          uniform sampler2D dayMap;
+          uniform sampler2D nightMap;
+          uniform vec3 sunDir;
+          varying vec2 vUv;
+          varying vec3 vNormalW;
+          void main() {
+            vec3 day = texture2D(dayMap, vUv).rgb;
+            vec3 night = texture2D(nightMap, vUv).rgb;
+            float d = dot(normalize(vNormalW), normalize(sunDir));
+            float mixf = smoothstep(-0.18, 0.38, d);                 // 0 night, 1 day
+            vec3 col = mix(night * 1.7, day * 1.35, mixf);           // bright, vivid
+            gl_FragColor = vec4(col, 1.0);
+          }
+        `,
+      }),
+    [dayTex, nightTex]
+  );
+  useEffect(() => () => material.dispose(), [material]);
 
   useFrame(({ clock }) => {
     if (ref.current) ref.current.rotation.y = GLOBE_START_ROT + clock.getElapsedTime() * 0.045;
@@ -121,34 +161,16 @@ function TexturedEarth({ ai = 0 }: { ai?: number }) {
   return (
     <group position={GLOBE_POS}>
       <group ref={ref} rotation={[0.18, GLOBE_START_ROT, 0]}>
-        {/* Surface: REAL Earth. Colours come from the lit map (daytime look). */}
+        {/* Surface: real day/night Earth (continents, oceans, city lights). */}
         <mesh>
           <sphereGeometry args={[EARTH_R, 128, 128]} />
-          <meshStandardMaterial
-            map={texture}
-            emissive={new THREE.Color("#0a1626")}
-            emissiveMap={texture}
-            emissiveIntensity={0.22}
-            bumpMap={texture}
-            bumpScale={0.6}
-            metalness={0}
-            roughness={1}
-            color={new THREE.Color("#ffffff")}
-            transparent={false}
-            depthWrite
-          />
+          <primitive object={material} attach="material" />
         </mesh>
 
-        {/* Faint holographic graticule ABOVE the Earth (subtle overlay, never hides it). */}
-        <mesh scale={1.006}>
+        {/* very faint holographic graticule overlay */}
+        <mesh scale={1.004}>
           <sphereGeometry args={[EARTH_R, 24, 16]} />
-          <meshBasicMaterial
-            color="#36c6ff"
-            wireframe
-            transparent
-            opacity={0.045 + ai * 0.03}
-            depthWrite={false}
-          />
+          <meshBasicMaterial color="#36c6ff" wireframe transparent opacity={0.03 + ai * 0.02} depthWrite={false} />
         </mesh>
       </group>
     </group>
@@ -162,26 +184,26 @@ function LightBeam() {
   // Emitter at the projector's mouth; many THIN sharp neon rays fan down onto the globe.
   const apex = useMemo(() => new THREE.Vector3(GLOBE_POS[0], GLOBE_POS[1] + 3.4, GLOBE_POS[2]), []);
 
-  const rayGeo = useMemo(() => {
-    const pts: THREE.Vector3[] = [];
-    const N = 34;
+  // oriented glowing beam shafts (soft halo + bright core) fanning onto the globe
+  const beams = useMemo(() => {
+    const up = new THREE.Vector3(0, 1, 0);
+    const N = 22;
+    const out: { pos: [number, number, number]; quat: [number, number, number, number]; h: number }[] = [];
     for (let i = 0; i < N; i++) {
       const a = (i / N) * Math.PI * 2;
-      const r = 1.45 + (i % 4) * 0.12;           // slight radius variation = denser look
+      const r = 1.45 + (i % 3) * 0.12;
       const end = new THREE.Vector3(
         GLOBE_POS[0] + Math.cos(a) * r,
-        GLOBE_POS[1] + 1.0,                        // land near the globe's upper hemisphere
+        GLOBE_POS[1] + 0.9,
         GLOBE_POS[2] + Math.sin(a) * r
       );
-      pts.push(apex.clone(), end);
+      const mid = apex.clone().add(end).multiplyScalar(0.5);
+      const dir = apex.clone().sub(end).normalize(); // cone +Y points back to the emitter
+      const q = new THREE.Quaternion().setFromUnitVectors(up, dir);
+      out.push({ pos: [mid.x, mid.y, mid.z], quat: [q.x, q.y, q.z, q.w], h: apex.distanceTo(end) });
     }
-    // a few dead-straight bright central rays
-    for (let i = 0; i < 4; i++) {
-      pts.push(apex.clone(), new THREE.Vector3(GLOBE_POS[0] + (i - 1.5) * 0.18, GLOBE_POS[1] + 0.4, GLOBE_POS[2]));
-    }
-    return new THREE.BufferGeometry().setFromPoints(pts);
+    return out;
   }, [apex]);
-  useEffect(() => () => rayGeo.dispose(), [rayGeo]);
 
   // sparkle particles drifting inside the beam cone
   const sparkGeo = useMemo(() => {
@@ -200,15 +222,20 @@ function LightBeam() {
 
   return (
     <group>
-      {/* faint volumetric body so the rays sit in a soft cone */}
-      <mesh position={[GLOBE_POS[0], GLOBE_POS[1] + 1.9, GLOBE_POS[2]]}>
-        <coneGeometry args={[1.25, 2.9, 48, 1, true]} />
-        <meshBasicMaterial color="#bfeeff" transparent opacity={0.035} blending={THREE.AdditiveBlending} depthWrite={false} side={THREE.DoubleSide} />
-      </mesh>
-      {/* many thin sharp neon rays */}
-      <lineSegments geometry={rayGeo}>
-        <lineBasicMaterial color="#5cc8ff" transparent opacity={0.68} blending={THREE.AdditiveBlending} depthWrite={false} />
-      </lineSegments>
+      {beams.map((b, i) => (
+        <group key={i} position={b.pos} quaternion={b.quat}>
+          {/* soft halo gives the beam volume so it reads as light, not a flat line */}
+          <mesh>
+            <coneGeometry args={[0.14, b.h, 16, 1, true]} />
+            <meshBasicMaterial color="#3ba6ff" transparent opacity={0.12} blending={THREE.AdditiveBlending} depthWrite={false} side={THREE.DoubleSide} />
+          </mesh>
+          {/* thin bright core */}
+          <mesh>
+            <coneGeometry args={[0.04, b.h, 12, 1, true]} />
+            <meshBasicMaterial color="#e6fbff" transparent opacity={0.55} blending={THREE.AdditiveBlending} depthWrite={false} side={THREE.DoubleSide} />
+          </mesh>
+        </group>
+      ))}
       {/* sparkles */}
       <points geometry={sparkGeo}>
         <pointsMaterial color="#cfeeff" size={0.045} sizeAttenuation transparent opacity={0.85} blending={THREE.AdditiveBlending} depthWrite={false} />
@@ -380,7 +407,7 @@ function TopProjector() {
   const grp2 = useRef<THREE.Group>(null);
   const rings = useMemo(() => {
     const out: { r: number; z: number; op: number }[] = [];
-    for (let i = 0; i < 7; i++) out.push({ r: 2.15 - i * 0.25, z: -i * 0.16, op: 0.62 - i * 0.06 });
+    for (let i = 0; i < 7; i++) out.push({ r: 2.15 - i * 0.25, z: -i * 0.16, op: 0.88 - i * 0.07 });
     return out;
   }, []);
   useFrame(({ clock }) => {
@@ -391,11 +418,16 @@ function TopProjector() {
   return (
     <group position={[GLOBE_POS[0], GLOBE_POS[1] + 4.4, GLOBE_POS[2]]} rotation={[-Math.PI / 2, 0, 0]}>
       {/* tiered funnel of rings (widest at top, narrowing toward the emitter) */}
+      {/* soft glow disc behind the fixture so the engine reads as a glowing structure */}
+      <mesh position={[0, 0, -0.4]}>
+        <circleGeometry args={[2.3, 64]} />
+        <meshBasicMaterial color="#1c6fd0" transparent opacity={0.16} blending={THREE.AdditiveBlending} depthWrite={false} />
+      </mesh>
       <group ref={grp}>
         {rings.map((rg, i) => (
           <mesh key={i} position={[0, 0, rg.z]}>
-            <ringGeometry args={[rg.r, rg.r + 0.028, 128]} />
-            <meshBasicMaterial color="#7fd8ff" transparent opacity={rg.op} blending={THREE.AdditiveBlending} depthWrite={false} side={THREE.DoubleSide} />
+            <ringGeometry args={[rg.r, rg.r + 0.055, 128]} />
+            <meshBasicMaterial color="#8fe0ff" transparent opacity={rg.op} blending={THREE.AdditiveBlending} depthWrite={false} side={THREE.DoubleSide} />
           </mesh>
         ))}
       </group>
