@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import HolographicEarth3D from "./HolographicEarth3D";
 
 // Full Intelligence Hub command center (page-scoped). Faithful live recreation of the
@@ -196,7 +196,7 @@ export default function IntelHub({ audioIntensity = 0, page, onNavigate }: Props
             aria-label={leftOpen ? "Collapse navigation" : "Expand navigation"}
             aria-expanded={leftOpen}
           >
-            {leftOpen ? "‹" : "›"}
+            {leftOpen ? "«" : "»"}
           </button>
 
           <nav className="ihub-nav">
@@ -275,8 +275,13 @@ export default function IntelHub({ audioIntensity = 0, page, onNavigate }: Props
               </svg>
 
               {cards.map((c) => (
+                <Fragment key={c.id}>
+                <span
+                  className="ihub-card-beam"
+                  style={{ top: c.pos.top, left: c.pos.left, ["--accent" as string]: c.accent }}
+                  aria-hidden
+                />
                 <article
-                  key={c.id}
                   className={`ihub-hex${activeCard?.id === c.id ? " selected" : ""}`}
                   style={{ top: c.pos.top, left: c.pos.left, ["--accent" as string]: c.accent }}
                   role="button"
@@ -295,6 +300,7 @@ export default function IntelHub({ audioIntensity = 0, page, onNavigate }: Props
                     <div className="ihub-hex-mat">{c.maturity}</div>
                   </div>
                 </article>
+                </Fragment>
               ))}
             </div>
           </div>
@@ -316,7 +322,7 @@ export default function IntelHub({ audioIntensity = 0, page, onNavigate }: Props
             aria-label={rightOpen ? "Collapse panels" : "Expand panels"}
             aria-expanded={rightOpen}
           >
-            {rightOpen ? "›" : "‹"}
+            {rightOpen ? "»" : "«"}
           </button>
 
           <div className="ihub-right-inner">

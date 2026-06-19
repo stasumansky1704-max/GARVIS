@@ -49,7 +49,7 @@ function latLonToVec3(lat: number, lon: number, radius: number): THREE.Vector3 {
 }
 
 // Initial spin so a recognizable view (Africa / Europe / Atlantic) faces the camera.
-const GLOBE_START_ROT = 2.1;
+const GLOBE_START_ROT = 0.6;
 
 // --- Fresnel atmosphere: a soft view-dependent halo hugging the globe's limb (not a ring).
 const ATMO_VERT = `
@@ -344,6 +344,33 @@ function Platform({ ai = 0 }: { ai?: number }) {
   );
 }
 
+// --- Overhead projector fixture: concentric emitter rings + glowing core above the globe
+// (the ceiling "projector" from the reference; the beams come from LightBeam). ---
+function TopProjector() {
+  const grp = useRef<THREE.Group>(null);
+  const rings = useMemo(() => [0.7, 1.15, 1.6], []);
+  useFrame(({ clock }) => {
+    if (grp.current) grp.current.rotation.z = clock.getElapsedTime() * 0.25; // slow spin
+  });
+  return (
+    <group position={[GLOBE_POS[0], GLOBE_POS[1] + 4.2, GLOBE_POS[2]]} rotation={[-Math.PI / 2, 0, 0]}>
+      <group ref={grp}>
+        {rings.map((r, i) => (
+          <mesh key={i}>
+            <ringGeometry args={[r, r + 0.035, 96]} />
+            <meshBasicMaterial color="#8fe2ff" transparent opacity={0.5 - i * 0.1} blending={THREE.AdditiveBlending} depthWrite={false} side={THREE.DoubleSide} />
+          </mesh>
+        ))}
+      </group>
+      {/* bright central emitter */}
+      <mesh>
+        <circleGeometry args={[0.46, 48]} />
+        <meshBasicMaterial color="#dff6ff" transparent opacity={0.5} blending={THREE.AdditiveBlending} depthWrite={false} />
+      </mesh>
+    </group>
+  );
+}
+
 function ArcLines({ ai = 0 }: { ai?: number }) {
   const connections = useMemo(() => {
     const pairs = [[0, 1], [1, 3], [3, 4], [4, 7], [7, 6], [6, 11], [9, 0]];
@@ -393,6 +420,7 @@ function EarthScene({ audioIntensity = 0, capture = false, showPillars = true }:
         <TexturedEarth ai={audioIntensity} />
       </Suspense>
       <Atmosphere ai={audioIntensity} />
+      <TopProjector />
       <LightBeam />
       <HexFloor ai={audioIntensity} />
       {showPillars && <FloorBeams ai={audioIntensity} />}
