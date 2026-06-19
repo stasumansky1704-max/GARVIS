@@ -84,6 +84,30 @@ const SOURCES = [
 const STAT_LABELS = ["CPU USAGE", "MEMORY", "GPU", "NETWORK", "DATABASE", "UPTIME"];
 const CMD_EXAMPLES = ["Monitor global markets", "Track AI news", "Analyze social sentiment", "Watch security advisories"];
 
+// SVG line icons per card (no emoji — sharp, scalable, on-brand). stroke = currentColor.
+function CardIcon({ id }: { id: string }) {
+  const p = {
+    width: 26, height: 26, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor",
+    strokeWidth: 1.6, strokeLinecap: "round" as const, strokeLinejoin: "round" as const,
+  };
+  switch (id) {
+    case "world":
+      return (<svg {...p}><circle cx="12" cy="12" r="9" /><path d="M3 12h18" /><path d="M12 3c2.6 2.7 2.6 15.3 0 18M12 3c-2.6 2.7-2.6 15.3 0 18" /></svg>);
+    case "market":
+      return (<svg {...p}><path d="M4 18l5-5 3 3 7-8" /><path d="M16 8h4v4" /></svg>);
+    case "social":
+      return (<svg {...p}><circle cx="9" cy="9" r="3" /><path d="M3.5 19c0-3 2.6-5 5.5-5s5.5 2 5.5 5" /><circle cx="17.5" cy="8" r="2.1" /><path d="M16 13.6c2.7.2 4.5 2.1 4.5 4.4" /></svg>);
+    case "revenue":
+      return (<svg {...p}><path d="M12 2.5v19" /><path d="M16.5 6.5c-.6-1.6-2.4-2.4-4.5-2.4-2.5 0-4.3 1.2-4.3 3.1 0 4.4 9 2 9 6.4 0 1.9-1.9 3.2-4.7 3.2-2.3 0-4.1-.9-4.7-2.6" /></svg>);
+    case "tech":
+      return (<svg {...p}><rect x="7" y="7" width="10" height="10" rx="1.5" /><path d="M10 3v3M14 3v3M10 18v3M14 18v3M3 10h3M3 14h3M18 10h3M18 14h3" /></svg>);
+    case "ops":
+      return (<svg {...p}><circle cx="12" cy="12" r="3" /><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.2 5.2l2.1 2.1M16.7 16.7l2.1 2.1M18.8 5.2l-2.1 2.1M7.3 16.7l-2.1 2.1" /></svg>);
+    default:
+      return null;
+  }
+}
+
 function Placeholder({ text = "Placeholder — not connected yet" }: { text?: string }) {
   return <div className="ihub-ph">◌ {text}</div>;
 }
@@ -117,7 +141,7 @@ function CardDrawer({ card, onClose }: { card: Card; onClose: () => void }) {
         style={{ ["--accent" as string]: card.accent }}
       >
         <header className="ihub-drawer-head">
-          <span className="ihub-drawer-glyph">{card.glyph}</span>
+          <span className="ihub-drawer-glyph"><CardIcon id={card.id} /></span>
           <div>
             <h2>{card.title}</h2>
             <div className="ihub-drawer-sub">{card.maturity} · intelligence layer</div>
@@ -293,7 +317,7 @@ export default function IntelHub({ audioIntensity = 0, page, onNavigate }: Props
                   }}
                 >
                   <div className="ihub-hex-inner">
-                    <span className="ihub-hex-glyph">{c.glyph}</span>
+                    <span className="ihub-hex-glyph"><CardIcon id={c.id} /></span>
                     <h3>{c.title}</h3>
                     <div className="ihub-hex-metric">needs {c.need}</div>
                     <div className="ihub-hex-state"><i /> {c.state}</div>
