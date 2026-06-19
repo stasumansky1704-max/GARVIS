@@ -163,16 +163,17 @@ function TexturedEarth({ ai = 0 }: { ai?: number }) {
             // ocean mask: land reads green/brown (high R/G), ocean is darker → bias clouds to sea
             float landish = max(rawDay.r, rawDay.g * 0.9);
             float oceanMask = 1.0 - smoothstep(0.16, 0.40, landish);
-            // lift + slightly cool-boost the oceans so they read brighter/bluer
-            vec3 day = rawDay * 1.7 + vec3(0.02, 0.05, 0.09);
+            // lift + cool-boost the oceans so they read clearly brighter/bluer
+            vec3 day = rawDay * 1.9 + vec3(0.03, 0.07, 0.14);
+            day += oceanMask * vec3(0.02, 0.07, 0.15);               // brighter blue oceans
             float d = dot(normalize(vNormalW), normalize(sunDir));
             float mixf = smoothstep(-0.28, 0.34, d);                 // wider lit hemisphere = brighter
             vec3 col = mix(night * 2.3, day, mixf);                  // brighter day, punchier city lights
             // clouds: locked to the surface UV → they rotate TOGETHER with the Earth.
-            // thin + sparse + see-through, mostly over oceans, lit by the sun.
+            // very thin + sparse + translucent, hugging the surface, mostly over oceans.
             float cloud = texture2D(cloudMap, vUv).r;
-            float c = smoothstep(0.42, 0.85, cloud) * mix(0.3, 1.0, oceanMask);
-            col += c * (0.1 + 0.45 * mixf) * 0.55;                   // faint, translucent
+            float c = smoothstep(0.52, 0.92, cloud) * mix(0.22, 1.0, oceanMask);
+            col += c * (0.06 + 0.34 * mixf) * 0.4;                   // fainter, see-through
             gl_FragColor = vec4(col, 1.0);
           }
         `,
@@ -211,7 +212,7 @@ function TexturedEarth({ ai = 0 }: { ai?: number }) {
 // bright defined core. ---
 function LightBeam() {
   // Emitter at the projector's mouth; many THIN sharp neon rays fan down onto the globe.
-  const apex = useMemo(() => new THREE.Vector3(GLOBE_POS[0], GLOBE_POS[1] + 3.4, GLOBE_POS[2]), []);
+  const apex = useMemo(() => new THREE.Vector3(GLOBE_POS[0], GLOBE_POS[1] + 2.5, GLOBE_POS[2]), []);
 
   // oriented glowing beam shafts (soft halo + bright core) fanning onto the globe
   const beams = useMemo(() => {
@@ -271,13 +272,13 @@ function LightBeam() {
         <group key={i} position={b.pos} quaternion={b.quat}>
           {/* very thin faint halo so the beam still reads as light */}
           <mesh>
-            <coneGeometry args={[0.07, b.h, 12, 1, true]} />
-            <meshBasicMaterial color="#3ba6ff" transparent opacity={0.1} blending={THREE.AdditiveBlending} depthWrite={false} side={THREE.DoubleSide} />
+            <coneGeometry args={[0.045, b.h, 10, 1, true]} />
+            <meshBasicMaterial color="#3ba6ff" transparent opacity={0.09} blending={THREE.AdditiveBlending} depthWrite={false} side={THREE.DoubleSide} />
           </mesh>
           {/* ultra-thin bright core */}
           <mesh>
-            <coneGeometry args={[0.02, b.h, 10, 1, true]} />
-            <meshBasicMaterial color="#f4ffff" transparent opacity={0.95} blending={THREE.AdditiveBlending} depthWrite={false} side={THREE.DoubleSide} />
+            <coneGeometry args={[0.012, b.h, 8, 1, true]} />
+            <meshBasicMaterial color="#f4ffff" transparent opacity={0.98} blending={THREE.AdditiveBlending} depthWrite={false} side={THREE.DoubleSide} />
           </mesh>
         </group>
       ))}
@@ -470,7 +471,7 @@ function TopProjector() {
     if (grp2.current) grp2.current.rotation.z = -t * 0.3; // counter-spin
   });
   return (
-    <group position={[GLOBE_POS[0], GLOBE_POS[1] + 4.4, GLOBE_POS[2]]} rotation={[-Math.PI / 2, 0, 0]}>
+    <group position={[GLOBE_POS[0], GLOBE_POS[1] + 3.7, GLOBE_POS[2]]} rotation={[-Math.PI / 2, 0, 0]}>
       {/* soft glow halo behind the whole fixture */}
       <mesh position={[0, 0, -1.0]}>
         <circleGeometry args={[2.6, 64]} />
