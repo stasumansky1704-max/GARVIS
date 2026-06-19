@@ -1,6 +1,6 @@
 import { useRef, useMemo, useState, useEffect, Suspense } from "react";
 import { Canvas, useFrame, useLoader } from "@react-three/fiber";
-import { Bloom, Vignette, EffectComposer, SMAA } from "@react-three/postprocessing";
+import { Bloom, Vignette, EffectComposer, SMAA, HueSaturation, BrightnessContrast } from "@react-three/postprocessing";
 import * as THREE from "three";
 
 // Intelligence Hub holographic Earth.
@@ -229,10 +229,10 @@ function LightBeam() {
             <coneGeometry args={[0.14, b.h, 16, 1, true]} />
             <meshBasicMaterial color="#3ba6ff" transparent opacity={0.12} blending={THREE.AdditiveBlending} depthWrite={false} side={THREE.DoubleSide} />
           </mesh>
-          {/* thin bright core */}
+          {/* thin bright core (bright enough to cross the bloom threshold → glows as light) */}
           <mesh>
-            <coneGeometry args={[0.04, b.h, 12, 1, true]} />
-            <meshBasicMaterial color="#e6fbff" transparent opacity={0.55} blending={THREE.AdditiveBlending} depthWrite={false} side={THREE.DoubleSide} />
+            <coneGeometry args={[0.045, b.h, 12, 1, true]} />
+            <meshBasicMaterial color="#f4ffff" transparent opacity={0.9} blending={THREE.AdditiveBlending} depthWrite={false} side={THREE.DoubleSide} />
           </mesh>
         </group>
       ))}
@@ -503,17 +503,26 @@ function EarthScene({ audioIntensity = 0, capture = false, showPillars = true }:
       <Platform ai={audioIntensity} />
       <ArcLines ai={audioIntensity} />
 
-      {/* Capture mode skips heavy post-processing so screenshots render fast. */}
-      {!capture && (
+      {/* Capture mode: a single lightweight Bloom so screenshots still show the glow
+          (fast on the demand frameloop). Normal mode: full cinematic chain. */}
+      {capture ? (
+        <EffectComposer multisampling={0} frameBufferType={THREE.HalfFloatType}>
+          <Bloom intensity={1.0} luminanceThreshold={0.42} luminanceSmoothing={0.9} radius={0.6} mipmapBlur />
+        </EffectComposer>
+      ) : (
         <EffectComposer multisampling={0} frameBufferType={THREE.HalfFloatType}>
           <SMAA />
+          {/* bright emissive cores cross this threshold → they bloom into light, not stripes */}
           <Bloom
-            intensity={1.2 + audioIntensity * 0.9}
-            luminanceThreshold={0.34}
+            intensity={1.15 + audioIntensity * 0.8}
+            luminanceThreshold={0.42}
             luminanceSmoothing={0.9}
-            radius={0.7}
+            radius={0.72}
             mipmapBlur
           />
+          {/* color grade: punchier neon "trailer" look */}
+          <HueSaturation saturation={0.18} />
+          <BrightnessContrast brightness={0.02} contrast={0.12} />
           <Vignette offset={0.3} darkness={0.72} />
         </EffectComposer>
       )}
