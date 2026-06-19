@@ -13,6 +13,7 @@ import * as THREE from "three";
 interface EarthProps {
   audioIntensity?: number;
   capture?: boolean; // screenshot-friendly: no post-processing, render-on-demand
+  showPillars?: boolean; // toggle the floor light pillars on/off
 }
 
 const EARTH_R = 2;
@@ -376,7 +377,7 @@ function FallbackGlobe() {
   );
 }
 
-function EarthScene({ audioIntensity = 0, capture = false }: EarthProps) {
+function EarthScene({ audioIntensity = 0, capture = false, showPillars = true }: EarthProps) {
   return (
     <>
       {/* even, bright key illumination so the visible hemisphere reads as real Earth */}
@@ -394,7 +395,7 @@ function EarthScene({ audioIntensity = 0, capture = false }: EarthProps) {
       <Atmosphere ai={audioIntensity} />
       <LightBeam />
       <HexFloor ai={audioIntensity} />
-      <FloorBeams ai={audioIntensity} />
+      {showPillars && <FloorBeams ai={audioIntensity} />}
       <Platform ai={audioIntensity} />
       <ArcLines ai={audioIntensity} />
 
@@ -416,7 +417,7 @@ function EarthScene({ audioIntensity = 0, capture = false }: EarthProps) {
   );
 }
 
-export default function HolographicEarth3D({ audioIntensity = 0, capture = false }: EarthProps) {
+export default function HolographicEarth3D({ audioIntensity = 0, capture = false, showPillars = true }: EarthProps) {
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
 
@@ -444,7 +445,7 @@ export default function HolographicEarth3D({ audioIntensity = 0, capture = false
       }}
       style={{ background: "transparent" }}
     >
-      <EarthScene audioIntensity={audioIntensity} capture={capture} />
+      <EarthScene audioIntensity={audioIntensity} capture={capture} showPillars={showPillars} />
     </Canvas>
   );
 }
