@@ -187,17 +187,18 @@ function LightBeam() {
   );
 }
 
-// --- Sharp vertical light pillars rising from the floor (crisp projection columns) ---
+// --- Sharp vertical light pillars rising from the floor. Each pillar = a thin bright
+// defined CORE + a soft halo, so it reads as a crisp 3D projection column. ---
 function FloorBeams({ ai = 0 }: { ai?: number }) {
-  // crisp vertical gradient: a bright thin core at the base, fading quickly upward
+  // crisp vertical gradient: a tight bright core at the base, fading quickly upward
   const grad = useMemo(() => {
     const c = document.createElement("canvas");
     c.width = 8; c.height = 128;
     const ctx = c.getContext("2d")!;
     const g = ctx.createLinearGradient(0, 128, 0, 0);
-    g.addColorStop(0, "rgba(210,240,255,1)");      // bright crisp base
-    g.addColorStop(0.18, "rgba(150,215,255,0.7)");
-    g.addColorStop(0.55, "rgba(90,180,255,0.18)");
+    g.addColorStop(0, "rgba(225,247,255,1)");        // crisp bright base
+    g.addColorStop(0.12, "rgba(170,225,255,0.85)");
+    g.addColorStop(0.4, "rgba(110,195,255,0.22)");
     g.addColorStop(1, "rgba(90,180,255,0)");
     ctx.fillStyle = g;
     ctx.fillRect(0, 0, 8, 128);
@@ -212,7 +213,7 @@ function FloorBeams({ ai = 0 }: { ai?: number }) {
     const out: { x: number; z: number; h: number; w: number }[] = [];
     const xs = [-9, -7.4, -6, 6, 7.4, 9, -4.6, 4.6, -8.2, 8.2];
     for (let i = 0; i < xs.length; i++) {
-      out.push({ x: xs[i], z: -1.5 - Math.random() * 7, h: 3.0 + Math.random() * 2.4, w: 0.1 + Math.random() * 0.06 });
+      out.push({ x: xs[i], z: -1.5 - Math.random() * 7, h: 3.0 + Math.random() * 2.4, w: 0.09 + Math.random() * 0.04 });
     }
     return out;
   }, []);
@@ -221,19 +222,33 @@ function FloorBeams({ ai = 0 }: { ai?: number }) {
   useFrame(({ clock }) => {
     if (!group.current) return;
     const t = clock.getElapsedTime();
-    group.current.children.forEach((c, i) => {
-      const m = (c as THREE.Mesh).material as THREE.MeshBasicMaterial;
-      m.opacity = 0.55 + 0.25 * Math.sin(t * 1.4 + i) + ai * 0.25;
+    let i = 0;
+    group.current.children.forEach((pillar) => {
+      pillar.children.forEach((c) => {
+        const mesh = c as THREE.Mesh;
+        const m = mesh.material as THREE.MeshBasicMaterial;
+        const base = (mesh.userData.base as number) ?? 0.6;
+        m.opacity = base * (0.82 + 0.18 * Math.sin(t * 1.4 + i)) + ai * 0.15;
+        i++;
+      });
     });
   });
 
   return (
     <group ref={group} position={[GLOBE_POS[0], 0, GLOBE_POS[2]]}>
       {pillars.map((p, i) => (
-        <mesh key={i} position={[p.x, FLOOR_Y + p.h / 2, p.z]}>
-          <planeGeometry args={[p.w, p.h]} />
-          <meshBasicMaterial map={grad} transparent opacity={0.6} blending={THREE.AdditiveBlending} depthWrite={false} side={THREE.DoubleSide} />
-        </mesh>
+        <group key={i} position={[p.x, FLOOR_Y + p.h / 2, p.z]}>
+          {/* soft halo */}
+          <mesh userData={{ base: 0.2 }}>
+            <planeGeometry args={[p.w * 2.6, p.h]} />
+            <meshBasicMaterial map={grad} transparent opacity={0.2} blending={THREE.AdditiveBlending} depthWrite={false} side={THREE.DoubleSide} />
+          </mesh>
+          {/* thin crisp defined core */}
+          <mesh userData={{ base: 0.95 }}>
+            <planeGeometry args={[p.w * 0.7, p.h]} />
+            <meshBasicMaterial map={grad} transparent opacity={0.95} blending={THREE.AdditiveBlending} depthWrite={false} side={THREE.DoubleSide} />
+          </mesh>
+        </group>
       ))}
     </group>
   );
