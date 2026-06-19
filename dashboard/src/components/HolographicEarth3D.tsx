@@ -91,23 +91,24 @@ function atmoMat(color: string, power: number, strength: number) {
   });
 }
 
-// Layered atmosphere "envelope": a bright blue limb rim hugging the globe + a soft outer halo.
+// A REALLY thin neon-blue rim hugging the limb (high power = concentrated at the edge),
+// plus a barely-there soft edge so it isn't a hard line. No fat halo.
 function Atmosphere({ ai = 0 }: { ai?: number }) {
-  const inner = useMemo(() => atmoMat("#7cc6ff", 2.6, 0.9), []);
-  const outer = useMemo(() => atmoMat("#3aa0ff", 1.5, 0.38), []);
-  useEffect(() => () => { inner.dispose(); outer.dispose(); }, [inner, outer]);
+  const rim = useMemo(() => atmoMat("#4aa6ff", 5.2, 0.8), []);
+  const soft = useMemo(() => atmoMat("#2f8fe6", 3.6, 0.14), []);
+  useEffect(() => () => { rim.dispose(); soft.dispose(); }, [rim, soft]);
   useFrame(() => {
-    inner.uniforms.uStrength.value = 0.9 + ai * 0.2;
+    rim.uniforms.uStrength.value = 0.78 + ai * 0.15;
   });
   return (
     <group position={GLOBE_POS}>
       <mesh>
-        <sphereGeometry args={[EARTH_R * 1.04, 64, 64]} />
-        <primitive object={inner} attach="material" />
+        <sphereGeometry args={[EARTH_R * 1.02, 64, 64]} />
+        <primitive object={rim} attach="material" />
       </mesh>
       <mesh>
-        <sphereGeometry args={[EARTH_R * 1.22, 48, 48]} />
-        <primitive object={outer} attach="material" />
+        <sphereGeometry args={[EARTH_R * 1.05, 48, 48]} />
+        <primitive object={soft} attach="material" />
       </mesh>
     </group>
   );
@@ -157,16 +158,20 @@ function TexturedEarth({ ai = 0 }: { ai?: number }) {
           varying vec2 vUv;
           varying vec3 vNormalW;
           void main() {
-            vec3 day = texture2D(dayMap, vUv).rgb;
+            vec3 rawDay = texture2D(dayMap, vUv).rgb;
             vec3 night = texture2D(nightMap, vUv).rgb;
+            // ocean mask: land reads green/brown (high R/G), ocean is darker → bias clouds to sea
+            float landish = max(rawDay.r, rawDay.g * 0.9);
+            float oceanMask = 1.0 - smoothstep(0.16, 0.40, landish);
             // lift + slightly cool-boost the oceans so they read brighter/bluer
-            day = day * 1.7 + vec3(0.02, 0.05, 0.09);
+            vec3 day = rawDay * 1.7 + vec3(0.02, 0.05, 0.09);
             float d = dot(normalize(vNormalW), normalize(sunDir));
             float mixf = smoothstep(-0.28, 0.34, d);                 // wider lit hemisphere = brighter
             vec3 col = mix(night * 2.3, day, mixf);                  // brighter day, punchier city lights
-            // clouds INTEGRATED into the surface: lit by the sun, drifting slowly in longitude
+            // clouds: thin + sparse + see-through, mostly over oceans, lit by the sun
             float cloud = texture2D(cloudMap, vUv + vec2(uTime * 0.0035, 0.0)).r;
-            col += cloud * (0.18 + 0.82 * mixf) * 0.85;              // white on the day side, faint at night
+            float c = smoothstep(0.42, 0.85, cloud) * mix(0.3, 1.0, oceanMask);
+            col += c * (0.1 + 0.45 * mixf) * 0.55;                   // faint, translucent
             gl_FragColor = vec4(col, 1.0);
           }
         `,
@@ -263,15 +268,15 @@ function LightBeam() {
     <group ref={grp}>
       {beams.map((b, i) => (
         <group key={i} position={b.pos} quaternion={b.quat}>
-          {/* soft halo gives the beam volume so it reads as light, not a flat line */}
+          {/* very thin faint halo so the beam still reads as light */}
           <mesh>
-            <coneGeometry args={[0.14, b.h, 16, 1, true]} />
-            <meshBasicMaterial color="#3ba6ff" transparent opacity={0.12} blending={THREE.AdditiveBlending} depthWrite={false} side={THREE.DoubleSide} />
+            <coneGeometry args={[0.07, b.h, 12, 1, true]} />
+            <meshBasicMaterial color="#3ba6ff" transparent opacity={0.1} blending={THREE.AdditiveBlending} depthWrite={false} side={THREE.DoubleSide} />
           </mesh>
-          {/* thin bright core (bright enough to cross the bloom threshold → glows as light) */}
+          {/* ultra-thin bright core */}
           <mesh>
-            <coneGeometry args={[0.045, b.h, 12, 1, true]} />
-            <meshBasicMaterial color="#f4ffff" transparent opacity={0.9} blending={THREE.AdditiveBlending} depthWrite={false} side={THREE.DoubleSide} />
+            <coneGeometry args={[0.02, b.h, 10, 1, true]} />
+            <meshBasicMaterial color="#f4ffff" transparent opacity={0.95} blending={THREE.AdditiveBlending} depthWrite={false} side={THREE.DoubleSide} />
           </mesh>
         </group>
       ))}
@@ -572,15 +577,15 @@ function EarthScene({ audioIntensity = 0, capture = false, showPillars = true }:
           (fast on the demand frameloop). Normal mode: full cinematic chain. */}
       {capture ? (
         <EffectComposer multisampling={0} frameBufferType={THREE.HalfFloatType}>
-          <Bloom intensity={1.4} luminanceThreshold={0.38} luminanceSmoothing={0.9} radius={0.7} mipmapBlur />
+          <Bloom intensity={1.25} luminanceThreshold={0.42} luminanceSmoothing={0.9} radius={0.7} mipmapBlur />
         </EffectComposer>
       ) : (
         <EffectComposer multisampling={0} frameBufferType={THREE.HalfFloatType}>
           <SMAA />
           {/* bright emissive cores cross this threshold → they bloom into light, not stripes */}
           <Bloom
-            intensity={1.6 + audioIntensity * 0.9}
-            luminanceThreshold={0.38}
+            intensity={1.45 + audioIntensity * 0.8}
+            luminanceThreshold={0.42}
             luminanceSmoothing={0.9}
             radius={0.78}
             mipmapBlur
