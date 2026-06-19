@@ -168,12 +168,12 @@ function TexturedEarth({ ai = 0 }: { ai?: number }) {
             day += oceanMask * vec3(0.02, 0.07, 0.15);               // brighter blue oceans
             float d = dot(normalize(vNormalW), normalize(sunDir));
             float mixf = smoothstep(-0.28, 0.34, d);                 // wider lit hemisphere = brighter
-            vec3 col = mix(night * 2.3, day, mixf);                  // brighter day, punchier city lights
+            vec3 col = mix(night * 3.2, day, mixf);                  // brighter day, punchier city lights
             // clouds: locked to the surface UV → rotate WITH the Earth. Embedded by BLENDING
             // into the surface (not added on top), lit by the sun, sparse, mostly over oceans.
             float cloud = texture2D(cloudMap, vUv).r;
             float cAmt = smoothstep(0.55, 0.95, cloud) * mix(0.18, 1.0, oceanMask) * (0.22 + 0.5 * mixf);
-            col = mix(col, vec3(0.9, 0.94, 1.0), cAmt * 0.5);        // blended into the surface
+            col = mix(col, vec3(0.88, 0.93, 1.0), cAmt * 0.42);        // blended into the surface
             gl_FragColor = vec4(col, 1.0);
           }
         `,
@@ -212,7 +212,7 @@ function TexturedEarth({ ai = 0 }: { ai?: number }) {
 // bright defined core. ---
 function LightBeam() {
   // Emitter at the projector's mouth; many THIN sharp neon rays fan down onto the globe.
-  const apex = useMemo(() => new THREE.Vector3(GLOBE_POS[0], GLOBE_POS[1] - 2.0, GLOBE_POS[2]), []);
+  const apex = useMemo(() => new THREE.Vector3(GLOBE_POS[0], GLOBE_POS[1] + 2.5, GLOBE_POS[2]), []);
 
   // oriented glowing beam shafts (soft halo + bright core) fanning onto the globe
   const beams = useMemo(() => {
@@ -224,7 +224,7 @@ function LightBeam() {
       const r = 1.45 + (i % 3) * 0.12;
       const end = new THREE.Vector3(
         GLOBE_POS[0] + Math.cos(a) * r,
-        GLOBE_POS[1] - 0.9,
+        GLOBE_POS[1] + 0.9,
         GLOBE_POS[2] + Math.sin(a) * r
       );
       const mid = apex.clone().add(end).multiplyScalar(0.5);
@@ -242,7 +242,7 @@ function LightBeam() {
       const t = Math.random();
       const a = Math.random() * Math.PI * 2;
       const r = t * 1.4;
-      arr.push(GLOBE_POS[0] + Math.cos(a) * r, GLOBE_POS[1] - 2.8 + t * 2.2, GLOBE_POS[2] + Math.sin(a) * r);
+      arr.push(GLOBE_POS[0] + Math.cos(a) * r, GLOBE_POS[1] + 3.2 - t * 2.4, GLOBE_POS[2] + Math.sin(a) * r);
     }
     const g = new THREE.BufferGeometry();
     g.setAttribute("position", new THREE.Float32BufferAttribute(arr, 3));
@@ -272,12 +272,12 @@ function LightBeam() {
         <group key={i} position={b.pos} quaternion={b.quat}>
           {/* hairline faint halo so the beam still reads as light */}
           <mesh>
-            <coneGeometry args={[0.028, b.h, 8, 1, true]} />
+            <coneGeometry args={[0.018, b.h, 8, 1, true]} />
             <meshBasicMaterial color="#3ba6ff" transparent opacity={0.07} blending={THREE.AdditiveBlending} depthWrite={false} side={THREE.DoubleSide} />
           </mesh>
           {/* hairline bright core (very thin + sharp) */}
           <mesh>
-            <coneGeometry args={[0.008, b.h, 6, 1, true]} />
+            <coneGeometry args={[0.005, b.h, 6, 1, true]} />
             <meshBasicMaterial color="#ffffff" transparent opacity={1} blending={THREE.AdditiveBlending} depthWrite={false} side={THREE.DoubleSide} />
           </mesh>
         </group>
@@ -456,12 +456,13 @@ function HexFloor({ ai = 0 }: { ai?: number }) {
 function TopProjector() {
   const grp = useRef<THREE.Group>(null);
   const grp2 = useRef<THREE.Group>(null);
+  const core = useRef<THREE.Mesh>(null);
   const rings = useMemo(() => {
     const out: { r: number; z: number; op: number; w: number }[] = [];
     const N = 16;
     for (let i = 0; i < N; i++) {
       const f = i / (N - 1);                 // 0 outer → 1 inner
-      out.push({ r: 2.35 - f * 2.0, z: (1.0 - f) * 1.15, op: 0.4 + f * 0.55, w: 0.02 + f * 0.045 });
+      out.push({ r: 2.35 - f * 2.0, z: -f * 1.15, op: 0.4 + f * 0.55, w: 0.02 + f * 0.045 });
     }
     return out;
   }, []);
@@ -469,11 +470,12 @@ function TopProjector() {
     const t = clock.getElapsedTime();
     if (grp.current) grp.current.rotation.z = t * 0.12;
     if (grp2.current) grp2.current.rotation.z = -t * 0.3; // counter-spin
+    if (core.current) (core.current.material as THREE.MeshBasicMaterial).opacity = 0.78 + 0.22 * Math.sin(t * 3.0);
   });
   return (
-    <group position={[GLOBE_POS[0], GLOBE_POS[1] - 3.0, GLOBE_POS[2]]} rotation={[-Math.PI / 2, 0, 0]}>
+    <group position={[GLOBE_POS[0], GLOBE_POS[1] + 3.7, GLOBE_POS[2]]} rotation={[-Math.PI / 2, 0, 0]}>
       {/* soft glow halo behind the whole fixture */}
-      <mesh position={[0, 0, 1.0]}>
+      <mesh position={[0, 0, -1.0]}>
         <circleGeometry args={[2.6, 64]} />
         <meshBasicMaterial color="#1c6fd0" transparent opacity={0.22} blending={THREE.AdditiveBlending} depthWrite={false} />
       </mesh>
@@ -486,19 +488,27 @@ function TopProjector() {
           </mesh>
         ))}
       </group>
-      {/* counter-rotating bright accent ring deep in the tunnel */}
+      {/* counter-rotating bright accent ring + colored rings = life & color */}
       <group ref={grp2}>
-        <mesh position={[0, 0, 0.95]}>
+        <mesh position={[0, 0, -0.95]}>
           <ringGeometry args={[0.78, 0.86, 96]} />
           <meshBasicMaterial color="#e6fbff" transparent opacity={0.8} blending={THREE.AdditiveBlending} depthWrite={false} side={THREE.DoubleSide} />
         </mesh>
+        <mesh position={[0, 0, -0.6]}>
+          <ringGeometry args={[1.18, 1.24, 96]} />
+          <meshBasicMaterial color="#19e6c0" transparent opacity={0.5} blending={THREE.AdditiveBlending} depthWrite={false} side={THREE.DoubleSide} />
+        </mesh>
+        <mesh position={[0, 0, -0.3]}>
+          <ringGeometry args={[1.6, 1.65, 96]} />
+          <meshBasicMaterial color="#8b6bff" transparent opacity={0.4} blending={THREE.AdditiveBlending} depthWrite={false} side={THREE.DoubleSide} />
+        </mesh>
       </group>
       {/* brilliant emitter core — the beam source (faces up toward the globe) */}
-      <mesh position={[0, 0, 1.18]}>
+      <mesh position={[0, 0, -1.18]}>
         <circleGeometry args={[0.95, 48]} />
         <meshBasicMaterial color="#bfeaff" transparent opacity={0.45} blending={THREE.AdditiveBlending} depthWrite={false} />
       </mesh>
-      <mesh position={[0, 0, 1.2]}>
+      <mesh ref={core} position={[0, 0, -1.2]}>
         <circleGeometry args={[0.5, 48]} />
         <meshBasicMaterial color="#ffffff" transparent opacity={0.95} blending={THREE.AdditiveBlending} depthWrite={false} />
       </mesh>
