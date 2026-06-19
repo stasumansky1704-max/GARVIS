@@ -164,6 +164,7 @@ export default function IntelHub({ audioIntensity = 0, page, onNavigate }: Props
   const [activeCard, setActiveCard] = useState<Card | null>(null);
   const [leftOpen, setLeftOpen] = useState(true);
   const [rightOpen, setRightOpen] = useState(true);
+  const [showPillars, setShowPillars] = useState(true);
 
   useEffect(() => {
     if (capture) { setClock("00:00:00"); return; }
@@ -243,8 +244,18 @@ export default function IntelHub({ audioIntensity = 0, page, onNavigate }: Props
 
           <div className="ihub-stage">
             <div className="ihub-globe">
-              <HolographicEarth3D audioIntensity={capture ? 0 : audioIntensity} capture={capture} />
+              <HolographicEarth3D audioIntensity={capture ? 0 : audioIntensity} capture={capture} showPillars={showPillars} />
             </div>
+
+            <button
+              className={`ihub-scene-toggle${showPillars ? " on" : ""}`}
+              onClick={() => setShowPillars((v) => !v)}
+              aria-pressed={showPillars}
+              title="Toggle holographic light pillars"
+            >
+              <span className="ihub-scene-toggle-dot" />
+              LIGHT PILLARS · {showPillars ? "ON" : "OFF"}
+            </button>
 
             <div className="ihub-nodes">
               <svg className="ihub-links" viewBox="0 0 100 100" preserveAspectRatio="none">
