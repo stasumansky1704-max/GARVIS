@@ -5,10 +5,10 @@ import * as THREE from "three";
 
 // Intelligence Hub holographic Earth.
 // Recreated as a LIVING WebGL scene from the GARVIS CORE reference (textured Earth +
-// particle shell + overhead light beam + dot-grid energy platform). The reference image is
-// used only as a baked detail map on the live globe material (earth.jpg) - never as a
-// background image. Same export + props as before; this component is used ONLY by the
-// Intelligence Hub (Home / Living Core are untouched).
+// overhead light beam + holographic hex platform). The reference is used only as a baked
+// detail map on the live globe material (earth_map.jpg) - never as a background image.
+// Same export + props as before; this component is used ONLY by the Intelligence Hub
+// (Home / Living Core are untouched).
 
 interface EarthProps {
   audioIntensity?: number;
@@ -16,6 +16,11 @@ interface EarthProps {
 }
 
 const EARTH_R = 2;
+
+// Globe sits deeper (further from camera) and slightly higher in frame, floating above
+// the holographic platform. The light beam + floor glow track this same x/z.
+const GLOBE_POS: [number, number, number] = [0, 0.55, -2.4];
+const FLOOR_Y = -3.4; // platform sits well below the globe (a clear floating gap)
 
 const CITIES = [
   { name: "New York", lat: 40.71, lon: -74.0 },
@@ -45,6 +50,59 @@ function latLonToVec3(lat: number, lon: number, radius: number): THREE.Vector3 {
 // Initial spin so a recognizable view (Africa / Europe / Atlantic) faces the camera.
 const GLOBE_START_ROT = 2.1;
 
+// --- Fresnel atmosphere: a soft view-dependent halo hugging the globe's limb (not a ring).
+const ATMO_VERT = `
+  varying vec3 vNormalW;
+  varying vec3 vViewDir;
+  void main() {
+    vec4 wp = modelMatrix * vec4(position, 1.0);
+    vNormalW = normalize(mat3(modelMatrix) * normal);
+    vViewDir = normalize(cameraPosition - wp.xyz);
+    gl_Position = projectionMatrix * viewMatrix * wp;
+  }
+`;
+const ATMO_FRAG = `
+  uniform vec3 uColor;
+  uniform float uPower;
+  uniform float uStrength;
+  varying vec3 vNormalW;
+  varying vec3 vViewDir;
+  void main() {
+    float f = pow(1.0 - max(dot(vNormalW, vViewDir), 0.0), uPower);
+    gl_FragColor = vec4(uColor, f * uStrength);
+  }
+`;
+
+function Atmosphere({ ai = 0 }: { ai?: number }) {
+  const material = useMemo(
+    () =>
+      new THREE.ShaderMaterial({
+        uniforms: {
+          uColor: { value: new THREE.Color("#4aa6f0") },
+          uPower: { value: 1.7 },      // broad, diffuse falloff (a soft halo, never a defined ring)
+          uStrength: { value: 0.26 },
+        },
+        vertexShader: ATMO_VERT,
+        fragmentShader: ATMO_FRAG,
+        transparent: true,
+        blending: THREE.AdditiveBlending,
+        side: THREE.BackSide,
+        depthWrite: false,
+      }),
+    []
+  );
+  useEffect(() => () => material.dispose(), [material]);
+  useFrame(() => {
+    material.uniforms.uStrength.value = 0.24 + ai * 0.14;
+  });
+  return (
+    <mesh position={GLOBE_POS}>
+      <sphereGeometry args={[EARTH_R * 1.06, 64, 64]} />
+      <primitive object={material} attach="material" />
+    </mesh>
+  );
+}
+
 // --- Realistic Earth: the map is the surface; lighting reveals real continents/oceans.
 function TexturedEarth({ ai = 0 }: { ai?: number }) {
   const ref = useRef<THREE.Group>(null);
@@ -56,57 +114,98 @@ function TexturedEarth({ ai = 0 }: { ai?: number }) {
   texture.minFilter = THREE.LinearMipmapLinearFilter;
 
   useFrame(({ clock }) => {
-    if (ref.current) ref.current.rotation.y = GLOBE_START_ROT + clock.getElapsedTime() * 0.05;
+    if (ref.current) ref.current.rotation.y = GLOBE_START_ROT + clock.getElapsedTime() * 0.045;
   });
 
   return (
-    <group ref={ref} rotation={[0.18, GLOBE_START_ROT, 0]}>
-      {/* Surface: REAL Earth. Colours come from the lit map (daytime look), not a cyan glow. */}
-      <mesh>
-        <sphereGeometry args={[EARTH_R, 128, 128]} />
-        <meshStandardMaterial
-          map={texture}
-          emissive={new THREE.Color("#0a1626")}
-          emissiveMap={texture}
-          emissiveIntensity={0.22}   /* only lifts the night side; map colours dominate */
-          bumpMap={texture}
-          bumpScale={0.6}
-          metalness={0}
-          roughness={1}
-          color={new THREE.Color("#ffffff")}
-          transparent={false}
-          depthWrite
-        />
-      </mesh>
+    <group position={GLOBE_POS}>
+      <group ref={ref} rotation={[0.18, GLOBE_START_ROT, 0]}>
+        {/* Surface: REAL Earth. Colours come from the lit map (daytime look). */}
+        <mesh>
+          <sphereGeometry args={[EARTH_R, 128, 128]} />
+          <meshStandardMaterial
+            map={texture}
+            emissive={new THREE.Color("#0a1626")}
+            emissiveMap={texture}
+            emissiveIntensity={0.22}
+            bumpMap={texture}
+            bumpScale={0.6}
+            metalness={0}
+            roughness={1}
+            color={new THREE.Color("#ffffff")}
+            transparent={false}
+            depthWrite
+          />
+        </mesh>
 
-      {/* Faint holographic graticule ABOVE the Earth (subtle overlay, never hides it). */}
-      <mesh scale={1.006}>
-        <sphereGeometry args={[EARTH_R, 24, 16]} />
-        <meshBasicMaterial
-          color="#36c6ff"
-          wireframe
-          transparent
-          opacity={0.05 + ai * 0.03}
-          depthWrite={false}
-        />
-      </mesh>
+        {/* Faint holographic graticule ABOVE the Earth (subtle overlay, never hides it). */}
+        <mesh scale={1.006}>
+          <sphereGeometry args={[EARTH_R, 24, 16]} />
+          <meshBasicMaterial
+            color="#36c6ff"
+            wireframe
+            transparent
+            opacity={0.045 + ai * 0.03}
+            depthWrite={false}
+          />
+        </mesh>
+      </group>
     </group>
   );
 }
 
-// --- Vertical light streaks rising from the floor (like the reference) ---
-const FLOOR_Y = -3.4;            // floor sits well below the globe (visible gap)
+// --- Projector beams: a few crisp converging light shafts from above (NOT a dome). The
+// shafts read as projection beams hitting the globe, with a brighter inner core.
+function LightBeam({ ai = 0 }: { ai?: number }) {
+  const grp = useRef<THREE.Group>(null);
+  // three projectors fanned slightly so the top of the globe reads as "lit by beams"
+  const beams = useMemo(
+    () => [
+      { rot: 0.0, x: 0.0 },
+      { rot: 0.16, x: 0.9 },
+      { rot: -0.16, x: -0.9 },
+    ],
+    []
+  );
+  useFrame(({ clock }) => {
+    if (!grp.current) return;
+    const t = clock.getElapsedTime();
+    grp.current.children.forEach((c, i) => {
+      const m = (c as THREE.Mesh).material as THREE.MeshBasicMaterial;
+      if (m) m.opacity = (i % 2 === 0 ? 0.16 : 0.07) + 0.03 * Math.sin(t * 2.2 + i) + ai * 0.06;
+    });
+  });
+  return (
+    <group ref={grp} position={[GLOBE_POS[0], GLOBE_POS[1] + 2.0, GLOBE_POS[2]]}>
+      {beams.map((b, i) => (
+        <group key={i} position={[b.x, 0, 0]} rotation={[0, 0, b.rot]}>
+          {/* outer soft shaft */}
+          <mesh position={[0, 1.6, 0]}>
+            <coneGeometry args={[0.95, 3.4, 40, 1, true]} />
+            <meshBasicMaterial color="#bff0ff" transparent opacity={0.07} blending={THREE.AdditiveBlending} depthWrite={false} side={THREE.DoubleSide} />
+          </mesh>
+          {/* crisp bright inner core */}
+          <mesh position={[0, 1.6, 0]}>
+            <coneGeometry args={[0.34, 3.4, 32, 1, true]} />
+            <meshBasicMaterial color="#e8fbff" transparent opacity={0.18} blending={THREE.AdditiveBlending} depthWrite={false} side={THREE.DoubleSide} />
+          </mesh>
+        </group>
+      ))}
+    </group>
+  );
+}
 
-function FloorStreaks({ ai = 0 }: { ai?: number }) {
-  // a soft vertical gradient used by every streak (bright at the floor, fading up)
+// --- Sharp vertical light pillars rising from the floor (crisp projection columns) ---
+function FloorBeams({ ai = 0 }: { ai?: number }) {
+  // crisp vertical gradient: a bright thin core at the base, fading quickly upward
   const grad = useMemo(() => {
     const c = document.createElement("canvas");
-    c.width = 8;
-    c.height = 128;
+    c.width = 8; c.height = 128;
     const ctx = c.getContext("2d")!;
     const g = ctx.createLinearGradient(0, 128, 0, 0);
-    g.addColorStop(0, "rgba(150,220,255,0.9)");
-    g.addColorStop(0.5, "rgba(90,180,255,0.28)");
+    g.addColorStop(0, "rgba(210,240,255,1)");      // bright crisp base
+    g.addColorStop(0.18, "rgba(150,215,255,0.7)");
+    g.addColorStop(0.55, "rgba(90,180,255,0.18)");
     g.addColorStop(1, "rgba(90,180,255,0)");
     ctx.fillStyle = g;
     ctx.fillRect(0, 0, 8, 128);
@@ -116,12 +215,12 @@ function FloorStreaks({ ai = 0 }: { ai?: number }) {
   }, []);
   useEffect(() => () => grad.dispose(), [grad]);
 
-  const streaks = useMemo(() => {
+  // framed around the globe (left/right clusters + a few in the distance), avoiding center
+  const pillars = useMemo(() => {
     const out: { x: number; z: number; h: number; w: number }[] = [];
-    for (let i = 0; i < 16; i++) {
-      const x = (Math.random() - 0.5) * 16;
-      const z = -1 - Math.random() * 9;        // spread into the distance
-      out.push({ x, z, h: 2.6 + Math.random() * 2.2, w: 0.18 + Math.random() * 0.18 });
+    const xs = [-9, -7.4, -6, 6, 7.4, 9, -4.6, 4.6, -8.2, 8.2];
+    for (let i = 0; i < xs.length; i++) {
+      out.push({ x: xs[i], z: -1.5 - Math.random() * 7, h: 3.0 + Math.random() * 2.4, w: 0.1 + Math.random() * 0.06 });
     }
     return out;
   }, []);
@@ -129,85 +228,26 @@ function FloorStreaks({ ai = 0 }: { ai?: number }) {
   const group = useRef<THREE.Group>(null);
   useFrame(({ clock }) => {
     if (!group.current) return;
+    const t = clock.getElapsedTime();
     group.current.children.forEach((c, i) => {
       const m = (c as THREE.Mesh).material as THREE.MeshBasicMaterial;
-      m.opacity = 0.35 + 0.3 * Math.sin(clock.getElapsedTime() * 1.3 + i) + ai * 0.3;
+      m.opacity = 0.55 + 0.25 * Math.sin(t * 1.4 + i) + ai * 0.25;
     });
   });
 
   return (
-    <group ref={group}>
-      {streaks.map((s, i) => (
-        <mesh key={i} position={[s.x, FLOOR_Y + s.h / 2, s.z]}>
-          <planeGeometry args={[s.w, s.h]} />
-          <meshBasicMaterial
-            map={grad}
-            transparent
-            opacity={0.4}
-            blending={THREE.AdditiveBlending}
-            depthWrite={false}
-            side={THREE.DoubleSide}
-          />
+    <group ref={group} position={[GLOBE_POS[0], 0, GLOBE_POS[2]]}>
+      {pillars.map((p, i) => (
+        <mesh key={i} position={[p.x, FLOOR_Y + p.h / 2, p.z]}>
+          <planeGeometry args={[p.w, p.h]} />
+          <meshBasicMaterial map={grad} transparent opacity={0.6} blending={THREE.AdditiveBlending} depthWrite={false} side={THREE.DoubleSide} />
         </mesh>
       ))}
     </group>
   );
 }
 
-// --- Bright glow band where the globe's light meets the floor ---
-function FloorGlow({ ai = 0 }: { ai?: number }) {
-  const ref = useRef<THREE.Mesh>(null);
-  useFrame(({ clock }) => {
-    if (ref.current) {
-      const m = ref.current.material as THREE.MeshBasicMaterial;
-      m.opacity = 0.45 + Math.sin(clock.getElapsedTime() * 1.5) * 0.08 + ai * 0.2;
-    }
-  });
-  return (
-    <mesh ref={ref} rotation={[-Math.PI / 2, 0, 0]} position={[0, FLOOR_Y + 0.05, -0.5]}>
-      <circleGeometry args={[3.2, 48]} />
-      <meshBasicMaterial color="#bfeaff" transparent opacity={0.5} blending={THREE.AdditiveBlending} depthWrite={false} />
-    </mesh>
-  );
-}
-
-// --- Overhead light beam (the fixture + shaft bathing the globe from above) ---
-function LightBeam({ ai = 0 }: { ai?: number }) {
-  const beam = useRef<THREE.Mesh>(null);
-  useFrame(({ clock }) => {
-    if (beam.current) {
-      const m = beam.current.material as THREE.MeshBasicMaterial;
-      m.opacity = 0.05 + (0.5 + 0.5 * Math.sin(clock.getElapsedTime() * 2)) * (0.04 + ai * 0.05);
-    }
-  });
-  return (
-    <group>
-      {/* shaft: narrow at top (apex), widening down onto the globe */}
-      <mesh ref={beam} position={[0, 3.7, 0]}>
-        <coneGeometry args={[1.5, 3.4, 48, 1, true]} />
-        <meshBasicMaterial
-          color="#bff0ff"
-          transparent
-          opacity={0.07}
-          blending={THREE.AdditiveBlending}
-          depthWrite={false}
-          side={THREE.DoubleSide}
-        />
-      </mesh>
-      {/* fixture ring + glowing disc at the top */}
-      <mesh position={[0, 5.4, 0]} rotation={[Math.PI / 2, 0, 0]}>
-        <torusGeometry args={[0.62, 0.05, 12, 48]} />
-        <meshBasicMaterial color="#dff6ff" transparent opacity={0.9} blending={THREE.AdditiveBlending} />
-      </mesh>
-      <mesh position={[0, 5.4, 0]} rotation={[Math.PI / 2, 0, 0]}>
-        <circleGeometry args={[0.55, 48]} />
-        <meshBasicMaterial color="#9fe9ff" transparent opacity={0.4} blending={THREE.AdditiveBlending} depthWrite={false} />
-      </mesh>
-    </group>
-  );
-}
-
-// --- Glowing hexagon-grid floor beneath the globe (perspective tech floor) ---
+// --- Glowing hexagon-grid platform beneath the globe (sharp perspective tech floor) ---
 const HEX_VERT = `
   varying vec2 vUv;
   void main() {
@@ -215,6 +255,8 @@ const HEX_VERT = `
     gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
   }
 `;
+// Crisp hex borders, faint fill, strong radial fade to darkness, slow pulse, and an
+// expanding scan ring that sweeps outward from under the globe.
 const HEX_FRAG = `
   uniform float uTime; uniform vec3 uColor; uniform float uIntensity;
   varying vec2 vUv;
@@ -226,16 +268,19 @@ const HEX_FRAG = `
     return dot(a, a) < dot(b, b) ? a : b;
   }
   void main(){
-    vec2 uv = (vUv - 0.5) * 82.0;            // smaller, denser hex cells
+    vec2 uv = (vUv - 0.5) * 82.0;
     vec2 gv = hexCell(uv);
     float d = hexDist(gv);
-    float edge = smoothstep(0.44, 0.50, d);  // thin bright cell border
-    float fill = smoothstep(0.50, 0.28, d) * 0.05;
+    float edge = smoothstep(0.465, 0.505, d);          // crisp thin border
+    float fill = smoothstep(0.505, 0.30, d) * 0.028;    // very faint fill (low muddiness)
     float dist = distance(vUv, vec2(0.5)) * 2.0;
-    float fade = 1.0 - smoothstep(0.40, 0.95, dist);   // melt into the dark
-    float pulse = 0.82 + 0.18 * sin(uTime * 1.4 - dist * 7.0);
-    float a = (edge + fill) * fade * pulse * uIntensity;
-    gl_FragColor = vec4(uColor * (edge * 1.5 + fill * 0.6), a);
+    float fade = 1.0 - smoothstep(0.28, 0.92, dist);    // strong perspective fade to black
+    float pulse = 0.86 + 0.14 * sin(uTime * 1.2 - dist * 6.0);
+    float scanR = fract(uTime * 0.16);                  // expanding scan ring
+    float scan = smoothstep(0.05, 0.0, abs(dist - scanR * 1.45)) * 0.7;
+    float a = (edge * 1.0 + fill) * fade * pulse * uIntensity + edge * scan * fade;
+    vec3 col = uColor * (edge * 1.9 + fill * 0.5) + uColor * scan * edge * 1.3;
+    gl_FragColor = vec4(col, a);
   }
 `;
 
@@ -245,7 +290,7 @@ function HexFloor({ ai = 0 }: { ai?: number }) {
       new THREE.ShaderMaterial({
         uniforms: {
           uTime: { value: 0 },
-          uColor: { value: new THREE.Color("#33b8ff") },
+          uColor: { value: new THREE.Color("#3cc4ff") },
           uIntensity: { value: 1.0 },
         },
         vertexShader: HEX_VERT,
@@ -263,10 +308,31 @@ function HexFloor({ ai = 0 }: { ai?: number }) {
     material.uniforms.uIntensity.value = 1.0 + ai * 0.6;
   });
   return (
-    <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, FLOOR_Y, 0]}>
+    <mesh rotation={[-Math.PI / 2, 0, 0]} position={[GLOBE_POS[0], FLOOR_Y, GLOBE_POS[2]]}>
       <planeGeometry args={[64, 64, 1, 1]} />
       <primitive object={material} attach="material" />
     </mesh>
+  );
+}
+
+// --- Holographic platform glow: a soft radial pool of light directly under the globe.
+// (No emitter rings — they read as a "ring around the planet"; the hex floor + its scan
+// wave provide the platform structure instead.)
+function Platform({ ai = 0 }: { ai?: number }) {
+  const glow = useRef<THREE.Mesh>(null);
+  useFrame(({ clock }) => {
+    const t = clock.getElapsedTime();
+    if (glow.current) {
+      (glow.current.material as THREE.MeshBasicMaterial).opacity = 0.4 + Math.sin(t * 1.4) * 0.06 + ai * 0.16;
+    }
+  });
+  return (
+    <group position={[GLOBE_POS[0], FLOOR_Y + 0.04, GLOBE_POS[2]]} rotation={[-Math.PI / 2, 0, 0]}>
+      <mesh ref={glow}>
+        <circleGeometry args={[3.2, 64]} />
+        <meshBasicMaterial color="#bfeaff" transparent opacity={0.42} blending={THREE.AdditiveBlending} depthWrite={false} />
+      </mesh>
+    </group>
   );
 }
 
@@ -284,10 +350,10 @@ function ArcLines({ ai = 0 }: { ai?: number }) {
     });
   }, []);
   return (
-    <group>
+    <group position={GLOBE_POS} rotation={[0.18, GLOBE_START_ROT, 0]}>
       {connections.map((c) => (
         <lineSegments key={c.key} geometry={c.geometry}>
-          <lineBasicMaterial color="#3fe0ff" transparent opacity={0.22 + ai * 0.2} blending={THREE.AdditiveBlending} />
+          <lineBasicMaterial color="#3fe0ff" transparent opacity={0.18 + ai * 0.18} blending={THREE.AdditiveBlending} />
         </lineSegments>
       ))}
     </group>
@@ -296,7 +362,7 @@ function ArcLines({ ai = 0 }: { ai?: number }) {
 
 function FallbackGlobe() {
   return (
-    <mesh>
+    <mesh position={GLOBE_POS}>
       <sphereGeometry args={[EARTH_R, 48, 48]} />
       <meshStandardMaterial color="#0a2233" emissive="#0a4a66" emissiveIntensity={0.4} />
     </mesh>
@@ -306,20 +372,23 @@ function FallbackGlobe() {
 function EarthScene({ audioIntensity = 0, capture = false }: EarthProps) {
   return (
     <>
-      {/* even, bright illumination so the whole visible hemisphere reads (no dark night side) */}
-      <hemisphereLight args={["#eaf7ff", "#0a2740", 1.5]} />
-      <ambientLight intensity={0.65} />
-      <pointLight position={[0, 1.5, 7]} intensity={3.4} color="#f2faff" />
-      <pointLight position={[0, 6, 1.5]} intensity={2.0} color="#ffffff" />
-      <pointLight position={[-5, -1, -4]} intensity={1.2} color="#1a8fff" />
+      {/* even, bright key illumination so the visible hemisphere reads as real Earth */}
+      <hemisphereLight args={["#eaf7ff", "#0a2740", 1.35]} />
+      <ambientLight intensity={0.55} />
+      <pointLight position={[3, 2.5, 7]} intensity={3.2} color="#f2faff" />
+      {/* softened top light so it reads as projector beams, not a bright white blob */}
+      <pointLight position={[0, 6, 1.5]} intensity={0.8} color="#ffffff" />
+      {/* cool rim light from behind to carve the globe silhouette out of the dark */}
+      <pointLight position={[-4, 1.5, -6]} intensity={2.4} color="#2f9bff" />
 
       <Suspense fallback={<FallbackGlobe />}>
         <TexturedEarth ai={audioIntensity} />
       </Suspense>
+      <Atmosphere ai={audioIntensity} />
       <LightBeam ai={audioIntensity} />
       <HexFloor ai={audioIntensity} />
-      <FloorStreaks ai={audioIntensity} />
-      <FloorGlow ai={audioIntensity} />
+      <FloorBeams ai={audioIntensity} />
+      <Platform ai={audioIntensity} />
       <ArcLines ai={audioIntensity} />
 
       {/* Capture mode skips heavy post-processing so screenshots render fast. */}
@@ -327,13 +396,13 @@ function EarthScene({ audioIntensity = 0, capture = false }: EarthProps) {
         <EffectComposer multisampling={0} frameBufferType={THREE.HalfFloatType}>
           <SMAA />
           <Bloom
-            intensity={1.6 + audioIntensity * 1.1}
-            luminanceThreshold={0.28}
-            luminanceSmoothing={0.92}
+            intensity={1.2 + audioIntensity * 0.9}
+            luminanceThreshold={0.34}
+            luminanceSmoothing={0.9}
             radius={0.7}
             mipmapBlur
           />
-          <Vignette offset={0.32} darkness={0.7} />
+          <Vignette offset={0.3} darkness={0.72} />
         </EffectComposer>
       )}
     </>
@@ -358,13 +427,13 @@ export default function HolographicEarth3D({ audioIntensity = 0, capture = false
 
   return (
     <Canvas
-      camera={{ position: [0, 0.5, 6.0], fov: 45 }}
-      dpr={[1, 1.5]}
+      camera={{ position: [0, 0.6, 6.9], fov: 44 }}
+      dpr={capture ? 2.5 : [1, 1.5]}
       frameloop={capture ? "demand" : "always"}
       gl={{ antialias: false, alpha: true, powerPreference: "high-performance" }}
       onCreated={({ gl }) => {
         gl.toneMapping = THREE.ACESFilmicToneMapping;
-        gl.toneMappingExposure = 1.7;
+        gl.toneMappingExposure = 1.55;
       }}
       style={{ background: "transparent" }}
     >
