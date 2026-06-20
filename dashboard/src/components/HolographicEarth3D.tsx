@@ -247,10 +247,10 @@ function LightBeam() {
     return out;
   }, [apex]);
 
-  // ENERGY PARTICLE FLOW — dense subatomic particles streaming down the beam (data stream)
+  // ENERGY PARTICLE FLOW — fine, dense subatomic "data rain" streaming down the beam
   const sparkGeo = useMemo(() => {
     const arr: number[] = [];
-    for (let i = 0; i < 200; i++) {
+    for (let i = 0; i < 340; i++) {
       const t = Math.random();
       const a = Math.random() * Math.PI * 2;
       const r = t * 1.45;                                 // fans out toward the globe
@@ -266,6 +266,24 @@ function LightBeam() {
   // visibly carries the Earth hologram up to the emitter mouth.
   const shaftH = GLOBE_POS[1] + 2.6 - (GLOBE_POS[1] - 0.4);
   const shaftY = (GLOBE_POS[1] + 2.6 + (GLOBE_POS[1] - 0.4)) / 2;
+
+  // crisp vertical DATA LANES — straight bright lines structuring the beam (clean, not fuzzy)
+  const lanes = useMemo(() => {
+    const out: { pos: [number, number, number]; quat: [number, number, number, number]; h: number }[] = [];
+    const up = new THREE.Vector3(0, 1, 0);
+    const top = new THREE.Vector3(GLOBE_POS[0], GLOBE_POS[1] + 2.5, GLOBE_POS[2]);
+    const N = 16;
+    for (let i = 0; i < N; i++) {
+      const a = (i / N) * Math.PI * 2;
+      const r = 0.55 + (i % 2) * 0.18;
+      const end = new THREE.Vector3(GLOBE_POS[0] + Math.cos(a) * r, GLOBE_POS[1] + 0.9, GLOBE_POS[2] + Math.sin(a) * r);
+      const mid = top.clone().add(end).multiplyScalar(0.5);
+      const dir = top.clone().sub(end).normalize();
+      const q = new THREE.Quaternion().setFromUnitVectors(up, dir);
+      out.push({ pos: [mid.x, mid.y, mid.z], quat: [q.x, q.y, q.z, q.w], h: top.distanceTo(end) });
+    }
+    return out;
+  }, []);
 
   // life: each beam core flickers; sparkles twinkle; a bright ring scans DOWN the shaft.
   const grp = useRef<THREE.Group>(null);
@@ -339,9 +357,16 @@ function LightBeam() {
           </mesh>
         </group>
       ))}
-      {/* ENERGY PARTICLE FLOW — subatomic particles streaming down the beam */}
+      {/* crisp vertical DATA LANES — straight bright lines that structure the beam */}
+      {lanes.map((b, i) => (
+        <mesh key={`la${i}`} position={b.pos} quaternion={b.quat}>
+          <cylinderGeometry args={[0.004, 0.004, b.h, 5, 1, true]} />
+          <meshBasicMaterial color={C_BEAM_CORE} transparent opacity={0.55} blending={THREE.AdditiveBlending} depthWrite={false} />
+        </mesh>
+      ))}
+      {/* ENERGY PARTICLE FLOW — fine, dense data-rain particles streaming down the beam */}
       <points geometry={sparkGeo}>
-        <pointsMaterial color={C_PARTICLE} size={0.06} sizeAttenuation transparent opacity={0.95} blending={THREE.AdditiveBlending} depthWrite={false} />
+        <pointsMaterial color={C_PARTICLE} size={0.038} sizeAttenuation transparent opacity={0.95} blending={THREE.AdditiveBlending} depthWrite={false} />
       </points>
     </group>
   );
@@ -512,7 +537,8 @@ function HexFloor({ ai = 0 }: { ai?: number }) {
 // segmented hull panels, and a central EMITTER EYE (lens + iris + bright pupil) that is the
 // hologram source. Dark metal revealed by internal lights, NOT a self-glowing blob. ---
 // --- Projector blueprint palette (exact spec from the reference cutaway) ---
-const TITANIUM = "#0a0d12";       // OUTER HOUSING — black titanium alloy armor
+const TITANIUM = "#3a434f";       // OUTER HOUSING — machined gunmetal titanium (lifted so detail reads)
+const TITANIUM_DK = "#222933";    // recessed grooves / panel seams (darker than the plates)
 const C_COOLING = "#00e5ff";      // COOLING SYSTEM (vents)
 const C_POWER = "#2979ff";        // POWER CORE LIGHTS (energy conduits)
 const C_STABIL = "#9b5dff";       // STABILIZATION SYSTEM (gyroscopic ring)
@@ -549,6 +575,15 @@ function TopProjector() {
     }
     return out;
   }, [tiers]);
+  // engraved radial panel seams across the outer dome face
+  const seams = useMemo(() => Array.from({ length: 28 }, (_, i) => {
+    const a = (i / 28) * Math.PI * 2; const rm = 2.04;
+    return { a, x: Math.cos(a) * rm, y: Math.sin(a) * rm, z: -0.05, len: 0.62 };
+  }), []);
+  // bolt heads ringing the outer housing
+  const rivets = useMemo(() => Array.from({ length: 36 }, (_, i) => {
+    const a = (i / 36) * Math.PI * 2 + 0.04; return { a, x: Math.cos(a) * 2.33, y: Math.sin(a) * 2.33 };
+  }), []);
   // ring helper: N segments around radius r
   const ring = (n: number, r: number) => Array.from({ length: n }, (_, i) => {
     const a = (i / n) * Math.PI * 2;
@@ -609,25 +644,42 @@ function TopProjector() {
 
   return (
     <group position={[GLOBE_POS[0], GLOBE_POS[1] + 3.92, GLOBE_POS[2]]} rotation={[-Math.PI / 2, 0, 0]} scale={1.05}>
-      {/* internal lights that REVEAL the dark titanium (it is lit, not self-glowing) */}
-      <pointLight position={[0, 0, -1.2]} intensity={8} distance={7} decay={2} color={C_BEAM_CORE} />
-      <pointLight position={[0, 0, -0.5]} intensity={3.5} distance={5} decay={2} color={C_POWER} />
-      {/* cool rim lights from the front/sides so the machined titanium catches real specular highlights */}
-      <pointLight position={[2.6, 1.8, -1.6]} intensity={2.4} distance={9} decay={2} color="#bcd8ff" />
-      <pointLight position={[-2.6, -1.8, -1.6]} intensity={2.0} distance={9} decay={2} color="#7fb6ff" />
+      {/* internal lights that REVEAL the machined titanium (it is lit, not self-glowing) */}
+      <pointLight position={[0, 0, -1.2]} intensity={9} distance={7} decay={2} color={C_BEAM_CORE} />
+      <pointLight position={[0, 0, -0.5]} intensity={4} distance={5} decay={2} color={C_POWER} />
+      {/* bright cool rim lights so the machined titanium + panel detail clearly READ as metal */}
+      <pointLight position={[2.8, 2.0, -1.4]} intensity={5} distance={11} decay={2} color="#cfe2ff" />
+      <pointLight position={[-2.8, -2.0, -1.4]} intensity={4.2} distance={11} decay={2} color="#9ec6ff" />
+      <pointLight position={[0, 0, 1.4]} intensity={3} distance={9} decay={2} color="#acd0ff" />
+      {/* soft fill so the dome surface never crushes to pure black */}
+      <hemisphereLight args={["#9fc4ff", "#11161f", 0.7]} />
       <group ref={grp}>
         {/* === SOLID machined dome walls between tiers (closed titanium bowl) === */}
         {frusta.map((f, i) => (
           <mesh key={`fr${i}`} position={[0, 0, f.z]} rotation={[-Math.PI / 2, 0, 0]}>
             <cylinderGeometry args={[f.rTop, f.rBot, f.h, 72, 1, true]} />
-            <meshStandardMaterial color={TITANIUM} metalness={0.9} roughness={0.5} emissive="#05080e" emissiveIntensity={0.14} side={THREE.DoubleSide} />
+            <meshStandardMaterial color={TITANIUM} metalness={0.62} roughness={0.42} side={THREE.DoubleSide} />
           </mesh>
         ))}
-        {/* === DEEP tiered BLACK TITANIUM ALLOY housing rings (raised lips on the walls) === */}
+        {/* radial PANEL SEAMS engraved across the dome face (recessed dark grooves) */}
+        {seams.map((s, i) => (
+          <mesh key={`sm${i}`} position={[s.x, s.y, s.z]} rotation={[0, 0, s.a]}>
+            <boxGeometry args={[s.len, 0.022, 0.06]} />
+            <meshStandardMaterial color={TITANIUM_DK} metalness={0.5} roughness={0.6} />
+          </mesh>
+        ))}
+        {/* RIVET / bolt heads around the outer housing ring */}
+        {rivets.map((p, i) => (
+          <mesh key={`rv${i}`} position={[p.x, p.y, 0.07]}>
+            <sphereGeometry args={[0.028, 10, 10]} />
+            <meshStandardMaterial color="#6a7686" metalness={0.85} roughness={0.32} />
+          </mesh>
+        ))}
+        {/* === DEEP tiered TITANIUM housing rings (raised machined lips on the walls) === */}
         {tiers.map((rg, i) => (
           <mesh key={i} position={[0, 0, rg.z]}>
             <torusGeometry args={[rg.r, rg.w, 16, 72]} />
-            <meshStandardMaterial color={TITANIUM} metalness={0.96} roughness={0.38} emissive="#060a12" emissiveIntensity={0.2} />
+            <meshStandardMaterial color={TITANIUM} metalness={0.7} roughness={0.34} />
           </mesh>
         ))}
 
@@ -704,18 +756,21 @@ function TopProjector() {
         ))}
       </group>
 
-      {/* ===== PRIMARY EMITTER EYE — holographic projection source (intense white) ===== */}
+      {/* ===== PRIMARY EMITTER EYE — holographic projection source (intense white, strong glow) ===== */}
       <group position={[0, 0, -1.26]}>
-        {/* lens housing ring (dark titanium) */}
-        <mesh><torusGeometry args={[0.5, 0.12, 16, 48]} /><meshStandardMaterial color={TITANIUM} metalness={0.96} roughness={0.3} /></mesh>
-        {/* soft cyan flare = the glowing mouth */}
-        <mesh position={[0, 0, -0.16]}><circleGeometry args={[0.62, 48]} /><meshBasicMaterial color={C_BEAM_CORE} transparent opacity={0.45} blending={THREE.AdditiveBlending} depthWrite={false} /></mesh>
+        {/* lens housing ring (machined titanium) */}
+        <mesh><torusGeometry args={[0.5, 0.12, 16, 48]} /><meshStandardMaterial color={TITANIUM} metalness={0.7} roughness={0.3} /></mesh>
+        {/* wide soft glow halo — feeds the bloom so the eye reads as a powerful light source */}
+        <mesh position={[0, 0, -0.2]}><circleGeometry args={[0.95, 56]} /><meshBasicMaterial color={C_BEAM_VOL} transparent opacity={0.32} blending={THREE.AdditiveBlending} depthWrite={false} /></mesh>
+        {/* mid cyan flare = the glowing mouth */}
+        <mesh position={[0, 0, -0.17]}><circleGeometry args={[0.62, 48]} /><meshBasicMaterial color={C_BEAM_CORE} transparent opacity={0.6} blending={THREE.AdditiveBlending} depthWrite={false} /></mesh>
         {/* bright core ring */}
-        <mesh position={[0, 0, -0.13]}><ringGeometry args={[0.26, 0.36, 64]} /><meshBasicMaterial color={C_LENS} transparent opacity={0.95} blending={THREE.AdditiveBlending} depthWrite={false} side={THREE.DoubleSide} /></mesh>
-        {/* intense white pupil = projection source */}
-        <mesh ref={pupil} position={[0, 0, -0.14]}><circleGeometry args={[0.28, 48]} /><meshBasicMaterial color={C_EMITTER} transparent opacity={0.95} blending={THREE.AdditiveBlending} depthWrite={false} /></mesh>
+        <mesh position={[0, 0, -0.14]}><ringGeometry args={[0.26, 0.38, 64]} /><meshBasicMaterial color={C_LENS} transparent opacity={1} blending={THREE.AdditiveBlending} depthWrite={false} side={THREE.DoubleSide} /></mesh>
+        {/* intense white pupil = projection source (over-bright → blooms hard) */}
+        <mesh position={[0, 0, -0.145]}><circleGeometry args={[0.34, 48]} /><meshBasicMaterial color={C_EMITTER} transparent opacity={0.85} blending={THREE.AdditiveBlending} depthWrite={false} /></mesh>
+        <mesh ref={pupil} position={[0, 0, -0.15]}><circleGeometry args={[0.2, 48]} /><meshBasicMaterial color={C_EMITTER} transparent opacity={1} blending={THREE.AdditiveBlending} depthWrite={false} /></mesh>
         {/* emitter light thrown onto the beam particles below */}
-        <pointLight position={[0, 0, -0.2]} intensity={5} distance={5} decay={2} color={C_BEAM_CORE} />
+        <pointLight position={[0, 0, -0.2]} intensity={6} distance={5} decay={2} color={C_BEAM_CORE} />
       </group>
     </group>
   );
