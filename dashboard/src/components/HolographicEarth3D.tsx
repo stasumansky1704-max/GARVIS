@@ -198,7 +198,7 @@ function TexturedEarth({ ai = 0 }: { ai?: number }) {
 
             // 06 OCEAN DEPTH — dark navy (#001A33) deep → blue (#003366) shallow, by ocean luminance
             float oceanLum = clamp((rawDay.b * 0.6 + rawDay.g * 0.4) * 2.2, 0.0, 1.0);
-            vec3 oceanCol = mix(vec3(0.0, 0.045, 0.11), vec3(0.0, 0.16, 0.32), smoothstep(0.05, 0.5, oceanLum)); // darker sea so land stands out
+            vec3 oceanCol = mix(vec3(0.01, 0.11, 0.27), vec3(0.06, 0.42, 0.72), smoothstep(0.05, 0.55, oceanLum)); // vivid blue ocean (Blue Marble)
             // 04 SURFACE (DAY) — BOLD, 3D-relief land (emboss the continents from the albedo)
             float e = 0.0022;
             float hL = dot(texture2D(dayMap, vUv - vec2(e, 0.0)).rgb, vec3(0.33));
@@ -208,7 +208,7 @@ function TexturedEarth({ ai = 0 }: { ai?: number }) {
             float landMask = 1.0 - oceanMask;
             float relief = clamp((hR - hL) * 7.5 + (hU - hD) * 5.0, -0.32, 1.1); // sharper raised terrain
             // natural terrain tones from the albedo: richer greens (vegetation) + warm deserts + polar ice
-            vec3 baseLand = rawDay * 3.4;                            // MUCH brighter land so it dominates
+            vec3 baseLand = rawDay * 2.3;                            // natural land brightness (Blue Marble)
             float greenish = clamp((rawDay.g - rawDay.b) * 3.5, 0.0, 1.0);
             float dryish = clamp((rawDay.r - rawDay.g) * 3.5, 0.0, 1.0);
             baseLand = mix(baseLand, baseLand * vec3(0.82, 1.15, 0.72), greenish * 0.5);   // vegetation greens (lighter)
@@ -216,13 +216,10 @@ function TexturedEarth({ ai = 0 }: { ai?: number }) {
             float ice = smoothstep(0.93, 0.995, abs(vUv.y - 0.5) * 2.0);                   // only the very poles
             baseLand = mix(baseLand, vec3(0.9, 0.94, 0.98), ice * 0.6);
             vec3 landCol = baseLand + vec3(0.05, 0.06, 0.05);
-            landCol = (landCol - 0.5) * 1.32 + 0.5;                  // crisp contrast
+            landCol = (landCol - 0.5) * 1.16 + 0.5;                  // gentle natural contrast
             float lum = dot(landCol, vec3(0.299, 0.587, 0.114));
-            landCol = mix(vec3(lum), landCol, 1.24);                 // natural saturation
-            landCol *= (1.0 + relief * landMask * 0.8);             // 3D relief → continents pop (crisp edges)
-            // bright COASTLINE rim where land meets sea → continents clearly outlined
-            float coast = (1.0 - smoothstep(0.0, 0.45, abs(oceanMask - 0.5))) ;
-            landCol += coast * landMask * vec3(0.06, 0.08, 0.06);
+            landCol = mix(vec3(lum), landCol, 1.18);                 // natural saturation
+            landCol *= (1.0 + relief * landMask * 0.6);             // subtle 3D relief
             vec3 day = mix(landCol, oceanCol, oceanMask);
 
             float d = dot(normalize(vNormalW), normalize(sunDir));
@@ -238,7 +235,7 @@ function TexturedEarth({ ai = 0 }: { ai?: number }) {
             vec3 nightBase = day * 0.08;
             vec3 nightSide = nightBase + cityLights;
             // brighter DAY side so the two hemispheres clearly differ
-            vec3 col = mix(nightSide, day * 1.2, smoothstep(0.0, 0.55, mixf));
+            vec3 col = mix(nightSide, day * 1.08, smoothstep(0.0, 0.5, mixf));
 
             // warm GOLDEN-HOUR band along the day/night boundary → beautiful dusk line
             float term = smoothstep(0.0, 0.3, mixf) * (1.0 - smoothstep(0.3, 0.8, mixf));
@@ -256,8 +253,8 @@ function TexturedEarth({ ai = 0 }: { ai?: number }) {
 
             // 03 CLOUD LAYER — even fewer: only the densest cores, pure bright white
             float cloud = texture2D(cloudMap, vUv).r;
-            float cAmt = smoothstep(0.95, 0.999, cloud) * (0.15 + 0.3 * mixf);
-            col = mix(col, vec3(1.12, 1.12, 1.15), cAmt * 0.2);  // barely-there clouds → land dominates
+            float cAmt = smoothstep(0.6, 0.98, cloud) * (0.3 + 0.55 * mixf);
+            col = mix(col, vec3(1.0), cAmt * 0.5);  // natural white clouds (like the concept)
             gl_FragColor = vec4(col, 1.0);
           }
         `,
