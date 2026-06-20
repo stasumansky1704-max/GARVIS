@@ -198,7 +198,7 @@ function TexturedEarth({ ai = 0 }: { ai?: number }) {
 
             // 06 OCEAN DEPTH — dark navy (#001A33) deep → blue (#003366) shallow, by ocean luminance
             float oceanLum = clamp((rawDay.b * 0.6 + rawDay.g * 0.4) * 2.2, 0.0, 1.0);
-            vec3 oceanCol = mix(vec3(0.0, 0.102, 0.2), vec3(0.0, 0.2, 0.4), smoothstep(0.05, 0.5, oceanLum));
+            vec3 oceanCol = mix(vec3(0.0, 0.085, 0.19), vec3(0.0, 0.26, 0.48), smoothstep(0.05, 0.5, oceanLum)); // deeper + richer blue
             // 04 SURFACE (DAY) — BOLD, 3D-relief land (emboss the continents from the albedo)
             float e = 0.0022;
             float hL = dot(texture2D(dayMap, vUv - vec2(e, 0.0)).rgb, vec3(0.33));
@@ -207,10 +207,18 @@ function TexturedEarth({ ai = 0 }: { ai?: number }) {
             float hU = dot(texture2D(dayMap, vUv + vec2(0.0, e)).rgb, vec3(0.33));
             float landMask = 1.0 - oceanMask;
             float relief = clamp((hR - hL) * 7.5 + (hU - hD) * 5.0, -0.32, 1.1); // sharper raised terrain
-            vec3 landCol = rawDay * 2.45 + vec3(0.04, 0.05, 0.05);   // BRIGHT land so continents read
-            landCol = (landCol - 0.5) * 1.38 + 0.5;                  // sharper, crisper contrast
+            // natural terrain tones from the albedo: richer greens (vegetation) + warm deserts + polar ice
+            vec3 baseLand = rawDay * 2.15;
+            float greenish = clamp((rawDay.g - rawDay.b) * 3.5, 0.0, 1.0);
+            float dryish = clamp((rawDay.r - rawDay.g) * 3.5, 0.0, 1.0);
+            baseLand = mix(baseLand, baseLand * vec3(0.68, 1.12, 0.6), greenish * 0.55);   // vegetation greens
+            baseLand = mix(baseLand, baseLand * vec3(1.15, 0.92, 0.62), dryish * 0.5);     // desert browns
+            float ice = smoothstep(0.9, 0.99, abs(vUv.y - 0.5) * 2.0);                     // poles
+            baseLand = mix(baseLand, vec3(0.92, 0.96, 1.0), ice * 0.75);
+            vec3 landCol = baseLand + vec3(0.02, 0.03, 0.03);
+            landCol = (landCol - 0.5) * 1.34 + 0.5;                  // crisp contrast
             float lum = dot(landCol, vec3(0.299, 0.587, 0.114));
-            landCol = mix(vec3(lum), landCol, 1.34);                 // richer color
+            landCol = mix(vec3(lum), landCol, 1.22);                 // natural saturation
             landCol *= (1.0 + relief * landMask * 0.85);            // 3D relief → continents pop (crisp edges)
             vec3 day = mix(landCol, oceanCol, oceanMask);
 
@@ -229,15 +237,19 @@ function TexturedEarth({ ai = 0 }: { ai?: number }) {
             // brighter DAY side so the two hemispheres clearly differ
             vec3 col = mix(nightSide, day * 1.2, smoothstep(0.0, 0.55, mixf));
 
-            // warm terminator (sunset band) along the day/night boundary → life on the limb
-            float term = smoothstep(0.0, 0.32, mixf) * (1.0 - smoothstep(0.32, 0.72, mixf));
-            col += term * vec3(0.26, 0.12, 0.04);
+            // warm GOLDEN-HOUR band along the day/night boundary → beautiful dusk line
+            float term = smoothstep(0.0, 0.3, mixf) * (1.0 - smoothstep(0.3, 0.8, mixf));
+            col += term * vec3(0.42, 0.19, 0.05) * 1.1;
 
             // OCEAN SUN-GLINT — specular highlight where the sun reflects off the sea (lit side only)
             vec3 V = normalize(cameraPosition - vWorldPos);
             vec3 H = normalize(V + normalize(sunDir));
             float spec = pow(max(dot(normalize(vNormalW), H), 0.0), 70.0);
             col += spec * oceanMask * smoothstep(0.1, 0.6, mixf) * vec3(0.55, 0.72, 0.95);
+
+            // DAY-SIDE ATMOSPHERE — soft blue scatter hugging the sunlit limb (real air glow)
+            float limb = pow(1.0 - max(dot(normalize(vNormalW), V), 0.0), 2.4);
+            col += limb * smoothstep(-0.05, 0.5, mixf) * vec3(0.16, 0.36, 0.62) * 0.7;
 
             // 03 CLOUD LAYER — even fewer: only the densest cores, pure bright white
             float cloud = texture2D(cloudMap, vUv).r;
