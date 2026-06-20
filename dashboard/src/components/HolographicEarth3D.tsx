@@ -266,7 +266,7 @@ function TexturedEarth({ ai = 0 }: { ai?: number }) {
   useFrame(({ clock }) => {
     const t = clock.getElapsedTime();
     material.uniforms.uTime.value = t;
-    if (ref.current) ref.current.rotation.y = GLOBE_START_ROT + t * 0.045;
+    if (ref.current) ref.current.rotation.y = GLOBE_START_ROT + t * 0.13; // spin so ALL continents (America, Asia, Africa...) come into view
   });
 
   return (
