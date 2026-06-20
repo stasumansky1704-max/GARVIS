@@ -146,7 +146,7 @@ function TexturedEarth({ ai = 0 }: { ai?: number }) {
   const ref = useRef<THREE.Group>(null);
   // Blue-Marble DAY map + city-lights NIGHT map; blended by sun direction in a shader.
   const [dayTex, nightTex, cloudTex] = useLoader(THREE.TextureLoader, [
-    "/textures/earth_day.jpg",
+    "/textures/earth_map.jpg",
     "/textures/earth_night.jpg",
     "/textures/earth_clouds.png",
   ]);
