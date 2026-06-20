@@ -14,6 +14,8 @@ import * as THREE from "three";
 export interface Card3DData {
   id: string;
   title: string;
+  glyph: string;      // monogram/icon shown in the badge
+  subtitle: string;   // what it connects (e.g. "Stripe / PayPal / custom")
   state: string;
   maturity: string;
   accent: string;
@@ -955,6 +957,10 @@ const HEX_SHAPE = (() => {
 const HEX_GEO = new THREE.ExtrudeGeometry(HEX_SHAPE, {
   depth: 0.16, bevelEnabled: true, bevelThickness: 0.05, bevelSize: 0.05, bevelSegments: 2,
 });
+// the 6 hex vertices (for the bright connector nodes at each corner)
+const HEX_VERTS: [number, number][] = [
+  [-0.74, 0], [-0.37, 0.8], [0.37, 0.8], [0.74, 0], [0.37, -0.8], [-0.37, -0.8],
+];
 
 function Card3DItem({ card, onSelect, active }: { card: Card3DData; onSelect?: (id: string) => void; active: boolean }) {
   const ref = useRef<THREE.Group>(null);
@@ -970,54 +976,84 @@ function Card3DItem({ card, onSelect, active }: { card: Card3DData; onSelect?: (
   const lit = hover || active;
   return (
     <group ref={ref} position={card.pos}>
-      {/* OUTER border layer: a slightly larger black plate set behind → reads as a frame/bezel */}
-      <mesh geometry={HEX_GEO} position={[0, 0, -0.07]} scale={1.07}>
-        <meshStandardMaterial color="#04070d" metalness={0.6} roughness={0.5} transparent opacity={0.9} depthWrite={false} />
+      {/* OUTER frame plate (bezel) set behind → reads as the outer hex border */}
+      <mesh geometry={HEX_GEO} position={[0, 0, -0.08]} scale={1.08}>
+        <meshStandardMaterial color="#05080f" metalness={0.6} roughness={0.5} transparent opacity={0.92} depthWrite={false} />
       </mesh>
+      {/* main glass body — pure-black transparent; only the neon edges give it color */}
       <mesh
         geometry={HEX_GEO}
         onClick={(e) => { e.stopPropagation(); onSelect?.(card.id); }}
         onPointerOver={(e) => { e.stopPropagation(); setHover(true); document.body.style.cursor = "pointer"; }}
         onPointerOut={() => { setHover(false); document.body.style.cursor = "auto"; }}
       >
-        {/* PURE-BLACK transparent glass — NO color of its own. ONLY the LED edges give it color. */}
-        <meshStandardMaterial
-          color="#000000"
-          emissive="#000000"
-          emissiveIntensity={0}
-          metalness={0.25}
-          roughness={0.5}
-          transparent
-          opacity={lit ? 0.5 : 0.42}
-          depthWrite={false}
-        />
+        <meshStandardMaterial color="#000000" emissive="#000000" emissiveIntensity={0} metalness={0.25} roughness={0.5} transparent opacity={lit ? 0.52 : 0.44} depthWrite={false} />
       </mesh>
-      {/* OUTER neon edge on the bezel plate → the double-frame reads as inner + outer border */}
-      <lineSegments position={[0, 0, -0.07]} scale={1.07}>
+
+      {/* OUTER neon edge on the bezel (thin) */}
+      <lineSegments position={[0, 0, -0.08]} scale={1.08}>
         <edgesGeometry args={[HEX_GEO]} />
-        <lineBasicMaterial color={card.accent} transparent opacity={lit ? 0.6 : 0.4} blending={THREE.AdditiveBlending} />
+        <lineBasicMaterial color={card.accent} transparent opacity={lit ? 0.65 : 0.42} blending={THREE.AdditiveBlending} />
       </lineSegments>
-      {/* bright neon-LED edges (blooms hard → spills light onto the black glass) */}
+      {/* MAIN bright neon-LED border (blooms hard) — double-stroked for a thick weld */}
       <lineSegments>
         <edgesGeometry args={[HEX_GEO]} />
         <lineBasicMaterial color={card.accent} transparent opacity={1} blending={THREE.AdditiveBlending} />
       </lineSegments>
-      <lineSegments scale={1.012}>
+      <lineSegments scale={1.014}>
         <edgesGeometry args={[HEX_GEO]} />
-        <lineBasicMaterial color={card.accent} transparent opacity={0.7} blending={THREE.AdditiveBlending} />
+        <lineBasicMaterial color={card.accent} transparent opacity={0.75} blending={THREE.AdditiveBlending} />
       </lineSegments>
-      {/* holographic edge scattering: a faint over-scaled edge that bleeds outward */}
-      <lineSegments scale={lit ? 1.05 : 1.03}>
+      {/* INNER hex outline → the recessed inner frame seen in the reference */}
+      <lineSegments scale={0.86} position={[0, 0, 0.02]}>
         <edgesGeometry args={[HEX_GEO]} />
-        <lineBasicMaterial color={card.accent} transparent opacity={lit ? 0.32 : 0.16} blending={THREE.AdditiveBlending} />
+        <lineBasicMaterial color={card.accent} transparent opacity={lit ? 0.5 : 0.32} blending={THREE.AdditiveBlending} />
       </lineSegments>
-      <Text position={[0, 0.12, 0.26]} fontSize={0.12} maxWidth={1.15} textAlign="center" anchorX="center" anchorY="middle" color="#ffffff" outlineWidth={0.004} outlineColor={card.accent}>
+      {/* holographic edge scattering that bleeds outward (stronger on hover) */}
+      <lineSegments scale={lit ? 1.06 : 1.035}>
+        <edgesGeometry args={[HEX_GEO]} />
+        <lineBasicMaterial color={card.accent} transparent opacity={lit ? 0.34 : 0.16} blending={THREE.AdditiveBlending} />
+      </lineSegments>
+      {/* bright connector nodes at the hex vertices */}
+      {HEX_VERTS.map((v, i) => (
+        <mesh key={i} position={[v[0], v[1], 0.06]}>
+          <sphereGeometry args={[0.03, 10, 10]} />
+          <meshBasicMaterial color={card.accent} transparent opacity={0.95} blending={THREE.AdditiveBlending} depthWrite={false} />
+        </mesh>
+      ))}
+
+      {/* ICON BADGE — accent ring + monogram glyph */}
+      <mesh position={[0, 0.46, 0.26]} rotation={[Math.PI / 2, 0, 0]}>
+        <torusGeometry args={[0.17, 0.016, 10, 40]} />
+        <meshBasicMaterial color={card.accent} transparent opacity={0.95} blending={THREE.AdditiveBlending} depthWrite={false} />
+      </mesh>
+      <Text position={[0, 0.46, 0.27]} fontSize={0.2} anchorX="center" anchorY="middle" color={card.accent}>
+        {card.glyph}
+      </Text>
+
+      {/* TITLE */}
+      <Text position={[0, 0.13, 0.27]} fontSize={0.115} maxWidth={1.25} lineHeight={1.0} textAlign="center" anchorX="center" anchorY="middle" color="#ffffff" outlineWidth={0.004} outlineColor={card.accent}>
         {card.title}
       </Text>
-      <Text position={[0, -0.2, 0.26]} fontSize={0.08} anchorX="center" anchorY="middle" color={card.accent}>
+      {/* SUBTITLE — what it connects */}
+      <Text position={[0, -0.12, 0.27]} fontSize={0.058} maxWidth={1.15} lineHeight={1.15} textAlign="center" anchorX="center" anchorY="middle" color="#9fb0c4">
+        {card.subtitle}
+      </Text>
+      {/* divider */}
+      <mesh position={[0, -0.28, 0.26]}>
+        <boxGeometry args={[0.7, 0.006, 0.005]} />
+        <meshBasicMaterial color={card.accent} transparent opacity={0.4} blending={THREE.AdditiveBlending} depthWrite={false} />
+      </mesh>
+      {/* STATUS — dot + state */}
+      <mesh position={[-0.36, -0.4, 0.27]}>
+        <circleGeometry args={[0.028, 16]} />
+        <meshBasicMaterial color={card.accent} transparent opacity={1} blending={THREE.AdditiveBlending} depthWrite={false} />
+      </mesh>
+      <Text position={[-0.3, -0.4, 0.27]} fontSize={0.064} anchorX="left" anchorY="middle" color={card.accent}>
         {card.state}
       </Text>
-      <Text position={[0, -0.36, 0.26]} fontSize={0.058} letterSpacing={0.08} anchorX="center" anchorY="middle" color="#7c8b9c">
+      {/* MATURITY */}
+      <Text position={[0, -0.58, 0.27]} fontSize={0.05} letterSpacing={0.12} anchorX="center" anchorY="middle" color="#6b7a8c">
         {card.maturity.toUpperCase()}
       </Text>
     </group>
