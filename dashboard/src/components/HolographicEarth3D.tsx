@@ -106,16 +106,16 @@ function atmoMat(color: string, power: number, strength: number) {
 // A REALLY thin neon-blue rim hugging the limb (high power = concentrated at the edge),
 // plus a barely-there soft edge so it isn't a hard line. No fat halo.
 function Atmosphere({ ai = 0 }: { ai?: number }) {
-  const rim = useMemo(() => atmoMat("#4aa6ff", 6.5, 0.5), []);
-  const soft = useMemo(() => atmoMat("#2f8fe6", 4.0, 0.07), []);
+  const rim = useMemo(() => atmoMat("#4aa6ff", 7.6, 0.38), []);
+  const soft = useMemo(() => atmoMat("#2f8fe6", 4.5, 0.05), []);
   useEffect(() => () => { rim.dispose(); soft.dispose(); }, [rim, soft]);
   useFrame(() => {
-    rim.uniforms.uStrength.value = 0.48 + ai * 0.12;
+    rim.uniforms.uStrength.value = 0.38 + ai * 0.1;
   });
   return (
     <group position={GLOBE_POS}>
       <mesh>
-        <sphereGeometry args={[EARTH_R * 1.016, 64, 64]} />
+        <sphereGeometry args={[EARTH_R * 1.011, 64, 64]} />
         <primitive object={rim} attach="material" />
       </mesh>
       <mesh>
@@ -224,19 +224,19 @@ function TexturedEarth({ ai = 0 }: { ai?: number }) {
 // bright defined core. ---
 function LightBeam() {
   // Emitter at the projector's mouth; many THIN sharp neon rays fan down onto the globe.
-  const apex = useMemo(() => new THREE.Vector3(GLOBE_POS[0], GLOBE_POS[1] + 2.3, GLOBE_POS[2]), []);
+  const apex = useMemo(() => new THREE.Vector3(GLOBE_POS[0], GLOBE_POS[1] + 2.95, GLOBE_POS[2]), []);
 
   // oriented glowing beam shafts (soft halo + bright core) fanning onto the globe
   const beams = useMemo(() => {
     const up = new THREE.Vector3(0, 1, 0);
-    const N = 30;
+    const N = 24;
     const out: { pos: [number, number, number]; quat: [number, number, number, number]; h: number }[] = [];
     for (let i = 0; i < N; i++) {
       const a = (i / N) * Math.PI * 2;
-      const r = 1.7 + (i % 4) * 0.18;                 // wider spread → covers more of the globe
+      const r = 1.2 + (i % 3) * 0.1;                  // narrow → lands ON the globe top, not outside
       const end = new THREE.Vector3(
         GLOBE_POS[0] + Math.cos(a) * r,
-        GLOBE_POS[1] + 0.35,                          // land lower → the beams cover the whole Earth
+        GLOBE_POS[1] + 0.95,                          // higher → on the globe's upper cap
         GLOBE_POS[2] + Math.sin(a) * r
       );
       const mid = apex.clone().add(end).multiplyScalar(0.5);
@@ -491,7 +491,7 @@ function TopProjector() {
     if (core.current) (core.current.material as THREE.MeshBasicMaterial).opacity = 0.82 + 0.18 * Math.sin(t * 3.0);
   });
   return (
-    <group position={[GLOBE_POS[0], GLOBE_POS[1] + 3.15, GLOBE_POS[2]]} rotation={[-Math.PI / 2, 0, 0]}>
+    <group position={[GLOBE_POS[0], GLOBE_POS[1] + 4.05, GLOBE_POS[2]]} rotation={[-Math.PI / 2, 0, 0]}>
       {/* emitter lights inside the housing → the metal is lit by its own beams */}
       <pointLight position={[0, 0, -0.95]} intensity={7} distance={5.5} decay={2} color="#5cc8ff" />
       <pointLight position={[0, 0, -0.4]} intensity={2.5} distance={4} decay={2} color="#7fb8ff" />
@@ -499,14 +499,14 @@ function TopProjector() {
         {rings.map((rg, i) => (
           <mesh key={i} position={[0, 0, rg.z]}>
             <torusGeometry args={[rg.r, rg.w, 18, 72]} />
-            <meshStandardMaterial color="#0a1018" metalness={0.85} roughness={0.34} emissive="#0a3a64" emissiveIntensity={0.5} />
+            <meshStandardMaterial color="#0a1018" metalness={0.85} roughness={0.34} emissive="#1466b0" emissiveIntensity={1.0} />
           </mesh>
         ))}
         {/* satellite projector housings (small metal tori) */}
         {sats.map((s, i) => (
           <mesh key={`s${i}`} position={[s.x, s.y, -0.7]}>
             <torusGeometry args={[0.2, 0.06, 12, 36]} />
-            <meshStandardMaterial color="#0a1018" metalness={0.85} roughness={0.34} emissive="#0a3a64" emissiveIntensity={0.5} />
+            <meshStandardMaterial color="#0a1018" metalness={0.85} roughness={0.34} emissive="#1466b0" emissiveIntensity={1.0} />
           </mesh>
         ))}
       </group>
@@ -615,7 +615,7 @@ function Card3DItem({ card, onSelect, active }: { card: Card3DData; onSelect?: (
           metalness={0.2}
           roughness={0.45}
           transparent
-          opacity={hover || active ? 0.55 : 0.4}
+          opacity={hover || active ? 0.82 : 0.72}
           depthWrite={false}
         />
       </mesh>
