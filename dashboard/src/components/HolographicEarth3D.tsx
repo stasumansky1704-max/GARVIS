@@ -111,15 +111,15 @@ function atmoMat(color: string, power: number, strength: number, side: THREE.Sid
 // A REALLY thin neon-blue rim hugging the limb (high power = concentrated at the edge),
 // plus a barely-there soft edge so it isn't a hard line. No fat halo.
 function Atmosphere({ ai = 0 }: { ai?: number }) {
-  // 01 ATMOSPHERE GLOW — thin #00E6FF rim, strong edge scattering, fades into space
-  const rim = useMemo(() => atmoMat("#00e6ff", 7.0, 0.32), []);
-  const soft = useMemo(() => atmoMat("#00c6ff", 4.0, 0.05), []);
-  // 02 HOLOGRAPHIC SHELL — ultra-thin #00C6FF refractive energy shell (~15%), seen from outside
-  const shell = useMemo(() => atmoMat("#00c6ff", 3.2, 0.15, THREE.FrontSide), []);
+  // 01 ATMOSPHERE GLOW — VERY thin #00E6FF rim, concentrated at the limb, fades into space
+  const rim = useMemo(() => atmoMat("#00e6ff", 8.0, 0.2), []);
+  const soft = useMemo(() => atmoMat("#00c6ff", 4.5, 0.025), []);
+  // 02 HOLOGRAPHIC SHELL — barely-there refractive shell (thin + transparent "skies")
+  const shell = useMemo(() => atmoMat("#00c6ff", 3.6, 0.08, THREE.FrontSide), []);
   useEffect(() => () => { rim.dispose(); soft.dispose(); shell.dispose(); }, [rim, soft, shell]);
   useFrame(() => {
-    rim.uniforms.uStrength.value = 0.3 + ai * 0.12;   // thin but clearly-read blue rim
-    shell.uniforms.uStrength.value = 0.13 + ai * 0.05;
+    rim.uniforms.uStrength.value = 0.18 + ai * 0.07;   // thinner, more transparent rim
+    shell.uniforms.uStrength.value = 0.07 + ai * 0.03;
   });
   return (
     <group position={GLOBE_POS}>
@@ -206,16 +206,17 @@ function TexturedEarth({ ai = 0 }: { ai?: number }) {
             float d = dot(normalize(vNormalW), normalize(sunDir));
             float mixf = smoothstep(-0.25, 0.30, d);                 // day/night blend
 
-            // 05 CITY LIGHTS (NIGHT) — warm amber, brighter + a living twinkle so the dark side feels alive
+            // 05 CITY LIGHTS (NIGHT) — warm amber, BRIGHT + a living twinkle so the dark side is full of life
             float nb = max(night.r, max(night.g, night.b));
-            float twinkle = 0.78 + 0.22 * sin(uTime * 2.2 + hash(vUv) * 42.0);
-            vec3 cityCol = mix(vec3(1.0, 0.835, 0.416), vec3(1.0, 0.6, 0.0), smoothstep(0.2, 0.85, nb));
-            vec3 cityLights = cityCol * nb * 4.6 * twinkle;          // bright glow → blooms hard
+            float twinkle = 0.7 + 0.3 * sin(uTime * 2.4 + hash(vUv) * 42.0);
+            vec3 cityCol = mix(vec3(1.0, 0.835, 0.416), vec3(1.0, 0.58, 0.0), smoothstep(0.2, 0.85, nb));
+            vec3 cityLights = cityCol * pow(nb, 0.78) * 7.5 * twinkle; // brighter, livelier lights of life → bloom
 
             // dark side: faint continents stay visible in the shadow + bright living city lights
-            vec3 nightBase = day * 0.05;
+            vec3 nightBase = day * 0.04;
             vec3 nightSide = nightBase + cityLights;
-            vec3 col = mix(nightSide, day, mixf);
+            // keep city lights reading a touch INTO the lit side too (dusk cities), then blend to full day
+            vec3 col = mix(nightSide, day, smoothstep(0.0, 0.85, mixf));
 
             // warm terminator (sunset band) along the day/night boundary → life on the limb
             float term = smoothstep(0.0, 0.32, mixf) * (1.0 - smoothstep(0.32, 0.72, mixf));
@@ -251,7 +252,7 @@ function TexturedEarth({ ai = 0 }: { ai?: number }) {
         {/* 07 HOLOGRAPHIC GRID — lat/long lines, #00D9FF, faint (~15%), conforms to curvature */}
         <mesh scale={1.005}>
           <sphereGeometry args={[EARTH_R, 36, 18]} />
-          <meshBasicMaterial color="#00d9ff" wireframe transparent opacity={0.13 + ai * 0.04} blending={THREE.AdditiveBlending} depthWrite={false} />
+          <meshBasicMaterial color="#00d9ff" wireframe transparent opacity={0.075 + ai * 0.03} blending={THREE.AdditiveBlending} depthWrite={false} />
         </mesh>
 
         {/* 08 DATA POINTS — pulsing scanning nodes at strategic cities */}
