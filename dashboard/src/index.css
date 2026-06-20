@@ -63,33 +63,41 @@ body {
   gap: 14px;
 }
 
+/* hexagonal glowing brand mark (J.A.R.V.I.S. logo) */
 .jarvis-logo-mark {
-  width: 44px;
-  height: 44px;
-  border-radius: 50%;
-  border: 1px solid rgba(0, 212, 255, 0.4);
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  width: 46px;
+  height: 46px;
+  position: relative;
+  clip-path: polygon(25% 1%, 75% 1%, 100% 50%, 75% 99%, 25% 99%, 0% 50%);
+  background: linear-gradient(150deg, #45d8ff, #0a6f9e);
+  display: grid;
+  place-items: center;
   font-family: var(--font-display);
-  color: var(--cyan);
-  box-shadow:
-    0 0 20px rgba(0, 212, 255, 0.25),
-    inset 0 0 20px rgba(0, 212, 255, 0.15);
+  font-size: 22px;
+  color: #d6f3ff;
+  filter: drop-shadow(0 0 12px rgba(0, 212, 255, 0.45));
+}
+.jarvis-logo-mark::before {
+  content: "";
+  position: absolute;
+  inset: 2px;
+  z-index: -1;
+  clip-path: polygon(25% 1%, 75% 1%, 100% 50%, 75% 99%, 25% 99%, 0% 50%);
+  background: #06121e;
 }
 
 .jarvis-logo-text {
   font-family: var(--font-display);
-  font-size: 20px;
-  letter-spacing: 0.3em;
+  font-size: 19px;
+  letter-spacing: 0.22em;
   color: var(--cyan);
 }
 
 .jarvis-logo-sub {
-  font-size: 10px;
-  letter-spacing: 0.2em;
+  font-size: 8px;
+  letter-spacing: 0.16em;
   color: var(--text-dim);
-  margin-top: 2px;
+  margin-top: 3px;
 }
 
 .jarvis-nav-links {
@@ -694,10 +702,16 @@ body {
 }
 .ihub-logo { display: flex; gap: 12px; align-items: center; margin-bottom: 30px; }
 .ihub-logo-mark {
-  width: 40px; height: 40px; border-radius: 10px; display: grid; place-items: center;
-  font-family: var(--font-display); font-size: 20px; color: var(--cyan);
-  border: 1px solid rgba(0, 212, 255, 0.5);
-  box-shadow: 0 0 18px rgba(0, 212, 255, 0.25), inset 0 0 12px rgba(0, 212, 255, 0.15);
+  width: 42px; height: 42px; position: relative; display: grid; place-items: center;
+  font-family: var(--font-display); font-size: 20px; color: #d6f3ff;
+  clip-path: polygon(25% 1%, 75% 1%, 100% 50%, 75% 99%, 25% 99%, 0% 50%);
+  background: linear-gradient(150deg, #45d8ff, #0a6f9e);
+  filter: drop-shadow(0 0 12px rgba(0, 212, 255, 0.45));
+}
+.ihub-logo-mark::before {
+  content: ""; position: absolute; inset: 2px; z-index: -1;
+  clip-path: polygon(25% 1%, 75% 1%, 100% 50%, 75% 99%, 25% 99%, 0% 50%);
+  background: #06121e;
 }
 .ihub-logo-text { font-family: var(--font-display); font-size: 18px; letter-spacing: 0.12em; color: var(--white); }
 .ihub-logo-sub { font-size: 8.5px; letter-spacing: 0.14em; color: var(--text-dim); margin-top: 3px; }
