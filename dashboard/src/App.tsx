@@ -53,8 +53,8 @@ export default function App() {
         <div className="jarvis-logo">
           <div className="jarvis-logo-mark">J</div>
           <div>
-            <div className="jarvis-logo-text">JARVIS</div>
-            <div className="jarvis-logo-sub">AI OPERATING ENVIRONMENT</div>
+            <div className="jarvis-logo-text">J.A.R.V.I.S.</div>
+            <div className="jarvis-logo-sub">JUST A REALLY VERY INTELLIGENT SYSTEM</div>
           </div>
         </div>
 
