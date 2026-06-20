@@ -203,10 +203,11 @@ export default function IntelHub({ audioIntensity = 0, page, onNavigate }: Props
   // 3D world positions for the six cards (around the globe, facing the camera)
   const cards3d = useMemo(
     () => {
+      // raised + vertically tightened so all six cards sit fully on screen
       const POS: Record<string, [number, number, number]> = {
-        world: [-2.7, 2.2, -0.6], market: [2.7, 2.2, -0.6],
-        social: [-3.8, 0.4, -0.6], revenue: [3.8, 0.4, -0.6],
-        tech: [-2.7, -1.5, -0.6], ops: [2.7, -1.5, -0.6],
+        world: [-2.7, 1.95, -0.6], market: [2.7, 1.95, -0.6],
+        social: [-3.8, 0.55, -0.6], revenue: [3.8, 0.55, -0.6],
+        tech: [-2.7, -0.85, -0.6], ops: [2.7, -0.85, -0.6],
       };
       return CARDS.map((c) => ({
         id: c.id, title: c.title,
