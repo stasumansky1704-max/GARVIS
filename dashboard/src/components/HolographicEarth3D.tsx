@@ -963,64 +963,90 @@ const HEX_VERTS: [number, number][] = [
   [-0.74, 0], [-0.37, 0.8], [0.37, 0.8], [0.74, 0], [0.37, -0.8], [-0.37, -0.8],
 ];
 
-// Per-card logo built from glowing primitives (matches the card's name).
+// Per-card logo — chunky 3D primitives (depth + tilt + spin) with the OUTER element as a
+// bright pulsing "power light" + a point light that throws the accent onto the card.
 function CardIcon3D({ id, color }: { id: string; color: string }) {
-  const mat = (o = 1) => <meshBasicMaterial color={color} transparent opacity={o} blending={THREE.AdditiveBlending} depthWrite={false} />;
+  const spin = useRef<THREE.Group>(null);
+  const light = useRef<THREE.PointLight>(null);
+  useFrame(({ clock }) => {
+    const t = clock.getElapsedTime();
+    if (spin.current) { spin.current.rotation.y = Math.sin(t * 0.7) * 0.5; spin.current.rotation.x = -0.22; } // gentle 3D tumble
+    if (light.current) light.current.intensity = 1.6 + 0.9 * Math.abs(Math.sin(t * 2.6));                     // electric pulse
+  });
+  // solid 3D emissive metal (reads dimensional, not a flat decal)
+  const solid = (ei = 2.2) => <meshStandardMaterial color="#05080f" emissive={color} emissiveIntensity={ei} metalness={0.5} roughness={0.3} toneMapped={false} />;
+  // outer "power light" — over-bright emissive that blooms (the electric ring)
+  const power = () => <meshStandardMaterial color={color} emissive={color} emissiveIntensity={3.2} toneMapped={false} />;
+
+  let geom: JSX.Element;
   switch (id) {
-    case "world": // globe: outline + meridian + equator ellipses
-      return (
-        <group>
-          <mesh><torusGeometry args={[0.1, 0.008, 8, 40]} />{mat()}</mesh>
-          <mesh scale={[0.42, 1, 1]}><torusGeometry args={[0.1, 0.006, 8, 40]} />{mat(0.9)}</mesh>
-          <mesh scale={[1, 0.42, 1]}><torusGeometry args={[0.1, 0.006, 8, 40]} />{mat(0.9)}</mesh>
+    case "world": // solid 3D globe + one glowing orbit ring (power light)
+      geom = (
+        <group ref={spin}>
+          <mesh><sphereGeometry args={[0.085, 24, 24]} /><meshStandardMaterial color="#03060d" emissive={color} emissiveIntensity={0.7} metalness={0.4} roughness={0.4} /></mesh>
+          <mesh scale={1.02}><sphereGeometry args={[0.085, 14, 9]} /><meshBasicMaterial color={color} wireframe transparent opacity={0.7} blending={THREE.AdditiveBlending} depthWrite={false} /></mesh>
+          <mesh rotation={[Math.PI / 2.2, 0, 0]}><torusGeometry args={[0.12, 0.012, 12, 40]} />{power()}</mesh>
         </group>
       );
-    case "market": { // rising bar chart
-      const bars: [number, number][] = [[-0.07, 0.07], [0, 0.11], [0.07, 0.16]];
-      return (
-        <group>
+      break;
+    case "market": { // three chunky 3D bars, rising
+      const bars: [number, number][] = [[-0.075, 0.08], [0, 0.13], [0.075, 0.18]];
+      geom = (
+        <group ref={spin}>
           {bars.map(([x, h], i) => (
-            <mesh key={i} position={[x, -0.09 + h / 2, 0]}><boxGeometry args={[0.036, h, 0.01]} />{mat()}</mesh>
+            <mesh key={i} position={[x, -0.1 + h / 2, 0]}><boxGeometry args={[0.045, h, 0.045]} />{i === 2 ? power() : solid()}</mesh>
           ))}
-          <mesh position={[0.02, 0.13, 0]} rotation={[0, 0, -Math.PI / 5]}><boxGeometry args={[0.2, 0.012, 0.008]} />{mat(0.85)}</mesh>
         </group>
       );
+      break;
     }
-    case "social": // radar: concentric arcs + sweep + node
-      return (
-        <group>
-          <mesh><torusGeometry args={[0.06, 0.006, 8, 32]} />{mat(0.8)}</mesh>
-          <mesh><torusGeometry args={[0.1, 0.006, 8, 32]} />{mat(0.55)}</mesh>
-          <mesh><circleGeometry args={[0.02, 14]} />{mat()}</mesh>
-          <mesh position={[0.042, 0.042, 0]} rotation={[0, 0, Math.PI / 4]}><boxGeometry args={[0.12, 0.01, 0.008]} />{mat(0.85)}</mesh>
+    case "social": // one glowing radar ring (power) + center node + sweep blade
+      geom = (
+        <group ref={spin}>
+          <mesh rotation={[Math.PI / 2.3, 0, 0]}><torusGeometry args={[0.11, 0.013, 12, 40]} />{power()}</mesh>
+          <mesh><sphereGeometry args={[0.03, 16, 16]} />{solid(2.6)}</mesh>
+          <mesh position={[0.05, 0, 0]} rotation={[0, 0, Math.PI / 2]}><coneGeometry args={[0.03, 0.13, 4]} />{solid(2.0)}</mesh>
         </group>
       );
-    case "tech": // atom: nucleus + 2 crossed orbit ellipses
-      return (
-        <group>
-          <mesh><circleGeometry args={[0.022, 16]} />{mat()}</mesh>
-          <mesh scale={[1, 0.4, 1]}><torusGeometry args={[0.1, 0.006, 8, 44]} />{mat(0.9)}</mesh>
-          <mesh scale={[1, 0.4, 1]} rotation={[0, 0, Math.PI / 3]}><torusGeometry args={[0.1, 0.006, 8, 44]} />{mat(0.9)}</mesh>
-          <mesh scale={[1, 0.4, 1]} rotation={[0, 0, -Math.PI / 3]}><torusGeometry args={[0.1, 0.006, 8, 44]} />{mat(0.9)}</mesh>
+      break;
+    case "tech": // 3D atom — nucleus + two thick tilted orbit rings (power lights)
+      geom = (
+        <group ref={spin}>
+          <mesh><sphereGeometry args={[0.035, 16, 16]} />{solid(2.8)}</mesh>
+          <mesh rotation={[Math.PI / 2.4, 0, 0]}><torusGeometry args={[0.12, 0.012, 12, 44]} />{power()}</mesh>
+          <mesh rotation={[Math.PI / 2.4, Math.PI / 2.2, 0]}><torusGeometry args={[0.12, 0.012, 12, 44]} />{power()}</mesh>
         </group>
       );
-    case "ops": { // gear: ring + radial teeth + hub
+      break;
+    case "ops": { // chunky 3D gear — thick ring + deep teeth (power) + hub
       const teeth = Array.from({ length: 8 }, (_, i) => (i / 8) * Math.PI * 2);
-      return (
-        <group>
-          <mesh><torusGeometry args={[0.072, 0.016, 8, 28]} />{mat()}</mesh>
+      geom = (
+        <group ref={spin}>
+          <mesh rotation={[Math.PI / 2.6, 0, 0]}><torusGeometry args={[0.085, 0.028, 14, 28]} />{solid(2.2)}</mesh>
           {teeth.map((a, i) => (
-            <mesh key={i} position={[Math.cos(a) * 0.095, Math.sin(a) * 0.095, 0]} rotation={[0, 0, a]}><boxGeometry args={[0.03, 0.024, 0.01]} />{mat()}</mesh>
+            <mesh key={i} position={[Math.cos(a) * 0.105, Math.sin(a) * 0.105, 0]} rotation={[0, 0, a]}><boxGeometry args={[0.04, 0.034, 0.05]} />{power()}</mesh>
           ))}
-          <mesh><circleGeometry args={[0.026, 16]} />{mat(0.8)}</mesh>
+          <mesh><sphereGeometry args={[0.032, 16, 16]} />{solid(2.4)}</mesh>
         </group>
       );
+      break;
     }
-    default: // revenue (and any fallback): currency mark
-      return (
-        <Text fontSize={0.2} anchorX="center" anchorY="middle" color="#ffffff" outlineWidth={0.006} outlineColor={color}>$</Text>
+    default: // revenue — a 3D coin (rim = power light) with the currency mark on its face
+      geom = (
+        <group ref={spin}>
+          <mesh rotation={[Math.PI / 2, 0, 0]}><cylinderGeometry args={[0.11, 0.11, 0.03, 32]} /><meshStandardMaterial color="#05080f" emissive={color} emissiveIntensity={0.5} metalness={0.6} roughness={0.3} /></mesh>
+          <mesh rotation={[Math.PI / 2, 0, 0]}><torusGeometry args={[0.11, 0.012, 12, 40]} />{power()}</mesh>
+          <Text position={[0, 0, 0.02]} fontSize={0.15} anchorX="center" anchorY="middle" color="#ffffff" outlineWidth={0.005} outlineColor={color}>$</Text>
+        </group>
       );
   }
+  return (
+    <group>
+      {/* power light cast onto the card surface (the logo energizes the card) */}
+      <pointLight ref={light} position={[0, 0, 0.2]} color={color} intensity={1.8} distance={1.4} decay={2} />
+      {geom}
+    </group>
+  );
 }
 
 function Card3DItem({ card, onSelect, active }: { card: Card3DData; onSelect?: (id: string) => void; active: boolean }) {
