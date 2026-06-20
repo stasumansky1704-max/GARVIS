@@ -964,18 +964,43 @@ const HEX_VERTS: [number, number][] = [
 
 function Card3DItem({ card, onSelect, active }: { card: Card3DData; onSelect?: (id: string) => void; active: boolean }) {
   const ref = useRef<THREE.Group>(null);
+  const dot = useRef<THREE.Mesh>(null);
+  const sheen = useRef<THREE.Mesh>(null);
+  const badge = useRef<THREE.Group>(null);
+  const border = useRef<THREE.LineBasicMaterial>(null);
+  const glow = useRef<THREE.MeshBasicMaterial>(null);
   const [hover, setHover] = useState(false);
   const phase = useMemo(() => Math.random() * 6, []);
   useFrame(({ clock }) => {
-    if (!ref.current) return;
-    ref.current.rotation.y = Math.sin(clock.getElapsedTime() * 0.5 + phase) * 0.35; // real 3D turn
-    const target = active || hover ? 1.14 : 1.0;
-    const s = ref.current.scale.x + (target - ref.current.scale.x) * 0.15;
-    ref.current.scale.set(s, s, s);
+    const t = clock.getElapsedTime();
+    if (ref.current) {
+      ref.current.rotation.y = Math.sin(t * 0.5 + phase) * 0.32;          // real 3D turn
+      const target = active || hover ? 1.16 : 1.0;
+      const s = ref.current.scale.x + (target - ref.current.scale.x) * 0.15;
+      ref.current.scale.set(s, s, s);
+      const zT = active || hover ? 0.35 : 0.0;                            // lift toward camera on hover
+      ref.current.position.z += (card.pos[2] + zT - ref.current.position.z) * 0.15;
+    }
+    if (dot.current) (dot.current.material as THREE.MeshBasicMaterial).opacity = 0.45 + 0.55 * (0.5 + 0.5 * Math.sin(t * 2.4 + phase)); // pulse, not blink
+    if (badge.current) badge.current.rotation.z = t * 0.25;              // slow optic spin on the badge ring
+    if (sheen.current) {                                                  // holographic sheen sweeping down the glass
+      const p = (t * 0.35 + phase) % 1;
+      sheen.current.position.y = 0.7 - p * 1.4;
+      (sheen.current.material as THREE.MeshBasicMaterial).opacity = 0.12 * Math.sin(p * Math.PI);
+    }
+    if (border.current) border.current.opacity = 0.86 + 0.14 * Math.sin(t * 1.6 + phase); // border breathes
+    if (glow.current) {                                                   // soft back-halo, stronger on hover
+      const target = (active || hover) ? 0.16 : 0.05;
+      glow.current.opacity += (target - glow.current.opacity) * 0.1;
+    }
   });
   const lit = hover || active;
   return (
     <group ref={ref} position={card.pos}>
+      {/* soft accent back-halo so the card pops from the dark (depth glow) */}
+      <mesh geometry={HEX_GEO} position={[0, 0, -0.16]} scale={1.2}>
+        <meshBasicMaterial ref={glow} color={card.accent} transparent opacity={0.05} blending={THREE.AdditiveBlending} depthWrite={false} />
+      </mesh>
       {/* OUTER frame plate (bezel) set behind → reads as the outer hex border */}
       <mesh geometry={HEX_GEO} position={[0, 0, -0.08]} scale={1.08}>
         <meshStandardMaterial color="#05080f" metalness={0.6} roughness={0.5} transparent opacity={0.92} depthWrite={false} />
@@ -987,7 +1012,23 @@ function Card3DItem({ card, onSelect, active }: { card: Card3DData; onSelect?: (
         onPointerOver={(e) => { e.stopPropagation(); setHover(true); document.body.style.cursor = "pointer"; }}
         onPointerOut={() => { setHover(false); document.body.style.cursor = "auto"; }}
       >
-        <meshStandardMaterial color="#000000" emissive="#000000" emissiveIntensity={0} metalness={0.25} roughness={0.5} transparent opacity={lit ? 0.52 : 0.44} depthWrite={false} />
+        <meshStandardMaterial color="#000000" emissive="#000000" emissiveIntensity={0} metalness={0.25} roughness={0.5} transparent opacity={lit ? 0.5 : 0.42} depthWrite={false} />
+      </mesh>
+      {/* INNER recessed "screen" panel — a slightly inset darker glass plate the content sits on */}
+      <mesh geometry={HEX_GEO} scale={0.84} position={[0, 0, 0.04]}>
+        <meshStandardMaterial color="#03060c" metalness={0.3} roughness={0.6} transparent opacity={0.64} depthWrite={false} />
+      </mesh>
+      {/* faint holographic scanlines across the screen */}
+      {[0.34, 0.22, 0.0, -0.18, -0.32, -0.46].map((y, i) => (
+        <mesh key={`sl${i}`} position={[0, y, 0.21]}>
+          <boxGeometry args={[0.92, 0.004, 0.003]} />
+          <meshBasicMaterial color={card.accent} transparent opacity={0.05} blending={THREE.AdditiveBlending} depthWrite={false} />
+        </mesh>
+      ))}
+      {/* holographic sheen sweeping down the screen */}
+      <mesh ref={sheen} position={[0, 0.4, 0.2]}>
+        <planeGeometry args={[1.15, 0.16]} />
+        <meshBasicMaterial color={card.accent} transparent opacity={0.08} blending={THREE.AdditiveBlending} depthWrite={false} />
       </mesh>
 
       {/* OUTER neon edge on the bezel (thin) */}
@@ -995,65 +1036,95 @@ function Card3DItem({ card, onSelect, active }: { card: Card3DData; onSelect?: (
         <edgesGeometry args={[HEX_GEO]} />
         <lineBasicMaterial color={card.accent} transparent opacity={lit ? 0.65 : 0.42} blending={THREE.AdditiveBlending} />
       </lineSegments>
-      {/* MAIN bright neon-LED border (blooms hard) — double-stroked for a thick weld */}
+      {/* MAIN bright neon-LED border (blooms hard) — triple-stroked for a thick lit tube */}
       <lineSegments>
         <edgesGeometry args={[HEX_GEO]} />
-        <lineBasicMaterial color={card.accent} transparent opacity={1} blending={THREE.AdditiveBlending} />
+        <lineBasicMaterial color="#ffffff" transparent opacity={lit ? 0.9 : 0.6} blending={THREE.AdditiveBlending} />
       </lineSegments>
-      <lineSegments scale={1.014}>
+      <lineSegments scale={1.012}>
         <edgesGeometry args={[HEX_GEO]} />
-        <lineBasicMaterial color={card.accent} transparent opacity={0.75} blending={THREE.AdditiveBlending} />
+        <lineBasicMaterial ref={border} color={card.accent} transparent opacity={1} blending={THREE.AdditiveBlending} />
       </lineSegments>
-      {/* INNER hex outline → the recessed inner frame seen in the reference */}
-      <lineSegments scale={0.86} position={[0, 0, 0.02]}>
+      <lineSegments scale={1.026}>
         <edgesGeometry args={[HEX_GEO]} />
-        <lineBasicMaterial color={card.accent} transparent opacity={lit ? 0.5 : 0.32} blending={THREE.AdditiveBlending} />
+        <lineBasicMaterial color={card.accent} transparent opacity={0.55} blending={THREE.AdditiveBlending} />
+      </lineSegments>
+      {/* INNER hex outline → the recessed inner frame */}
+      <lineSegments scale={0.84} position={[0, 0, 0.05]}>
+        <edgesGeometry args={[HEX_GEO]} />
+        <lineBasicMaterial color={card.accent} transparent opacity={lit ? 0.5 : 0.3} blending={THREE.AdditiveBlending} />
       </lineSegments>
       {/* holographic edge scattering that bleeds outward (stronger on hover) */}
-      <lineSegments scale={lit ? 1.06 : 1.035}>
+      <lineSegments scale={lit ? 1.07 : 1.045}>
         <edgesGeometry args={[HEX_GEO]} />
-        <lineBasicMaterial color={card.accent} transparent opacity={lit ? 0.34 : 0.16} blending={THREE.AdditiveBlending} />
+        <lineBasicMaterial color={card.accent} transparent opacity={lit ? 0.32 : 0.15} blending={THREE.AdditiveBlending} />
       </lineSegments>
-      {/* bright connector nodes at the hex vertices */}
+      {/* bright connector nodes at the hex vertices (dot + halo ring) */}
       {HEX_VERTS.map((v, i) => (
-        <mesh key={i} position={[v[0], v[1], 0.06]}>
-          <sphereGeometry args={[0.03, 10, 10]} />
-          <meshBasicMaterial color={card.accent} transparent opacity={0.95} blending={THREE.AdditiveBlending} depthWrite={false} />
-        </mesh>
+        <group key={i} position={[v[0], v[1], 0.06]}>
+          <mesh><sphereGeometry args={[0.028, 10, 10]} /><meshBasicMaterial color="#ffffff" transparent opacity={0.95} blending={THREE.AdditiveBlending} depthWrite={false} /></mesh>
+          <mesh rotation={[Math.PI / 2, 0, 0]}><torusGeometry args={[0.05, 0.006, 8, 24]} /><meshBasicMaterial color={card.accent} transparent opacity={0.7} blending={THREE.AdditiveBlending} depthWrite={false} /></mesh>
+        </group>
       ))}
 
-      {/* ICON BADGE — accent ring + monogram glyph */}
-      <mesh position={[0, 0.46, 0.26]} rotation={[Math.PI / 2, 0, 0]}>
-        <torusGeometry args={[0.17, 0.016, 10, 40]} />
-        <meshBasicMaterial color={card.accent} transparent opacity={0.95} blending={THREE.AdditiveBlending} depthWrite={false} />
+      {/* HUD corner brackets framing the screen */}
+      {([[-0.5, 0.56, 1, 1], [0.5, 0.56, -1, 1], [-0.5, -0.56, 1, -1], [0.5, -0.56, -1, -1]] as [number, number, number, number][]).map(([x, y, sx, sy], i) => (
+        <group key={`br${i}`} position={[x, y, 0.26]}>
+          <mesh position={[sx * 0.055, 0, 0]}><boxGeometry args={[0.11, 0.013, 0.004]} /><meshBasicMaterial color={card.accent} transparent opacity={0.65} blending={THREE.AdditiveBlending} depthWrite={false} /></mesh>
+          <mesh position={[0, sy * 0.045, 0]}><boxGeometry args={[0.013, 0.09, 0.004]} /><meshBasicMaterial color={card.accent} transparent opacity={0.65} blending={THREE.AdditiveBlending} depthWrite={false} /></mesh>
+        </group>
+      ))}
+      {/* top accent bar under the upper hex edge */}
+      <mesh position={[0, 0.7, 0.26]}>
+        <boxGeometry args={[0.46, 0.016, 0.004]} />
+        <meshBasicMaterial color={card.accent} transparent opacity={0.85} blending={THREE.AdditiveBlending} depthWrite={false} />
       </mesh>
-      <Text position={[0, 0.46, 0.27]} fontSize={0.2} anchorX="center" anchorY="middle" color={card.accent}>
+
+      {/* ICON BADGE — dark disc + double accent ring + monogram glyph */}
+      <mesh position={[0, 0.46, 0.24]}>
+        <circleGeometry args={[0.18, 32]} />
+        <meshBasicMaterial color="#02050b" transparent opacity={0.85} depthWrite={false} />
+      </mesh>
+      <group ref={badge} position={[0, 0.46, 0.25]}>
+        <mesh rotation={[Math.PI / 2, 0, 0]}><torusGeometry args={[0.19, 0.013, 10, 44]} /><meshBasicMaterial color={card.accent} transparent opacity={0.95} blending={THREE.AdditiveBlending} depthWrite={false} /></mesh>
+        <mesh rotation={[Math.PI / 2, 0, 0]}><torusGeometry args={[0.155, 0.006, 10, 44]} /><meshBasicMaterial color={card.accent} transparent opacity={0.5} blending={THREE.AdditiveBlending} depthWrite={false} /></mesh>
+      </group>
+      <Text position={[0, 0.46, 0.27]} fontSize={0.19} anchorX="center" anchorY="middle" color="#ffffff" outlineWidth={0.006} outlineColor={card.accent}>
         {card.glyph}
       </Text>
 
       {/* TITLE */}
-      <Text position={[0, 0.13, 0.27]} fontSize={0.115} maxWidth={1.25} lineHeight={1.0} textAlign="center" anchorX="center" anchorY="middle" color="#ffffff" outlineWidth={0.004} outlineColor={card.accent}>
+      <Text position={[0, 0.135, 0.27]} fontSize={0.108} maxWidth={1.2} lineHeight={1.02} letterSpacing={0.02} textAlign="center" anchorX="center" anchorY="middle" color="#ffffff" outlineWidth={0.005} outlineColor="#000000">
         {card.title}
       </Text>
       {/* SUBTITLE — what it connects */}
-      <Text position={[0, -0.12, 0.27]} fontSize={0.058} maxWidth={1.15} lineHeight={1.15} textAlign="center" anchorX="center" anchorY="middle" color="#9fb0c4">
+      <Text position={[0, -0.115, 0.27]} fontSize={0.055} maxWidth={1.1} lineHeight={1.18} letterSpacing={0.01} textAlign="center" anchorX="center" anchorY="middle" color="#a8bcd2" outlineWidth={0.002} outlineColor="#000000">
         {card.subtitle}
       </Text>
-      {/* divider */}
-      <mesh position={[0, -0.28, 0.26]}>
-        <boxGeometry args={[0.7, 0.006, 0.005]} />
-        <meshBasicMaterial color={card.accent} transparent opacity={0.4} blending={THREE.AdditiveBlending} depthWrite={false} />
+      {/* tech divider: line + center diamond node */}
+      <mesh position={[0, -0.27, 0.26]}>
+        <boxGeometry args={[0.72, 0.005, 0.004]} />
+        <meshBasicMaterial color={card.accent} transparent opacity={0.45} blending={THREE.AdditiveBlending} depthWrite={false} />
       </mesh>
-      {/* STATUS — dot + state */}
-      <mesh position={[-0.36, -0.4, 0.27]}>
-        <circleGeometry args={[0.028, 16]} />
+      <mesh position={[0, -0.27, 0.265]} rotation={[0, 0, Math.PI / 4]}>
+        <boxGeometry args={[0.05, 0.05, 0.004]} />
+        <meshBasicMaterial color={card.accent} transparent opacity={0.9} blending={THREE.AdditiveBlending} depthWrite={false} />
+      </mesh>
+      {/* bottom accent bar mirroring the top */}
+      <mesh position={[0, -0.7, 0.26]}>
+        <boxGeometry args={[0.46, 0.016, 0.004]} />
+        <meshBasicMaterial color={card.accent} transparent opacity={0.85} blending={THREE.AdditiveBlending} depthWrite={false} />
+      </mesh>
+      {/* STATUS — pulsing dot + state */}
+      <mesh ref={dot} position={[-0.34, -0.4, 0.27]}>
+        <circleGeometry args={[0.03, 16]} />
         <meshBasicMaterial color={card.accent} transparent opacity={1} blending={THREE.AdditiveBlending} depthWrite={false} />
       </mesh>
-      <Text position={[-0.3, -0.4, 0.27]} fontSize={0.064} anchorX="left" anchorY="middle" color={card.accent}>
+      <Text position={[-0.28, -0.4, 0.27]} fontSize={0.062} anchorX="left" anchorY="middle" color={card.accent}>
         {card.state}
       </Text>
       {/* MATURITY */}
-      <Text position={[0, -0.58, 0.27]} fontSize={0.05} letterSpacing={0.12} anchorX="center" anchorY="middle" color="#6b7a8c">
+      <Text position={[0, -0.57, 0.27]} fontSize={0.048} letterSpacing={0.14} anchorX="center" anchorY="middle" color="#71808f">
         {card.maturity.toUpperCase()}
       </Text>
     </group>
