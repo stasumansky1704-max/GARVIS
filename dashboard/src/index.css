@@ -1063,3 +1063,34 @@ body {
 ::-webkit-scrollbar-track {
   background: transparent;
 }
+
+/* ===================== Factories: single 3D card prototype ===================== */
+.factory3d-proto {
+  margin: 8px 0 30px;
+  display: flex;
+  justify-content: center;
+}
+.factory3d-stage,
+.factory3d-fallback {
+  width: 440px;
+  height: 600px;
+  max-width: 100%;
+}
+.factory3d-fallback {
+  border-radius: 18px;
+  background: radial-gradient(circle at 50% 40%, #0a1c30 0%, #02060d 100%);
+}
+
+/* Premium 3D Factories row */
+.factories3d-wrap {
+  margin: 6px 0 26px;
+  width: 100%;
+}
+.factories3d-stage {
+  width: 100%;
+  height: 640px;
+  max-width: 100%;
+}
+@media (max-width: 1024px) {
+  .factories3d-wrap { display: none; } /* fall back to the HTML factory grid on small screens */
+}
