@@ -539,6 +539,16 @@ function TopProjector() {
     { r: 1.04, z: -0.98, w: 0.05 },  // lens-array shoulder
     { r: 0.78, z: -1.18, w: 0.05 },  // emitter throat
   ]), []);
+  // SOLID machined dome walls connecting the tiers (so it reads as a closed engineered
+  // bowl, not see-through floating rings)
+  const frusta = useMemo(() => {
+    const out: { rTop: number; rBot: number; h: number; z: number }[] = [];
+    for (let i = 0; i < tiers.length - 1; i++) {
+      const o = tiers[i], inr = tiers[i + 1];
+      out.push({ rTop: o.r, rBot: inr.r, h: o.z - inr.z, z: (o.z + inr.z) / 2 });
+    }
+    return out;
+  }, [tiers]);
   // ring helper: N segments around radius r
   const ring = (n: number, r: number) => Array.from({ length: n }, (_, i) => {
     const a = (i / n) * Math.PI * 2;
@@ -583,8 +593,8 @@ function TopProjector() {
   const mlCells = useMemo(() => [[-0.06, 0.08], [0.06, 0.08], [-0.06, -0.08], [0.06, -0.08]] as [number, number][], []);
   // INNER ACCENT / DIAGNOSTIC LEDs — indigo, bigger, sitting close to the lens
   const accents = useMemo(() => ring(36, 1.10), []);
-  // HOLOGRAPHIC LENS ARRAY — deep multi-layer focusing spiral
-  const lensRings = useMemo(() => [0.40, 0.52, 0.64, 0.76, 0.88, 1.00, 1.12], []);
+  // HOLOGRAPHIC LENS ARRAY — deep multi-layer focusing spiral (tight inner → wide shoulder)
+  const lensRings = useMemo(() => [0.20, 0.30, 0.40, 0.52, 0.64, 0.76, 0.88, 1.00, 1.12], []);
 
   useFrame(({ clock }) => {
     const t = clock.getElapsedTime();
@@ -602,8 +612,18 @@ function TopProjector() {
       {/* internal lights that REVEAL the dark titanium (it is lit, not self-glowing) */}
       <pointLight position={[0, 0, -1.2]} intensity={8} distance={7} decay={2} color={C_BEAM_CORE} />
       <pointLight position={[0, 0, -0.5]} intensity={3.5} distance={5} decay={2} color={C_POWER} />
+      {/* cool rim lights from the front/sides so the machined titanium catches real specular highlights */}
+      <pointLight position={[2.6, 1.8, -1.6]} intensity={2.4} distance={9} decay={2} color="#bcd8ff" />
+      <pointLight position={[-2.6, -1.8, -1.6]} intensity={2.0} distance={9} decay={2} color="#7fb6ff" />
       <group ref={grp}>
-        {/* === DEEP tiered BLACK TITANIUM ALLOY housing rings === */}
+        {/* === SOLID machined dome walls between tiers (closed titanium bowl) === */}
+        {frusta.map((f, i) => (
+          <mesh key={`fr${i}`} position={[0, 0, f.z]} rotation={[-Math.PI / 2, 0, 0]}>
+            <cylinderGeometry args={[f.rTop, f.rBot, f.h, 72, 1, true]} />
+            <meshStandardMaterial color={TITANIUM} metalness={0.9} roughness={0.5} emissive="#05080e" emissiveIntensity={0.14} side={THREE.DoubleSide} />
+          </mesh>
+        ))}
+        {/* === DEEP tiered BLACK TITANIUM ALLOY housing rings (raised lips on the walls) === */}
         {tiers.map((rg, i) => (
           <mesh key={i} position={[0, 0, rg.z]}>
             <torusGeometry args={[rg.r, rg.w, 16, 72]} />
