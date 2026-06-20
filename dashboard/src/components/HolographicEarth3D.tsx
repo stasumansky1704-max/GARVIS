@@ -196,8 +196,8 @@ function TexturedEarth({ ai = 0 }: { ai?: number }) {
             // 06 OCEAN DEPTH — dark navy (#001A33) deep → blue (#003366) shallow, by ocean luminance
             float oceanLum = clamp((rawDay.b * 0.6 + rawDay.g * 0.4) * 2.2, 0.0, 1.0);
             vec3 oceanCol = mix(vec3(0.0, 0.102, 0.2), vec3(0.0, 0.2, 0.4), smoothstep(0.05, 0.5, oceanLum));
-            // 04 SURFACE (DAY) — sharper: crisp contrast + boosted saturation
-            vec3 landCol = rawDay * 1.65 + vec3(0.015, 0.02, 0.025);
+            // 04 SURFACE (DAY) — emphasized land: brighter albedo, crisp contrast + saturation
+            vec3 landCol = rawDay * 1.85 + vec3(0.02, 0.025, 0.03);
             landCol = (landCol - 0.5) * 1.16 + 0.5;                  // crisp local contrast
             float lum = dot(landCol, vec3(0.299, 0.587, 0.114));
             landCol = mix(vec3(lum), landCol, 1.2);                  // richer, more alive color
@@ -222,10 +222,10 @@ function TexturedEarth({ ai = 0 }: { ai?: number }) {
             float term = smoothstep(0.0, 0.32, mixf) * (1.0 - smoothstep(0.32, 0.72, mixf));
             col += term * vec3(0.26, 0.12, 0.04);
 
-            // 03 CLOUD LAYER — soft white clouds, lit by the sun (locked to surface UV → rotate WITH Earth)
+            // 03 CLOUD LAYER — SPARSE: only the thickest clouds, very sheer (~20%) so the land dominates (~80%)
             float cloud = texture2D(cloudMap, vUv).r;
-            float cAmt = smoothstep(0.55, 0.98, cloud) * (0.22 + 0.55 * mixf);
-            col = mix(col, vec3(1.0), cAmt * 0.55);
+            float cAmt = smoothstep(0.72, 0.99, cloud) * (0.2 + 0.3 * mixf);
+            col = mix(col, vec3(1.0), cAmt * 0.4);
             gl_FragColor = vec4(col, 1.0);
           }
         `,
