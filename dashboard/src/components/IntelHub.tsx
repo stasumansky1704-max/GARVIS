@@ -209,7 +209,10 @@ export default function IntelHub({ audioIntensity = 0, page, onNavigate }: Props
         tech: [-2.7, -1.5, -0.6], ops: [2.7, -1.5, -0.6],
       };
       return CARDS.map((c) => ({
-        id: c.id, title: c.title, state: c.state, maturity: c.maturity, accent: c.accent, pos: POS[c.id],
+        id: c.id, title: c.title,
+        glyph: c.id === "revenue" ? "$" : c.title.charAt(0), // font-safe monogram badge
+        subtitle: c.need,
+        state: c.state, maturity: c.maturity, accent: c.accent, pos: POS[c.id],
       }));
     },
     []
