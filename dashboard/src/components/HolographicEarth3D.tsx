@@ -1,7 +1,7 @@
 import { useRef, useMemo, useState, useEffect, Suspense } from "react";
 import { Canvas, useFrame, useLoader } from "@react-three/fiber";
 import { MeshReflectorMaterial, Text } from "@react-three/drei";
-import { Bloom, Vignette, EffectComposer, SMAA, HueSaturation, BrightnessContrast } from "@react-three/postprocessing";
+import { Bloom, Vignette, EffectComposer, SMAA, HueSaturation, BrightnessContrast, Noise } from "@react-three/postprocessing";
 import * as THREE from "three";
 
 // Intelligence Hub holographic Earth.
@@ -106,11 +106,11 @@ function atmoMat(color: string, power: number, strength: number) {
 // A REALLY thin neon-blue rim hugging the limb (high power = concentrated at the edge),
 // plus a barely-there soft edge so it isn't a hard line. No fat halo.
 function Atmosphere({ ai = 0 }: { ai?: number }) {
-  const rim = useMemo(() => atmoMat("#4aa6ff", 7.6, 0.38), []);
-  const soft = useMemo(() => atmoMat("#2f8fe6", 4.5, 0.05), []);
+  const rim = useMemo(() => atmoMat("#4aa6ff", 8.0, 0.14), []);
+  const soft = useMemo(() => atmoMat("#2f8fe6", 5.0, 0.02), []);
   useEffect(() => () => { rim.dispose(); soft.dispose(); }, [rim, soft]);
   useFrame(() => {
-    rim.uniforms.uStrength.value = 0.38 + ai * 0.1;
+    rim.uniforms.uStrength.value = 0.13 + ai * 0.06; // almost invisible — Earth first
   });
   return (
     <group position={GLOBE_POS}>
@@ -224,7 +224,7 @@ function TexturedEarth({ ai = 0 }: { ai?: number }) {
 // bright defined core. ---
 function LightBeam() {
   // Emitter at the projector's mouth; many THIN sharp neon rays fan down onto the globe.
-  const apex = useMemo(() => new THREE.Vector3(GLOBE_POS[0], GLOBE_POS[1] + 2.95, GLOBE_POS[2]), []);
+  const apex = useMemo(() => new THREE.Vector3(GLOBE_POS[0], GLOBE_POS[1] + 2.6, GLOBE_POS[2]), []);
 
   // oriented glowing beam shafts (soft halo + bright core) fanning onto the globe
   const beams = useMemo(() => {
@@ -254,7 +254,7 @@ function LightBeam() {
       const t = Math.random();
       const a = Math.random() * Math.PI * 2;
       const r = t * 1.4;
-      arr.push(GLOBE_POS[0] + Math.cos(a) * r, GLOBE_POS[1] + 3.2 - t * 2.4, GLOBE_POS[2] + Math.sin(a) * r);
+      arr.push(GLOBE_POS[0] + Math.cos(a) * r, GLOBE_POS[1] + 2.6 - t * 1.9, GLOBE_POS[2] + Math.sin(a) * r);
     }
     const g = new THREE.BufferGeometry();
     g.setAttribute("position", new THREE.Float32BufferAttribute(arr, 3));
@@ -262,11 +262,26 @@ function LightBeam() {
   }, []);
   useEffect(() => () => sparkGeo.dispose(), [sparkGeo]);
 
-  // life: each beam core flickers on its own phase; sparkles twinkle
+  // central wide volumetric projection shaft: the single soft cone of light that
+  // visibly carries the Earth hologram up to the emitter mouth.
+  const shaftH = GLOBE_POS[1] + 2.6 - (GLOBE_POS[1] - 0.4);
+  const shaftY = (GLOBE_POS[1] + 2.6 + (GLOBE_POS[1] - 0.4)) / 2;
+
+  // life: each beam core flickers; sparkles twinkle; a bright ring scans DOWN the shaft.
   const grp = useRef<THREE.Group>(null);
+  const scan = useRef<THREE.Mesh>(null);
+  const shaft = useRef<THREE.Mesh>(null);
   useFrame(({ clock }) => {
-    if (!grp.current) return;
     const t = clock.getElapsedTime();
+    if (scan.current) {
+      // sweep from emitter mouth down onto the globe, then loop
+      const p = (t * 0.45) % 1;
+      scan.current.position.y = GLOBE_POS[1] + 2.4 - p * 2.1;
+      scan.current.scale.setScalar(0.5 + p * 1.7);
+      (scan.current.material as THREE.MeshBasicMaterial).opacity = 0.7 * (1 - p);
+    }
+    if (shaft.current) (shaft.current.material as THREE.MeshBasicMaterial).opacity = 0.1 + 0.035 * Math.sin(t * 1.6);
+    if (!grp.current) return;
     grp.current.children.forEach((c, i) => {
       const pts = c as THREE.Points;
       if (pts.isPoints) {
@@ -280,23 +295,33 @@ function LightBeam() {
 
   return (
     <group ref={grp}>
+      {/* wide soft volumetric shaft enveloping the projection */}
+      <mesh ref={shaft} position={[GLOBE_POS[0], shaftY, GLOBE_POS[2]]}>
+        <coneGeometry args={[1.85, shaftH, 40, 1, true]} />
+        <meshBasicMaterial color="#3aa0ff" transparent opacity={0.1} blending={THREE.AdditiveBlending} depthWrite={false} side={THREE.DoubleSide} />
+      </mesh>
+      {/* scanning ring sweeping down the shaft (the "projection refresh" sweep) */}
+      <mesh ref={scan} position={[GLOBE_POS[0], GLOBE_POS[1] + 2.2, GLOBE_POS[2]]} rotation={[Math.PI / 2, 0, 0]}>
+        <torusGeometry args={[0.9, 0.02, 10, 64]} />
+        <meshBasicMaterial color="#d4f0ff" transparent opacity={0.6} blending={THREE.AdditiveBlending} depthWrite={false} />
+      </mesh>
       {beams.map((b, i) => (
         <group key={i} position={b.pos} quaternion={b.quat}>
-          {/* hairline faint halo so the beam still reads as light */}
+          {/* soft halo so the beam reads clearly as a shaft of light */}
           <mesh>
-            <coneGeometry args={[0.018, b.h, 8, 1, true]} />
-            <meshBasicMaterial color="#3ba6ff" transparent opacity={0.07} blending={THREE.AdditiveBlending} depthWrite={false} side={THREE.DoubleSide} />
+            <coneGeometry args={[0.032, b.h, 8, 1, true]} />
+            <meshBasicMaterial color="#4cb4ff" transparent opacity={0.16} blending={THREE.AdditiveBlending} depthWrite={false} side={THREE.DoubleSide} />
           </mesh>
-          {/* hairline bright core (very thin + sharp) */}
+          {/* bright defined core */}
           <mesh>
-            <coneGeometry args={[0.005, b.h, 6, 1, true]} />
+            <coneGeometry args={[0.009, b.h, 6, 1, true]} />
             <meshBasicMaterial color="#ffffff" transparent opacity={1} blending={THREE.AdditiveBlending} depthWrite={false} side={THREE.DoubleSide} />
           </mesh>
         </group>
       ))}
       {/* sparkles */}
       <points geometry={sparkGeo}>
-        <pointsMaterial color="#cfeeff" size={0.045} sizeAttenuation transparent opacity={0.85} blending={THREE.AdditiveBlending} depthWrite={false} />
+        <pointsMaterial color="#dff4ff" size={0.06} sizeAttenuation transparent opacity={0.95} blending={THREE.AdditiveBlending} depthWrite={false} />
       </points>
     </group>
   );
@@ -396,15 +421,15 @@ const HEX_FRAG = `
     vec2 uv = (vUv - 0.5) * 82.0;
     vec2 gv = hexCell(uv);
     float d = hexDist(gv);
-    float edge = smoothstep(0.465, 0.505, d);          // crisp thin border
-    float fill = smoothstep(0.505, 0.30, d) * 0.028;    // very faint fill (low muddiness)
+    float edge = smoothstep(0.478, 0.502, d);           // crisper, sharper thin border
+    float fill = smoothstep(0.502, 0.30, d) * 0.022;     // even fainter fill (cleaner contrast)
     float dist = distance(vUv, vec2(0.5)) * 2.0;
-    float fade = 1.0 - smoothstep(0.28, 0.92, dist);    // strong perspective fade to black
+    float fade = 1.0 - smoothstep(0.22, 0.86, dist);     // stronger perspective fade to black
     float pulse = 0.86 + 0.14 * sin(uTime * 1.2 - dist * 6.0);
-    float scanR = fract(uTime * 0.16);                  // expanding scan ring
-    float scan = smoothstep(0.05, 0.0, abs(dist - scanR * 1.45)) * 0.7;
+    float scanR = fract(uTime * 0.16);                   // expanding scan ring
+    float scan = smoothstep(0.045, 0.0, abs(dist - scanR * 1.45)) * 0.8;
     float a = (edge * 1.0 + fill) * fade * pulse * uIntensity + edge * scan * fade;
-    vec3 col = uColor * (edge * 1.9 + fill * 0.5) + uColor * scan * edge * 1.3;
+    vec3 col = uColor * (edge * 2.4 + fill * 0.5) + uColor * scan * edge * 1.5;
     gl_FragColor = vec4(col, a);
   }
 `;
@@ -463,69 +488,93 @@ function HexFloor({ ai = 0 }: { ai?: number }) {
   );
 }
 
-// --- Overhead projection ENGINE: a DEEP tiered black-metal housing with a big central beam
-// exit + a ring of smaller satellite projectors, all lit by their own emitter lights. ---
+// --- Overhead projection MACHINE: dark gunmetal/titanium housing — tiered rings, engineered
+// segmented hull panels, and a central EMITTER EYE (lens + iris + bright pupil) that is the
+// hologram source. Dark metal revealed by internal lights, NOT a self-glowing blob. ---
+const GUNMETAL = "#13171e";
 function TopProjector() {
   const grp = useRef<THREE.Group>(null);
-  const core = useRef<THREE.Mesh>(null);
-  // deeper tiered housing (more layers + more depth)
+  const iris = useRef<THREE.Group>(null);
+  const pupil = useRef<THREE.Mesh>(null);
   const rings = useMemo(() => {
     const out: { r: number; z: number; w: number }[] = [];
-    const N = 13;
-    for (let i = 0; i < N; i++) {
-      const f = i / (N - 1);
-      out.push({ r: 2.2 - f * 1.6, z: -f * 1.05, w: 0.15 - f * 0.075 });
-    }
+    const N = 10;
+    for (let i = 0; i < N; i++) { const f = i / (N - 1); out.push({ r: 2.25 - f * 1.5, z: -f * 1.0, w: 0.14 - f * 0.06 }); }
     return out;
   }, []);
-  // satellite projectors arranged around the central exit
-  const sats = useMemo(() => {
-    const out: { x: number; y: number }[] = [];
-    const M = 8;
-    for (let i = 0; i < M; i++) { const a = (i / M) * Math.PI * 2; out.push({ x: Math.cos(a) * 1.18, y: Math.sin(a) * 1.18 }); }
+  const panels = useMemo(() => {
+    const out: { a: number; x: number; y: number }[] = [];
+    const M = 16;
+    for (let i = 0; i < M; i++) { const a = (i / M) * Math.PI * 2; out.push({ a, x: Math.cos(a) * 1.98, y: Math.sin(a) * 1.98 }); }
     return out;
   }, []);
+  const blades = useMemo(() => Array.from({ length: 8 }, (_, i) => (i / 8) * Math.PI * 2), []);
   useFrame(({ clock }) => {
     const t = clock.getElapsedTime();
-    if (grp.current) grp.current.rotation.z = t * 0.05;
-    if (core.current) (core.current.material as THREE.MeshBasicMaterial).opacity = 0.82 + 0.18 * Math.sin(t * 3.0);
+    if (grp.current) grp.current.rotation.z = t * 0.04;
+    if (iris.current) iris.current.rotation.z = -t * 0.12;
+    if (pupil.current) (pupil.current.material as THREE.MeshBasicMaterial).opacity = 0.78 + 0.22 * Math.sin(t * 2.6);
   });
   return (
-    <group position={[GLOBE_POS[0], GLOBE_POS[1] + 4.05, GLOBE_POS[2]]} rotation={[-Math.PI / 2, 0, 0]}>
-      {/* emitter lights inside the housing → the metal is lit by its own beams */}
-      <pointLight position={[0, 0, -0.95]} intensity={7} distance={5.5} decay={2} color="#5cc8ff" />
-      <pointLight position={[0, 0, -0.4]} intensity={2.5} distance={4} decay={2} color="#7fb8ff" />
+    <group position={[GLOBE_POS[0], GLOBE_POS[1] + 3.55, GLOBE_POS[2]]} rotation={[-Math.PI / 2, 0, 0]}>
+      {/* internal lights that REVEAL the dark metal (it is lit, not self-glowing) */}
+      <pointLight position={[0, 0, -0.9]} intensity={7} distance={6} decay={2} color="#5cc8ff" />
+      <pointLight position={[0, 0, -0.25]} intensity={3} distance={4} decay={2} color="#9fd4ff" />
       <group ref={grp}>
+        {/* tiered gunmetal housing rings */}
         {rings.map((rg, i) => (
           <mesh key={i} position={[0, 0, rg.z]}>
-            <torusGeometry args={[rg.r, rg.w, 18, 72]} />
-            <meshStandardMaterial color="#0a1018" metalness={0.85} roughness={0.34} emissive="#1466b0" emissiveIntensity={1.0} />
+            <torusGeometry args={[rg.r, rg.w, 16, 64]} />
+            <meshStandardMaterial color={GUNMETAL} metalness={0.95} roughness={0.4} emissive="#0a2236" emissiveIntensity={0.22} />
           </mesh>
         ))}
-        {/* satellite projector housings (small metal tori) */}
-        {sats.map((s, i) => (
-          <mesh key={`s${i}`} position={[s.x, s.y, -0.7]}>
-            <torusGeometry args={[0.2, 0.06, 12, 36]} />
-            <meshStandardMaterial color="#0a1018" metalness={0.85} roughness={0.34} emissive="#1466b0" emissiveIntensity={1.0} />
+        {/* engineered segmented hull panels around the rim */}
+        {panels.map((p, i) => (
+          <mesh key={`p${i}`} position={[p.x, p.y, -0.05]} rotation={[0, 0, p.a]}>
+            <boxGeometry args={[0.36, 0.14, 0.24]} />
+            <meshStandardMaterial color={GUNMETAL} metalness={0.92} roughness={0.46} emissive="#0a2236" emissiveIntensity={0.18} />
           </mesh>
         ))}
-      </group>
-      {/* BIG central beam exit */}
-      <mesh position={[0, 0, -0.95]}>
-        <ringGeometry args={[0.6, 0.72, 96]} />
-        <meshBasicMaterial color="#cdefff" transparent opacity={0.95} blending={THREE.AdditiveBlending} depthWrite={false} side={THREE.DoubleSide} />
-      </mesh>
-      <mesh ref={core} position={[0, 0, -0.99]}>
-        <circleGeometry args={[0.56, 48]} />
-        <meshBasicMaterial color="#eaffff" transparent opacity={0.9} blending={THREE.AdditiveBlending} depthWrite={false} />
-      </mesh>
-      {/* satellite emitter glows */}
-      {sats.map((s, i) => (
-        <mesh key={`g${i}`} position={[s.x, s.y, -0.75]}>
-          <circleGeometry args={[0.12, 24]} />
-          <meshBasicMaterial color="#bfeeff" transparent opacity={0.85} blending={THREE.AdditiveBlending} depthWrite={false} />
+        {/* thin lit seam between tiers */}
+        <mesh position={[0, 0, -0.55]}>
+          <torusGeometry args={[1.5, 0.012, 8, 80]} />
+          <meshBasicMaterial color="#3aa6ff" transparent opacity={0.6} blending={THREE.AdditiveBlending} />
         </mesh>
-      ))}
+      </group>
+
+      {/* ---- central EMITTER EYE (the hologram source) ---- */}
+      <group position={[0, 0, -0.95]}>
+        {/* lens housing ring (dark metal) */}
+        <mesh>
+          <torusGeometry args={[0.72, 0.15, 16, 48]} />
+          <meshStandardMaterial color={GUNMETAL} metalness={0.95} roughness={0.34} />
+        </mesh>
+        {/* rotating iris blades */}
+        <group ref={iris}>
+          {blades.map((a, i) => (
+            <mesh key={`b${i}`} position={[Math.cos(a) * 0.52, Math.sin(a) * 0.52, 0.03]} rotation={[0, 0, a]}>
+              <boxGeometry args={[0.34, 0.07, 0.05]} />
+              <meshStandardMaterial color="#0b1118" metalness={0.9} roughness={0.4} />
+            </mesh>
+          ))}
+        </group>
+        {/* bright pupil = emitter source */}
+        <mesh position={[0, 0, -0.07]}>
+          <ringGeometry args={[0.4, 0.48, 64]} />
+          <meshBasicMaterial color="#cdefff" transparent opacity={0.95} blending={THREE.AdditiveBlending} depthWrite={false} side={THREE.DoubleSide} />
+        </mesh>
+        {/* wide soft emitter flare so the mouth glows like the hologram source */}
+        <mesh position={[0, 0, -0.12]}>
+          <circleGeometry args={[0.66, 48]} />
+          <meshBasicMaterial color="#8fd4ff" transparent opacity={0.4} blending={THREE.AdditiveBlending} depthWrite={false} />
+        </mesh>
+        <mesh ref={pupil} position={[0, 0, -0.1]}>
+          <circleGeometry args={[0.4, 48]} />
+          <meshBasicMaterial color="#f4ffff" transparent opacity={0.95} blending={THREE.AdditiveBlending} depthWrite={false} />
+        </mesh>
+        {/* emitter light that throws onto the beam particles below */}
+        <pointLight position={[0, 0, -0.2]} intensity={4} distance={5} decay={2} color="#bfe6ff" />
+      </group>
     </group>
   );
 }
@@ -568,9 +617,9 @@ function CameraRig() {
   useFrame((state) => {
     const t = state.clock.getElapsedTime();
     const cam = state.camera;
-    cam.position.x += (Math.sin(t * 0.16) * 0.45 - cam.position.x) * 0.02;
-    cam.position.y += (1.05 + Math.sin(t * 0.22) * 0.2 - cam.position.y) * 0.02;
-    cam.lookAt(0, 0.6, -1.8);
+    cam.position.x += (Math.sin(t * 0.16) * 0.4 - cam.position.x) * 0.02;
+    cam.position.y += (1.2 + Math.sin(t * 0.22) * 0.18 - cam.position.y) * 0.02;
+    cam.lookAt(0, 0.95, -2.0);
   });
   return null;
 }
@@ -599,26 +648,36 @@ function Card3DItem({ card, onSelect, active }: { card: Card3DData; onSelect?: (
     const s = ref.current.scale.x + (target - ref.current.scale.x) * 0.15;
     ref.current.scale.set(s, s, s);
   });
+  const lit = hover || active;
   return (
     <group ref={ref} position={card.pos}>
+      {/* OUTER border layer: a slightly larger black plate set behind → reads as a frame/bezel */}
+      <mesh geometry={HEX_GEO} position={[0, 0, -0.07]} scale={1.07}>
+        <meshStandardMaterial color="#04070d" metalness={0.6} roughness={0.5} transparent opacity={0.9} depthWrite={false} />
+      </mesh>
       <mesh
         geometry={HEX_GEO}
         onClick={(e) => { e.stopPropagation(); onSelect?.(card.id); }}
         onPointerOver={(e) => { e.stopPropagation(); setHover(true); document.body.style.cursor = "pointer"; }}
         onPointerOut={() => { setHover(false); document.body.style.cursor = "auto"; }}
       >
-        {/* BLACK glass: pure-black, relatively transparent; only the neon EDGES light it */}
+        {/* PURE-BLACK transparent glass — NO color of its own. ONLY the LED edges give it color. */}
         <meshStandardMaterial
           color="#000000"
-          emissive={new THREE.Color(card.accent)}
-          emissiveIntensity={hover || active ? 0.32 : 0.1}
-          metalness={0.2}
-          roughness={0.45}
+          emissive="#000000"
+          emissiveIntensity={0}
+          metalness={0.25}
+          roughness={0.5}
           transparent
-          opacity={hover || active ? 0.82 : 0.72}
+          opacity={lit ? 0.5 : 0.42}
           depthWrite={false}
         />
       </mesh>
+      {/* OUTER neon edge on the bezel plate → the double-frame reads as inner + outer border */}
+      <lineSegments position={[0, 0, -0.07]} scale={1.07}>
+        <edgesGeometry args={[HEX_GEO]} />
+        <lineBasicMaterial color={card.accent} transparent opacity={lit ? 0.6 : 0.4} blending={THREE.AdditiveBlending} />
+      </lineSegments>
       {/* bright neon-LED edges (blooms hard → spills light onto the black glass) */}
       <lineSegments>
         <edgesGeometry args={[HEX_GEO]} />
@@ -627,6 +686,11 @@ function Card3DItem({ card, onSelect, active }: { card: Card3DData; onSelect?: (
       <lineSegments scale={1.012}>
         <edgesGeometry args={[HEX_GEO]} />
         <lineBasicMaterial color={card.accent} transparent opacity={0.7} blending={THREE.AdditiveBlending} />
+      </lineSegments>
+      {/* holographic edge scattering: a faint over-scaled edge that bleeds outward */}
+      <lineSegments scale={lit ? 1.05 : 1.03}>
+        <edgesGeometry args={[HEX_GEO]} />
+        <lineBasicMaterial color={card.accent} transparent opacity={lit ? 0.32 : 0.16} blending={THREE.AdditiveBlending} />
       </lineSegments>
       <Text position={[0, 0.12, 0.26]} fontSize={0.12} maxWidth={1.15} textAlign="center" anchorX="center" anchorY="middle" color="#ffffff" outlineWidth={0.004} outlineColor={card.accent}>
         {card.title}
@@ -645,9 +709,38 @@ function Cards3D({ cards, onSelect, activeId }: { cards: Card3DData[]; onSelect?
   return <group>{cards.map((c) => <Card3DItem key={c.id} card={c} onSelect={onSelect} active={activeId === c.id} />)}</group>;
 }
 
+// --- floating atmospheric dust / fragments drifting through the chamber ---
+function DustField() {
+  const geo = useMemo(() => {
+    const arr: number[] = [];
+    for (let i = 0; i < 240; i++) {
+      arr.push((Math.random() - 0.5) * 18, (Math.random() - 0.5) * 12, (Math.random() - 0.5) * 12 - 2);
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute("position", new THREE.Float32BufferAttribute(arr, 3));
+    return g;
+  }, []);
+  useEffect(() => () => geo.dispose(), [geo]);
+  const ref = useRef<THREE.Points>(null);
+  useFrame(({ clock }) => {
+    if (ref.current) {
+      const t = clock.getElapsedTime();
+      ref.current.rotation.y = t * 0.012;
+      ref.current.position.y = Math.sin(t * 0.1) * 0.2;
+    }
+  });
+  return (
+    <points ref={ref} geometry={geo}>
+      <pointsMaterial color="#86bfe6" size={0.028} sizeAttenuation transparent opacity={0.45} blending={THREE.AdditiveBlending} depthWrite={false} />
+    </points>
+  );
+}
+
 function EarthScene({ audioIntensity = 0, capture = false, showPillars = true, cards3d, onSelectCard, activeCardId }: EarthProps) {
   return (
     <>
+      {/* depth fog: pushes the floor + far rim into the dark so the chamber reads deep */}
+      <fogExp2 attach="fog" args={["#03060e", 0.034]} />
       {/* even, bright key illumination so the visible hemisphere reads as real Earth */}
       <hemisphereLight args={["#eaf7ff", "#0a2740", 1.35]} />
       <ambientLight intensity={0.55} />
@@ -668,6 +761,7 @@ function EarthScene({ audioIntensity = 0, capture = false, showPillars = true, c
       <HexFloor ai={audioIntensity} />
       {showPillars && <FloorBeams ai={audioIntensity} />}
       <ArcLines ai={audioIntensity} />
+      <DustField />
       {cards3d && cards3d.length > 0 && <Cards3D cards={cards3d} onSelect={onSelectCard} activeId={activeCardId} />}
 
       {/* Capture mode: a single lightweight Bloom so screenshots still show the glow
@@ -690,7 +784,9 @@ function EarthScene({ audioIntensity = 0, capture = false, showPillars = true, c
           {/* color grade: punchier neon-blue "trailer" look */}
           <HueSaturation saturation={0.3} />
           <BrightnessContrast brightness={0.03} contrast={0.15} />
-          <Vignette offset={0.3} darkness={0.72} />
+          {/* faint holographic grain (uses the effect's default blend) */}
+          <Noise premultiply opacity={0.045} />
+          <Vignette offset={0.3} darkness={0.74} />
         </EffectComposer>
       )}
     </>
@@ -715,14 +811,14 @@ export default function HolographicEarth3D({ audioIntensity = 0, capture = false
 
   return (
     <Canvas
-      camera={{ position: [0, 1.05, 7.4], fov: 44 }}
+      camera={{ position: [0, 1.2, 6.05], fov: 47 }}
       dpr={capture ? 2.5 : [1, 1.5]}
       frameloop={capture ? "demand" : "always"}
       gl={{ antialias: false, alpha: true, powerPreference: "high-performance" }}
       onCreated={({ gl, camera }) => {
         gl.toneMapping = THREE.ACESFilmicToneMapping;
         gl.toneMappingExposure = 1.55;
-        camera.lookAt(0, 0.6, -1.8); // frame the globe + the engine above it
+        camera.lookAt(0, 0.95, -2.0); // closer on the globe, still framing the engine + beams above
       }}
       style={{ background: "transparent" }}
     >
