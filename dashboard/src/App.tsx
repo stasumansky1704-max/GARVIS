@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import LivingCore from "./living-core/LivingCore";
 import StatusBadge from "./components/StatusBadge";
 import IntelHub from "./components/IntelHub";
+import Factories3D from "./components/Factories3D";
 import { FACTORIES, factoriesSummary } from "./data/missionControl";
 
 type Page = "home" | "workflows" | "intelligence" | "settings";
@@ -96,6 +97,12 @@ function WorkflowsPage() {
     <section className="page-screen">
       <PageHeader title="FACTORIES" subtitle={factoriesSummary()} />
 
+      {/* Premium 3D factory cards — a row of holographic monitors on pedestals (desktop). */}
+      <div className="factories3d-wrap">
+        <Factories3D factories={FACTORIES} />
+      </div>
+
+      {/* compact HTML list (always available; primary on small screens) */}
       <div className="factory-grid">
         {FACTORIES.map((f) => (
           <article className="factory-card" key={f.id}>
