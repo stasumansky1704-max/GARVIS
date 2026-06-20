@@ -569,8 +569,8 @@ function CameraRig() {
     const t = state.clock.getElapsedTime();
     const cam = state.camera;
     cam.position.x += (Math.sin(t * 0.16) * 0.45 - cam.position.x) * 0.02;
-    cam.position.y += (0.6 + Math.sin(t * 0.22) * 0.22 - cam.position.y) * 0.02;
-    cam.lookAt(0, 0.2, -1.8);
+    cam.position.y += (1.05 + Math.sin(t * 0.22) * 0.2 - cam.position.y) * 0.02;
+    cam.lookAt(0, 0.6, -1.8);
   });
   return null;
 }
@@ -715,13 +715,14 @@ export default function HolographicEarth3D({ audioIntensity = 0, capture = false
 
   return (
     <Canvas
-      camera={{ position: [0, 0.6, 6.9], fov: 44 }}
+      camera={{ position: [0, 1.05, 7.4], fov: 44 }}
       dpr={capture ? 2.5 : [1, 1.5]}
       frameloop={capture ? "demand" : "always"}
       gl={{ antialias: false, alpha: true, powerPreference: "high-performance" }}
-      onCreated={({ gl }) => {
+      onCreated={({ gl, camera }) => {
         gl.toneMapping = THREE.ACESFilmicToneMapping;
         gl.toneMappingExposure = 1.55;
+        camera.lookAt(0, 0.6, -1.8); // frame the globe + the engine above it
       }}
       style={{ background: "transparent" }}
     >
