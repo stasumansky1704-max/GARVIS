@@ -92,19 +92,24 @@ function HomePage({ audioIntensity: _audioIntensity }: { audioIntensity: number 
   return <LivingCore />;
 }
 
+const FLAGSHIP = ["youtube", "faceless", "education", "novagame", "alphaflow"];
+
 function WorkflowsPage() {
+  const flagships = FLAGSHIP
+    .map((id) => FACTORIES.find((f) => f.id === id))
+    .filter((f): f is (typeof FACTORIES)[number] => Boolean(f));
   return (
     <section className="page-screen">
       <PageHeader title="FACTORIES" subtitle={factoriesSummary()} />
 
-      {/* Premium 3D factory cards — a row of holographic monitors on pedestals (desktop). */}
+      {/* Premium 3D factory cards — the 5 flagship factories as Intel-Hub-style hex monitors. */}
       <div className="factories3d-wrap">
-        <Factories3D factories={FACTORIES} />
+        <Factories3D factories={flagships} />
       </div>
 
       {/* compact HTML list (always available; primary on small screens) */}
       <div className="factory-grid">
-        {FACTORIES.map((f) => (
+        {flagships.map((f) => (
           <article className="factory-card" key={f.id}>
             <div className="factory-card-top">
               <span className="factory-glyph" aria-hidden>{f.glyph}</span>

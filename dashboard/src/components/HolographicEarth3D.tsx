@@ -208,13 +208,13 @@ function TexturedEarth({ ai = 0 }: { ai?: number }) {
             float landMask = 1.0 - oceanMask;
             float relief = clamp((hR - hL) * 7.5 + (hU - hD) * 5.0, -0.32, 1.1); // sharper raised terrain
             // natural terrain tones from the albedo: richer greens (vegetation) + warm deserts + polar ice
-            vec3 baseLand = rawDay * 3.0;                            // MUCH brighter land so it stands out
+            vec3 baseLand = rawDay * 3.4;                            // MUCH brighter land so it dominates
             float greenish = clamp((rawDay.g - rawDay.b) * 3.5, 0.0, 1.0);
             float dryish = clamp((rawDay.r - rawDay.g) * 3.5, 0.0, 1.0);
             baseLand = mix(baseLand, baseLand * vec3(0.82, 1.15, 0.72), greenish * 0.5);   // vegetation greens (lighter)
             baseLand = mix(baseLand, baseLand * vec3(1.2, 1.0, 0.74), dryish * 0.5);       // desert browns (lighter)
-            float ice = smoothstep(0.9, 0.99, abs(vUv.y - 0.5) * 2.0);                     // poles
-            baseLand = mix(baseLand, vec3(0.95, 0.98, 1.0), ice * 0.8);
+            float ice = smoothstep(0.93, 0.995, abs(vUv.y - 0.5) * 2.0);                   // only the very poles
+            baseLand = mix(baseLand, vec3(0.9, 0.94, 0.98), ice * 0.6);
             vec3 landCol = baseLand + vec3(0.05, 0.06, 0.05);
             landCol = (landCol - 0.5) * 1.32 + 0.5;                  // crisp contrast
             float lum = dot(landCol, vec3(0.299, 0.587, 0.114));
@@ -256,8 +256,8 @@ function TexturedEarth({ ai = 0 }: { ai?: number }) {
 
             // 03 CLOUD LAYER — even fewer: only the densest cores, pure bright white
             float cloud = texture2D(cloudMap, vUv).r;
-            float cAmt = smoothstep(0.92, 0.999, cloud) * (0.2 + 0.4 * mixf);
-            col = mix(col, vec3(1.15, 1.15, 1.18), cAmt * 0.45);
+            float cAmt = smoothstep(0.95, 0.999, cloud) * (0.15 + 0.3 * mixf);
+            col = mix(col, vec3(1.12, 1.12, 1.15), cAmt * 0.2);  // barely-there clouds → land dominates
             gl_FragColor = vec4(col, 1.0);
           }
         `,
