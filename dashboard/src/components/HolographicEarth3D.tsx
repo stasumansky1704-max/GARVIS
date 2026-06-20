@@ -194,7 +194,7 @@ function TexturedEarth({ ai = 0 }: { ai?: number }) {
             vec3 night = texture2D(nightMap, vUv).rgb;
             // ocean mask: land reads green/brown (high R/G), ocean is darker
             float landish = max(rawDay.r, rawDay.g * 0.9);
-            float oceanMask = 1.0 - smoothstep(0.16, 0.40, landish);
+            float oceanMask = 1.0 - smoothstep(0.19, 0.31, landish);   // crisper land/ocean coastline
 
             // 06 OCEAN DEPTH — dark navy (#001A33) deep → blue (#003366) shallow, by ocean luminance
             float oceanLum = clamp((rawDay.b * 0.6 + rawDay.g * 0.4) * 2.2, 0.0, 1.0);
@@ -206,12 +206,12 @@ function TexturedEarth({ ai = 0 }: { ai?: number }) {
             float hD = dot(texture2D(dayMap, vUv - vec2(0.0, e)).rgb, vec3(0.33));
             float hU = dot(texture2D(dayMap, vUv + vec2(0.0, e)).rgb, vec3(0.33));
             float landMask = 1.0 - oceanMask;
-            float relief = clamp((hR - hL) * 6.0 + (hU - hD) * 4.0, -0.32, 0.95); // mostly highlight, little shadow
-            vec3 landCol = rawDay * 2.35 + vec3(0.04, 0.05, 0.05);   // BRIGHT land so continents read
-            landCol = (landCol - 0.5) * 1.22 + 0.5;                  // crisp contrast
+            float relief = clamp((hR - hL) * 7.5 + (hU - hD) * 5.0, -0.32, 1.1); // sharper raised terrain
+            vec3 landCol = rawDay * 2.45 + vec3(0.04, 0.05, 0.05);   // BRIGHT land so continents read
+            landCol = (landCol - 0.5) * 1.38 + 0.5;                  // sharper, crisper contrast
             float lum = dot(landCol, vec3(0.299, 0.587, 0.114));
-            landCol = mix(vec3(lum), landCol, 1.3);                  // richer color
-            landCol *= (1.0 + relief * landMask * 0.7);             // 3D relief → continents pop (without darkening)
+            landCol = mix(vec3(lum), landCol, 1.34);                 // richer color
+            landCol *= (1.0 + relief * landMask * 0.85);            // 3D relief → continents pop (crisp edges)
             vec3 day = mix(landCol, oceanCol, oceanMask);
 
             float d = dot(normalize(vNormalW), normalize(sunDir));
@@ -239,10 +239,10 @@ function TexturedEarth({ ai = 0 }: { ai?: number }) {
             float spec = pow(max(dot(normalize(vNormalW), H), 0.0), 70.0);
             col += spec * oceanMask * smoothstep(0.1, 0.6, mixf) * vec3(0.55, 0.72, 0.95);
 
-            // 03 CLOUD LAYER — sparse but PURE BRIGHT WHITE where present
+            // 03 CLOUD LAYER — even fewer: only the densest cores, pure bright white
             float cloud = texture2D(cloudMap, vUv).r;
-            float cAmt = smoothstep(0.84, 0.999, cloud) * (0.25 + 0.5 * mixf);
-            col = mix(col, vec3(1.15, 1.15, 1.18), cAmt * 0.6);
+            float cAmt = smoothstep(0.92, 0.999, cloud) * (0.2 + 0.4 * mixf);
+            col = mix(col, vec3(1.15, 1.15, 1.18), cAmt * 0.45);
             gl_FragColor = vec4(col, 1.0);
           }
         `,
