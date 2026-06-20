@@ -247,13 +247,13 @@ function LightBeam() {
     return out;
   }, [apex]);
 
-  // sparkle particles drifting inside the beam cone
+  // ENERGY PARTICLE FLOW — dense subatomic particles streaming down the beam (data stream)
   const sparkGeo = useMemo(() => {
     const arr: number[] = [];
-    for (let i = 0; i < 70; i++) {
+    for (let i = 0; i < 200; i++) {
       const t = Math.random();
       const a = Math.random() * Math.PI * 2;
-      const r = t * 1.4;
+      const r = t * 1.45;                                 // fans out toward the globe
       arr.push(GLOBE_POS[0] + Math.cos(a) * r, GLOBE_POS[1] + 2.6 - t * 1.9, GLOBE_POS[2] + Math.sin(a) * r);
     }
     const g = new THREE.BufferGeometry();
@@ -271,6 +271,8 @@ function LightBeam() {
   const grp = useRef<THREE.Group>(null);
   const scan = useRef<THREE.Mesh>(null);
   const shaft = useRef<THREE.Mesh>(null);
+  const stream = useRef<THREE.Group>(null);
+  const STREAM_N = 7;
   useFrame(({ clock }) => {
     const t = clock.getElapsedTime();
     if (scan.current) {
@@ -280,6 +282,15 @@ function LightBeam() {
       scan.current.scale.setScalar(0.5 + p * 1.7);
       (scan.current.material as THREE.MeshBasicMaterial).opacity = 0.7 * (1 - p);
     }
+    // DATA STREAM — horizontal scan rings continuously descend + fan out through the beam
+    if (stream.current) stream.current.children.forEach((c, i) => {
+      const m = c as THREE.Mesh;
+      const p = (t * 0.3 + i / STREAM_N) % 1;
+      m.position.y = GLOBE_POS[1] + 2.45 - p * 1.75;
+      const s = 0.22 + p * 1.12;
+      m.scale.set(s, s, 1);
+      (m.material as THREE.MeshBasicMaterial).opacity = 0.5 * Math.sin(p * Math.PI);
+    });
     if (shaft.current) (shaft.current.material as THREE.MeshBasicMaterial).opacity = 0.1 + 0.035 * Math.sin(t * 1.6);
     if (!grp.current) return;
     grp.current.children.forEach((c, i) => {
@@ -305,6 +316,15 @@ function LightBeam() {
         <torusGeometry args={[0.9, 0.02, 10, 64]} />
         <meshBasicMaterial color={C_BEAM_CORE} transparent opacity={0.6} blending={THREE.AdditiveBlending} depthWrite={false} />
       </mesh>
+      {/* DATA STREAM PROJECTION — descending horizontal scan rings (data cross-sections) */}
+      <group ref={stream}>
+        {Array.from({ length: STREAM_N }).map((_, i) => (
+          <mesh key={`st${i}`} position={[GLOBE_POS[0], GLOBE_POS[1] + 2.45, GLOBE_POS[2]]} rotation={[Math.PI / 2, 0, 0]}>
+            <torusGeometry args={[1, 0.007, 8, 72]} />
+            <meshBasicMaterial color={C_PARTICLE} transparent opacity={0.4} blending={THREE.AdditiveBlending} depthWrite={false} />
+          </mesh>
+        ))}
+      </group>
       {beams.map((b, i) => (
         <group key={i} position={b.pos} quaternion={b.quat}>
           {/* HOLOGRAPHIC BEAM (VOLUME) — soft volumetric shaft */}
@@ -509,27 +529,48 @@ function TopProjector() {
   const pupil = useRef<THREE.Mesh>(null);
   const coolRef = useRef<THREE.Group>(null);
 
-  // dark tiered titanium housing rings (outer → inner, descending toward the emitter)
+  // DEEP tiered titanium housing rings (outer → inner, descending toward the emitter)
   const tiers = useMemo(() => ([
     { r: 2.36, z: 0.0, w: 0.13 },    // OUTER HOUSING RING (armor)
-    { r: 2.06, z: -0.16, w: 0.07 },  // cooling-vent tier
-    { r: 1.74, z: -0.36, w: 0.09 },  // power-core / stabilization / mag-lock tier
-    { r: 1.42, z: -0.56, w: 0.06 },  // inner accent tier
-    { r: 1.06, z: -0.74, w: 0.05 },  // lens-array shoulder
+    { r: 2.06, z: -0.20, w: 0.07 },  // cooling-vent tier
+    { r: 1.74, z: -0.42, w: 0.09 },  // power-core / stabilization / mag-lock tier
+    { r: 1.42, z: -0.64, w: 0.06 },  // inner accent tier
+    { r: 1.06, z: -0.84, w: 0.05 },  // lens-array shoulder
   ]), []);
-  // armor plating blocks on the outer housing
-  const armor = useMemo(() => Array.from({ length: 20 }, (_, i) => (i / 20) * Math.PI * 2), []);
   // ring helper: N segments around radius r
   const ring = (n: number, r: number) => Array.from({ length: n }, (_, i) => {
     const a = (i / n) * Math.PI * 2;
     return { a, x: Math.cos(a) * r, y: Math.sin(a) * r };
   });
-  const cooling = useMemo(() => ring(52, 2.04), []);   // COOLING VENTS (cyan grid)
-  const power = useMemo(() => ring(36, 1.74).map((p, i) => ({ ...p, stab: i % 3 === 1 })), []); // POWER CORE + STABILIZATION
+  // OUTER HOUSING — large backlit rectangular panels (cyan housing + a purple STABILIZATION arc)
+  const bigPanels = useMemo(() => Array.from({ length: 16 }, (_, i) => {
+    const a = (i / 16) * Math.PI * 2;
+    const stab = i >= 3 && i <= 6;                       // contiguous gyroscopic-stabilization arc
+    return { a, x: Math.cos(a) * 2.14, y: Math.sin(a) * 2.14, stab };
+  }), []);
+  // COOLING VENTS — a 2-row cyan LED grid band
+  const cooling = useMemo(() => {
+    const out: { a: number; x: number; y: number; z: number }[] = [];
+    const N = 32;
+    for (let row = 0; row < 2; row++) {
+      const r = 1.99 - row * 0.11;
+      for (let i = 0; i < N; i++) { const a = (i / N) * Math.PI * 2 + row * 0.05; out.push({ a, x: Math.cos(a) * r, y: Math.sin(a) * r, z: -0.18 }); }
+    }
+    return out;
+  }, []);
+  // POWER CORE CHANNELS (blue) with a contiguous STABILIZATION arc (purple)
+  const power = useMemo(() => Array.from({ length: 40 }, (_, i) => {
+    const a = (i / 40) * Math.PI * 2;
+    const stab = i >= 8 && i <= 14;                      // STABILIZATION purple arc
+    return { a, x: Math.cos(a) * 1.74, y: Math.sin(a) * 1.74, stab };
+  }), []);
+  // MAGNETIC LOCKS — large amber 2x2 anchor grids at 6 cardinal positions
   const maglocks = useMemo(() => Array.from({ length: 6 }, (_, i) => {
     const a = (i / 6) * Math.PI * 2 + 0.26; return { a, x: Math.cos(a) * 1.74, y: Math.sin(a) * 1.74 };
-  }), []);                                              // MAGNETIC LOCKS (amber anchors)
-  const accents = useMemo(() => ring(44, 1.42), []);    // INNER ACCENT / DIAGNOSTIC LEDs
+  }), []);
+  const mlCells = useMemo(() => [[-0.06, 0.08], [0.06, 0.08], [-0.06, -0.08], [0.06, -0.08]] as [number, number][], []);
+  // INNER ACCENT / DIAGNOSTIC LEDs — indigo, bigger, sitting close to the lens
+  const accents = useMemo(() => ring(40, 1.24), []);
   const lensRings = useMemo(() => [0.5, 0.66, 0.84, 1.02], []); // HOLOGRAPHIC LENS ARRAY
 
   useFrame(({ clock }) => {
@@ -549,61 +590,69 @@ function TopProjector() {
       <pointLight position={[0, 0, -0.9]} intensity={7} distance={6} decay={2} color={C_BEAM_CORE} />
       <pointLight position={[0, 0, -0.25]} intensity={3} distance={4} decay={2} color={C_POWER} />
       <group ref={grp}>
-        {/* === tiered BLACK TITANIUM ALLOY housing rings === */}
+        {/* === DEEP tiered BLACK TITANIUM ALLOY housing rings === */}
         {tiers.map((rg, i) => (
           <mesh key={i} position={[0, 0, rg.z]}>
             <torusGeometry args={[rg.r, rg.w, 16, 72]} />
             <meshStandardMaterial color={TITANIUM} metalness={0.96} roughness={0.38} emissive="#060a12" emissiveIntensity={0.2} />
           </mesh>
         ))}
-        {/* OUTER HOUSING RING — armor plating blocks */}
-        {armor.map((a, i) => (
-          <mesh key={`ar${i}`} position={[Math.cos(a) * 2.3, Math.sin(a) * 2.3, 0.02]} rotation={[0, 0, a]}>
-            <boxGeometry args={[0.4, 0.16, 0.26]} />
-            <meshStandardMaterial color={TITANIUM} metalness={0.94} roughness={0.42} emissive="#060a12" emissiveIntensity={0.16} />
-          </mesh>
+
+        {/* OUTER HOUSING — large backlit rectangular panels (cyan + purple stabilization arc) */}
+        {bigPanels.map((p, i) => (
+          <group key={`bp${i}`} position={[p.x, p.y, 0.0]} rotation={[0, 0, p.a]}>
+            <mesh><boxGeometry args={[0.5, 0.34, 0.06]} /><meshStandardMaterial color={TITANIUM} metalness={0.95} roughness={0.4} /></mesh>
+            <mesh position={[0, 0, 0.04]}><boxGeometry args={[0.42, 0.26, 0.02]} /><meshStandardMaterial color="#000000" emissive={p.stab ? C_STABIL : C_COOLING} emissiveIntensity={1.7} toneMapped={false} /></mesh>
+            {/* dark grid dividers so the panel reads as a backlit LED grid */}
+            <mesh position={[0, 0, 0.06]}><boxGeometry args={[0.42, 0.02, 0.01]} /><meshStandardMaterial color={TITANIUM} metalness={0.9} roughness={0.5} /></mesh>
+            <mesh position={[-0.1, 0, 0.06]}><boxGeometry args={[0.02, 0.26, 0.01]} /><meshStandardMaterial color={TITANIUM} metalness={0.9} roughness={0.5} /></mesh>
+            <mesh position={[0.1, 0, 0.06]}><boxGeometry args={[0.02, 0.26, 0.01]} /><meshStandardMaterial color={TITANIUM} metalness={0.9} roughness={0.5} /></mesh>
+          </group>
         ))}
 
-        {/* COOLING VENTS — cyan LED grid (active heat dissipation, pulsing) */}
+        {/* COOLING VENTS — 2-row cyan LED grid (active heat dissipation, pulsing) */}
         <group ref={coolRef}>
           {cooling.map((p, i) => (
-            <mesh key={`cv${i}`} position={[p.x, p.y, -0.13]} rotation={[0, 0, p.a]}>
-              <boxGeometry args={[0.05, 0.12, 0.03]} />
+            <mesh key={`cv${i}`} position={[p.x, p.y, p.z]} rotation={[0, 0, p.a]}>
+              <boxGeometry args={[0.05, 0.08, 0.03]} />
               <meshStandardMaterial color="#000000" emissive={C_COOLING} emissiveIntensity={2.4} toneMapped={false} />
             </mesh>
           ))}
         </group>
 
-        {/* POWER CORE CHANNELS (blue conduits) + STABILIZATION RING (purple) */}
+        {/* POWER CORE CHANNELS (blue conduits) + STABILIZATION arc (purple) */}
         {power.map((p, i) => (
-          <mesh key={`pc${i}`} position={[p.x, p.y, -0.33]} rotation={[0, 0, p.a]}>
-            <boxGeometry args={[0.05, 0.22, 0.03]} />
-            <meshStandardMaterial color="#000000" emissive={p.stab ? C_STABIL : C_POWER} emissiveIntensity={2.6} toneMapped={false} />
+          <mesh key={`pc${i}`} position={[p.x, p.y, -0.40]} rotation={[0, 0, p.a]}>
+            <boxGeometry args={[0.06, 0.24, 0.03]} />
+            <meshStandardMaterial color="#000000" emissive={p.stab ? C_STABIL : C_POWER} emissiveIntensity={2.7} toneMapped={false} />
           </mesh>
         ))}
-        {/* MAGNETIC LOCKS — amber structural anchors */}
+
+        {/* MAGNETIC LOCKS — large amber 2x2 anchor grids (structural anchors) */}
         {maglocks.map((p, i) => (
-          <group key={`ml${i}`} position={[p.x, p.y, -0.33]} rotation={[0, 0, p.a]}>
-            <mesh><boxGeometry args={[0.16, 0.3, 0.06]} /><meshStandardMaterial color="#1a1206" metalness={0.9} roughness={0.4} /></mesh>
-            <mesh position={[0, 0, 0.04]}><boxGeometry args={[0.1, 0.24, 0.03]} /><meshStandardMaterial color="#000000" emissive={C_MAGLOCK} emissiveIntensity={2.8} toneMapped={false} /></mesh>
+          <group key={`ml${i}`} position={[p.x, p.y, -0.40]} rotation={[0, 0, p.a]}>
+            <mesh><boxGeometry args={[0.3, 0.42, 0.08]} /><meshStandardMaterial color="#1a1206" metalness={0.9} roughness={0.4} /></mesh>
+            {mlCells.map(([cx, cy], j) => (
+              <mesh key={j} position={[cx, cy, 0.05]}><boxGeometry args={[0.1, 0.13, 0.03]} /><meshStandardMaterial color="#000000" emissive={C_MAGLOCK} emissiveIntensity={2.9} toneMapped={false} /></mesh>
+            ))}
           </group>
         ))}
 
-        {/* INNER ACCENT / DIAGNOSTIC LEDs — indigo status dots */}
+        {/* INNER ACCENT / DIAGNOSTIC LEDs — indigo status dots (bigger, near the lens) */}
         {accents.map((p, i) => (
-          <mesh key={`ac${i}`} position={[p.x, p.y, -0.53]} rotation={[0, 0, p.a]}>
-            <boxGeometry args={[0.045, 0.045, 0.03]} />
-            <meshStandardMaterial color="#000000" emissive={C_ACCENT} emissiveIntensity={2.2} toneMapped={false} />
+          <mesh key={`ac${i}`} position={[p.x, p.y, -0.62]} rotation={[0, 0, p.a]}>
+            <boxGeometry args={[0.07, 0.07, 0.03]} />
+            <meshStandardMaterial color="#000000" emissive={C_ACCENT} emissiveIntensity={2.4} toneMapped={false} />
           </mesh>
         ))}
 
         {/* thin lit seams between tiers */}
-        <mesh position={[0, 0, -0.22]}><torusGeometry args={[1.9, 0.01, 8, 90]} /><meshBasicMaterial color={C_POWER} transparent opacity={0.5} blending={THREE.AdditiveBlending} /></mesh>
-        <mesh position={[0, 0, -0.45]}><torusGeometry args={[1.55, 0.01, 8, 90]} /><meshBasicMaterial color={C_BEAM_VOL} transparent opacity={0.5} blending={THREE.AdditiveBlending} /></mesh>
+        <mesh position={[0, 0, -0.31]}><torusGeometry args={[1.9, 0.01, 8, 90]} /><meshBasicMaterial color={C_POWER} transparent opacity={0.5} blending={THREE.AdditiveBlending} /></mesh>
+        <mesh position={[0, 0, -0.53]}><torusGeometry args={[1.55, 0.01, 8, 90]} /><meshBasicMaterial color={C_BEAM_VOL} transparent opacity={0.5} blending={THREE.AdditiveBlending} /></mesh>
       </group>
 
       {/* ===== HOLOGRAPHIC LENS ARRAY — multi-layer focusing optics (spinning) ===== */}
-      <group ref={lens} position={[0, 0, -0.78]}>
+      <group ref={lens} position={[0, 0, -0.88]}>
         {lensRings.map((r, i) => (
           <mesh key={`ln${i}`} position={[0, 0, -i * 0.03]}>
             <torusGeometry args={[r, 0.012 + i * 0.004, 8, 80]} />
@@ -613,7 +662,7 @@ function TopProjector() {
       </group>
 
       {/* ===== PRIMARY EMITTER EYE — holographic projection source (intense white) ===== */}
-      <group position={[0, 0, -0.92]}>
+      <group position={[0, 0, -0.98]}>
         {/* lens housing ring (dark titanium) */}
         <mesh><torusGeometry args={[0.5, 0.12, 16, 48]} /><meshStandardMaterial color={TITANIUM} metalness={0.96} roughness={0.3} /></mesh>
         {/* soft cyan flare = the glowing mouth */}
