@@ -963,6 +963,66 @@ const HEX_VERTS: [number, number][] = [
   [-0.74, 0], [-0.37, 0.8], [0.37, 0.8], [0.74, 0], [0.37, -0.8], [-0.37, -0.8],
 ];
 
+// Per-card logo built from glowing primitives (matches the card's name).
+function CardIcon3D({ id, color }: { id: string; color: string }) {
+  const mat = (o = 1) => <meshBasicMaterial color={color} transparent opacity={o} blending={THREE.AdditiveBlending} depthWrite={false} />;
+  switch (id) {
+    case "world": // globe: outline + meridian + equator ellipses
+      return (
+        <group>
+          <mesh><torusGeometry args={[0.1, 0.008, 8, 40]} />{mat()}</mesh>
+          <mesh scale={[0.42, 1, 1]}><torusGeometry args={[0.1, 0.006, 8, 40]} />{mat(0.9)}</mesh>
+          <mesh scale={[1, 0.42, 1]}><torusGeometry args={[0.1, 0.006, 8, 40]} />{mat(0.9)}</mesh>
+        </group>
+      );
+    case "market": { // rising bar chart
+      const bars: [number, number][] = [[-0.07, 0.07], [0, 0.11], [0.07, 0.16]];
+      return (
+        <group>
+          {bars.map(([x, h], i) => (
+            <mesh key={i} position={[x, -0.09 + h / 2, 0]}><boxGeometry args={[0.036, h, 0.01]} />{mat()}</mesh>
+          ))}
+          <mesh position={[0.02, 0.13, 0]} rotation={[0, 0, -Math.PI / 5]}><boxGeometry args={[0.2, 0.012, 0.008]} />{mat(0.85)}</mesh>
+        </group>
+      );
+    }
+    case "social": // radar: concentric arcs + sweep + node
+      return (
+        <group>
+          <mesh><torusGeometry args={[0.06, 0.006, 8, 32]} />{mat(0.8)}</mesh>
+          <mesh><torusGeometry args={[0.1, 0.006, 8, 32]} />{mat(0.55)}</mesh>
+          <mesh><circleGeometry args={[0.02, 14]} />{mat()}</mesh>
+          <mesh position={[0.042, 0.042, 0]} rotation={[0, 0, Math.PI / 4]}><boxGeometry args={[0.12, 0.01, 0.008]} />{mat(0.85)}</mesh>
+        </group>
+      );
+    case "tech": // atom: nucleus + 2 crossed orbit ellipses
+      return (
+        <group>
+          <mesh><circleGeometry args={[0.022, 16]} />{mat()}</mesh>
+          <mesh scale={[1, 0.4, 1]}><torusGeometry args={[0.1, 0.006, 8, 44]} />{mat(0.9)}</mesh>
+          <mesh scale={[1, 0.4, 1]} rotation={[0, 0, Math.PI / 3]}><torusGeometry args={[0.1, 0.006, 8, 44]} />{mat(0.9)}</mesh>
+          <mesh scale={[1, 0.4, 1]} rotation={[0, 0, -Math.PI / 3]}><torusGeometry args={[0.1, 0.006, 8, 44]} />{mat(0.9)}</mesh>
+        </group>
+      );
+    case "ops": { // gear: ring + radial teeth + hub
+      const teeth = Array.from({ length: 8 }, (_, i) => (i / 8) * Math.PI * 2);
+      return (
+        <group>
+          <mesh><torusGeometry args={[0.072, 0.016, 8, 28]} />{mat()}</mesh>
+          {teeth.map((a, i) => (
+            <mesh key={i} position={[Math.cos(a) * 0.095, Math.sin(a) * 0.095, 0]} rotation={[0, 0, a]}><boxGeometry args={[0.03, 0.024, 0.01]} />{mat()}</mesh>
+          ))}
+          <mesh><circleGeometry args={[0.026, 16]} />{mat(0.8)}</mesh>
+        </group>
+      );
+    }
+    default: // revenue (and any fallback): currency mark
+      return (
+        <Text fontSize={0.2} anchorX="center" anchorY="middle" color="#ffffff" outlineWidth={0.006} outlineColor={color}>$</Text>
+      );
+  }
+}
+
 function Card3DItem({ card, onSelect, active }: { card: Card3DData; onSelect?: (id: string) => void; active: boolean }) {
   const ref = useRef<THREE.Group>(null);
   const dot = useRef<THREE.Mesh>(null);
@@ -1090,9 +1150,9 @@ function Card3DItem({ card, onSelect, active }: { card: Card3DData; onSelect?: (
         <mesh rotation={[Math.PI / 2, 0, 0]}><torusGeometry args={[0.19, 0.013, 10, 44]} /><meshBasicMaterial color={card.accent} transparent opacity={0.95} blending={THREE.AdditiveBlending} depthWrite={false} /></mesh>
         <mesh rotation={[Math.PI / 2, 0, 0]}><torusGeometry args={[0.155, 0.006, 10, 44]} /><meshBasicMaterial color={card.accent} transparent opacity={0.5} blending={THREE.AdditiveBlending} depthWrite={false} /></mesh>
       </group>
-      <Text position={[0, 0.46, 0.27]} fontSize={0.19} anchorX="center" anchorY="middle" color="#ffffff" outlineWidth={0.006} outlineColor={card.accent}>
-        {card.glyph}
-      </Text>
+      <group position={[0, 0.46, 0.27]}>
+        <CardIcon3D id={card.id} color={card.accent} />
+      </group>
 
       {/* TITLE */}
       <Text position={[0, 0.135, 0.27]} fontSize={0.108} maxWidth={1.2} lineHeight={1.02} letterSpacing={0.02} textAlign="center" anchorX="center" anchorY="middle" color="#ffffff" outlineWidth={0.005} outlineColor="#000000">
