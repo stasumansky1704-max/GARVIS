@@ -1094,3 +1094,7 @@ body {
 @media (max-width: 1024px) {
   .factories3d-wrap { display: none; } /* fall back to the HTML factory grid on small screens */
 }
+@media (min-width: 1025px) {
+  /* on desktop the 3D cards ARE the showcase — hide the flat HTML duplicates below */
+  .page-screen .factory-grid { display: none; }
+}
