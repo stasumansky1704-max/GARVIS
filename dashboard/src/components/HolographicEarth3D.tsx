@@ -538,7 +538,8 @@ function HexFloor({ ai = 0 }: { ai?: number }) {
 // hologram source. Dark metal revealed by internal lights, NOT a self-glowing blob. ---
 // --- Projector blueprint palette (exact spec from the reference cutaway) ---
 const TITANIUM = "#3a434f";       // OUTER HOUSING — machined gunmetal titanium (lifted so detail reads)
-const TITANIUM_RIB = "#6c7888";   // raised machined panel ribs (lighter → catch the rim light)
+const TITANIUM_RIB = "#93a2b6";   // raised machined panel ribs (bright → read clearly even small)
+const RIB_GLOW = "#8fb4e6";       // faint cool edge-glow on the ribs so the paneling blooms slightly
 const C_COOLING = "#00e5ff";      // COOLING SYSTEM (vents)
 const C_POWER = "#2979ff";        // POWER CORE LIGHTS (energy conduits)
 const C_STABIL = "#9b5dff";       // STABILIZATION SYSTEM (gyroscopic ring)
@@ -683,18 +684,18 @@ function TopProjector() {
           </mesh>
         ))}
         {/* RAISED radial PANEL RIBS running along every dome wall (machined plate dividers
-            that catch the rim light → the paneling clearly reads) */}
+            with a faint cool edge-glow → the paneling reads even at small scale) */}
         {panelSeams.map((s, i) => (
           <mesh key={`ps${i}`} position={s.pos} quaternion={s.quat}>
-            <boxGeometry args={[0.04, s.len * 0.98, 0.07]} />
-            <meshStandardMaterial color={TITANIUM_RIB} metalness={0.85} roughness={0.3} />
+            <boxGeometry args={[0.05, s.len * 0.98, 0.085]} />
+            <meshStandardMaterial color={TITANIUM_RIB} metalness={0.85} roughness={0.28} emissive={RIB_GLOW} emissiveIntensity={0.8} />
           </mesh>
         ))}
         {/* concentric raised RIB rings (horizontal panel divisions) */}
         {grooves.map((g, i) => (
           <mesh key={`gv${i}`} position={[0, 0, g.z]}>
-            <torusGeometry args={[g.r, 0.026, 8, 90]} />
-            <meshStandardMaterial color={TITANIUM_RIB} metalness={0.85} roughness={0.32} />
+            <torusGeometry args={[g.r, 0.032, 8, 96]} />
+            <meshStandardMaterial color={TITANIUM_RIB} metalness={0.85} roughness={0.3} emissive={RIB_GLOW} emissiveIntensity={0.85} />
           </mesh>
         ))}
         {/* RIVET / bolt heads ringing several tiers */}
