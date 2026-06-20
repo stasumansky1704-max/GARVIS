@@ -35,6 +35,9 @@ const EARTH_R = 2;
 // the holographic platform. The light beam + floor glow track this same x/z.
 const GLOBE_POS: [number, number, number] = [0, 0.55, -2.4];
 const FLOOR_Y = -3.4; // platform sits well below the globe (a clear floating gap)
+// how much higher the projector + its beam origin sit, so the top half of the dome
+// crops off the top of the frame (only the lower half + emitter show)
+const PROJ_RAISE = 1.3;
 
 const CITIES = [
   { name: "New York", lat: 40.71, lon: -74.0 },
@@ -224,7 +227,7 @@ function TexturedEarth({ ai = 0 }: { ai?: number }) {
 // bright defined core. ---
 function LightBeam() {
   // Emitter at the projector's mouth; many THIN sharp neon rays fan down onto the globe.
-  const apex = useMemo(() => new THREE.Vector3(GLOBE_POS[0], GLOBE_POS[1] + 2.6, GLOBE_POS[2]), []);
+  const apex = useMemo(() => new THREE.Vector3(GLOBE_POS[0], GLOBE_POS[1] + 2.6 + PROJ_RAISE, GLOBE_POS[2]), []);
 
   // oriented glowing beam shafts (soft halo + bright core) fanning onto the globe
   const beams = useMemo(() => {
@@ -254,7 +257,7 @@ function LightBeam() {
       const t = Math.random();
       const a = Math.random() * Math.PI * 2;
       const r = t * 1.45;                                 // fans out toward the globe
-      arr.push(GLOBE_POS[0] + Math.cos(a) * r, GLOBE_POS[1] + 2.6 - t * 1.9, GLOBE_POS[2] + Math.sin(a) * r);
+      arr.push(GLOBE_POS[0] + Math.cos(a) * r, GLOBE_POS[1] + 2.6 + PROJ_RAISE - t * (1.9 + PROJ_RAISE), GLOBE_POS[2] + Math.sin(a) * r);
     }
     const g = new THREE.BufferGeometry();
     g.setAttribute("position", new THREE.Float32BufferAttribute(arr, 3));
@@ -264,14 +267,14 @@ function LightBeam() {
 
   // central wide volumetric projection shaft: the single soft cone of light that
   // visibly carries the Earth hologram up to the emitter mouth.
-  const shaftH = GLOBE_POS[1] + 2.6 - (GLOBE_POS[1] - 0.4);
-  const shaftY = (GLOBE_POS[1] + 2.6 + (GLOBE_POS[1] - 0.4)) / 2;
+  const shaftH = GLOBE_POS[1] + 2.6 + PROJ_RAISE - (GLOBE_POS[1] - 0.4);
+  const shaftY = (GLOBE_POS[1] + 2.6 + PROJ_RAISE + (GLOBE_POS[1] - 0.4)) / 2;
 
   // crisp vertical DATA LANES — straight bright lines structuring the beam (clean, not fuzzy)
   const lanes = useMemo(() => {
     const out: { pos: [number, number, number]; quat: [number, number, number, number]; h: number }[] = [];
     const up = new THREE.Vector3(0, 1, 0);
-    const top = new THREE.Vector3(GLOBE_POS[0], GLOBE_POS[1] + 2.5, GLOBE_POS[2]);
+    const top = new THREE.Vector3(GLOBE_POS[0], GLOBE_POS[1] + 2.5 + PROJ_RAISE, GLOBE_POS[2]);
     const N = 16;
     for (let i = 0; i < N; i++) {
       const a = (i / N) * Math.PI * 2;
@@ -296,7 +299,7 @@ function LightBeam() {
     if (scan.current) {
       // sweep from emitter mouth down onto the globe, then loop
       const p = (t * 0.45) % 1;
-      scan.current.position.y = GLOBE_POS[1] + 2.4 - p * 2.1;
+      scan.current.position.y = GLOBE_POS[1] + 2.4 + PROJ_RAISE - p * (2.1 + PROJ_RAISE);
       scan.current.scale.setScalar(0.5 + p * 1.7);
       (scan.current.material as THREE.MeshBasicMaterial).opacity = 0.7 * (1 - p);
     }
@@ -304,7 +307,7 @@ function LightBeam() {
     if (stream.current) stream.current.children.forEach((c, i) => {
       const m = c as THREE.Mesh;
       const p = (t * 0.3 + i / STREAM_N) % 1;
-      m.position.y = GLOBE_POS[1] + 2.45 - p * 1.75;
+      m.position.y = GLOBE_POS[1] + 2.45 + PROJ_RAISE - p * (1.75 + PROJ_RAISE);
       const s = 0.22 + p * 1.12;
       m.scale.set(s, s, 1);
       (m.material as THREE.MeshBasicMaterial).opacity = 0.5 * Math.sin(p * Math.PI);
@@ -665,7 +668,7 @@ function TopProjector() {
   });
 
   return (
-    <group position={[GLOBE_POS[0], GLOBE_POS[1] + 3.92, GLOBE_POS[2]]} rotation={[-Math.PI / 2, 0, 0]} scale={1.05}>
+    <group position={[GLOBE_POS[0], GLOBE_POS[1] + 3.92 + PROJ_RAISE, GLOBE_POS[2]]} rotation={[-Math.PI / 2, 0, 0]} scale={1.05}>
       {/* internal lights that REVEAL the machined titanium (it is lit, not self-glowing) */}
       <pointLight position={[0, 0, -1.2]} intensity={9} distance={7} decay={2} color={C_BEAM_CORE} />
       <pointLight position={[0, 0, -0.5]} intensity={4} distance={5} decay={2} color={C_POWER} />
