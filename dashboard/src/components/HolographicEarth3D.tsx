@@ -90,7 +90,7 @@ const ATMO_FRAG = `
   }
 `;
 
-function atmoMat(color: string, power: number, strength: number) {
+function atmoMat(color: string, power: number, strength: number, side: THREE.Side = THREE.BackSide) {
   return new THREE.ShaderMaterial({
     uniforms: {
       uColor: { value: new THREE.Color(color) },
@@ -101,7 +101,7 @@ function atmoMat(color: string, power: number, strength: number) {
     fragmentShader: ATMO_FRAG,
     transparent: true,
     blending: THREE.AdditiveBlending,
-    side: THREE.BackSide,
+    side,
     depthWrite: false,
   });
 }
@@ -109,20 +109,30 @@ function atmoMat(color: string, power: number, strength: number) {
 // A REALLY thin neon-blue rim hugging the limb (high power = concentrated at the edge),
 // plus a barely-there soft edge so it isn't a hard line. No fat halo.
 function Atmosphere({ ai = 0 }: { ai?: number }) {
-  const rim = useMemo(() => atmoMat("#4aa6ff", 8.0, 0.14), []);
-  const soft = useMemo(() => atmoMat("#2f8fe6", 5.0, 0.02), []);
-  useEffect(() => () => { rim.dispose(); soft.dispose(); }, [rim, soft]);
+  // 01 ATMOSPHERE GLOW — thin #00E6FF rim, strong edge scattering, fades into space
+  const rim = useMemo(() => atmoMat("#00e6ff", 7.0, 0.32), []);
+  const soft = useMemo(() => atmoMat("#00c6ff", 4.0, 0.05), []);
+  // 02 HOLOGRAPHIC SHELL — ultra-thin #00C6FF refractive energy shell (~15%), seen from outside
+  const shell = useMemo(() => atmoMat("#00c6ff", 3.2, 0.15, THREE.FrontSide), []);
+  useEffect(() => () => { rim.dispose(); soft.dispose(); shell.dispose(); }, [rim, soft, shell]);
   useFrame(() => {
-    rim.uniforms.uStrength.value = 0.13 + ai * 0.06; // almost invisible — Earth first
+    rim.uniforms.uStrength.value = 0.3 + ai * 0.12;   // thin but clearly-read blue rim
+    shell.uniforms.uStrength.value = 0.13 + ai * 0.05;
   });
   return (
     <group position={GLOBE_POS}>
+      {/* 02 holographic energy shell (ultra-thin, just outside the surface) */}
       <mesh>
-        <sphereGeometry args={[EARTH_R * 1.011, 64, 64]} />
+        <sphereGeometry args={[EARTH_R * 1.018, 64, 64]} />
+        <primitive object={shell} attach="material" />
+      </mesh>
+      {/* 01 atmosphere glow rim */}
+      <mesh>
+        <sphereGeometry args={[EARTH_R * 1.012, 64, 64]} />
         <primitive object={rim} attach="material" />
       </mesh>
       <mesh>
-        <sphereGeometry args={[EARTH_R * 1.04, 48, 48]} />
+        <sphereGeometry args={[EARTH_R * 1.045, 48, 48]} />
         <primitive object={soft} attach="material" />
       </mesh>
     </group>
@@ -175,20 +185,30 @@ function TexturedEarth({ ai = 0 }: { ai?: number }) {
           void main() {
             vec3 rawDay = texture2D(dayMap, vUv).rgb;
             vec3 night = texture2D(nightMap, vUv).rgb;
-            // ocean mask: land reads green/brown (high R/G), ocean is darker → bias clouds to sea
+            // ocean mask: land reads green/brown (high R/G), ocean is darker
             float landish = max(rawDay.r, rawDay.g * 0.9);
             float oceanMask = 1.0 - smoothstep(0.16, 0.40, landish);
-            // lift + cool-boost the oceans so they read clearly brighter/bluer
-            vec3 day = rawDay * 1.9 + vec3(0.03, 0.07, 0.14);
-            day += oceanMask * vec3(0.02, 0.07, 0.15);               // brighter blue oceans
+
+            // 06 OCEAN DEPTH — dark navy (#001A33) deep → blue (#003366) shallow, by ocean luminance
+            float oceanLum = clamp((rawDay.b * 0.6 + rawDay.g * 0.4) * 2.2, 0.0, 1.0);
+            vec3 oceanCol = mix(vec3(0.0, 0.102, 0.2), vec3(0.0, 0.2, 0.4), smoothstep(0.05, 0.5, oceanLum));
+            // 04 SURFACE (DAY) — realistic land albedo
+            vec3 landCol = rawDay * 1.6 + vec3(0.015, 0.02, 0.025);
+            vec3 day = mix(landCol, oceanCol, oceanMask);
+
             float d = dot(normalize(vNormalW), normalize(sunDir));
-            float mixf = smoothstep(-0.28, 0.34, d);                 // wider lit hemisphere = brighter
-            vec3 col = mix(night * 3.2, day, mixf);                  // brighter day, punchier city lights
-            // clouds: locked to the surface UV → rotate WITH the Earth. Embedded by BLENDING
-            // into the surface (not added on top), lit by the sun, sparse, mostly over oceans.
+            float mixf = smoothstep(-0.28, 0.34, d);                 // wider lit hemisphere
+
+            // 05 CITY LIGHTS (NIGHT) — warm amber #FFD56A -> #FFA500, brightness variation + bloom
+            float nb = max(night.r, max(night.g, night.b));
+            vec3 cityCol = mix(vec3(1.0, 0.835, 0.416), vec3(1.0, 0.647, 0.0), smoothstep(0.2, 0.85, nb));
+            vec3 cityLights = cityCol * nb * 3.4;
+            vec3 col = mix(cityLights, day, mixf);
+
+            // 03 CLOUD LAYER — soft white clouds, lit by the sun (locked to surface UV → rotate WITH Earth)
             float cloud = texture2D(cloudMap, vUv).r;
-            float cAmt = smoothstep(0.74, 0.99, cloud) * mix(0.02, 1.0, oceanMask) * (0.11 + 0.3 * mixf);
-            col = mix(col, vec3(0.99, 1.0, 1.0), cAmt * 0.22);        // very sparse, ocean-only, pure white, sheer
+            float cAmt = smoothstep(0.55, 0.98, cloud) * (0.22 + 0.55 * mixf);
+            col = mix(col, vec3(1.0), cAmt * 0.55);
             gl_FragColor = vec4(col, 1.0);
           }
         `,
@@ -212,12 +232,67 @@ function TexturedEarth({ ai = 0 }: { ai?: number }) {
           <primitive object={material} attach="material" />
         </mesh>
 
-        {/* very faint holographic graticule overlay */}
-        <mesh scale={1.004}>
-          <sphereGeometry args={[EARTH_R, 24, 16]} />
-          <meshBasicMaterial color="#36c6ff" wireframe transparent opacity={0.03 + ai * 0.02} depthWrite={false} />
+        {/* 07 HOLOGRAPHIC GRID — lat/long lines, #00D9FF, faint (~15%), conforms to curvature */}
+        <mesh scale={1.005}>
+          <sphereGeometry args={[EARTH_R, 36, 18]} />
+          <meshBasicMaterial color="#00d9ff" wireframe transparent opacity={0.13 + ai * 0.04} blending={THREE.AdditiveBlending} depthWrite={false} />
         </mesh>
+
+        {/* 08 DATA POINTS — pulsing scanning nodes at strategic cities */}
+        <DataPoints />
       </group>
+    </group>
+  );
+}
+
+// 09 HOLOGRAPHIC BASE RING — projection anchor ring under the globe with rotating segments
+function BaseRing() {
+  const seg = useRef<THREE.Group>(null);
+  const segs = useMemo(() => Array.from({ length: 28 }, (_, i) => (i / 28) * Math.PI * 2), []);
+  useFrame(({ clock }) => { if (seg.current) seg.current.rotation.y = clock.getElapsedTime() * 0.22; });
+  const y = GLOBE_POS[1] - EARTH_R - 0.12;        // just below the globe
+  const R = EARTH_R * 0.92;
+  return (
+    <group position={[GLOBE_POS[0], y, GLOBE_POS[2]]}>
+      {/* static anchor rings */}
+      <mesh rotation={[Math.PI / 2, 0, 0]}><torusGeometry args={[R, 0.02, 8, 120]} /><meshBasicMaterial color="#00e6ff" transparent opacity={0.55} blending={THREE.AdditiveBlending} depthWrite={false} /></mesh>
+      <mesh rotation={[Math.PI / 2, 0, 0]}><torusGeometry args={[R * 1.18, 0.01, 8, 120]} /><meshBasicMaterial color="#00e6ff" transparent opacity={0.3} blending={THREE.AdditiveBlending} depthWrite={false} /></mesh>
+      <mesh rotation={[Math.PI / 2, 0, 0]}><torusGeometry args={[R * 0.74, 0.008, 8, 96]} /><meshBasicMaterial color="#00e6ff" transparent opacity={0.25} blending={THREE.AdditiveBlending} depthWrite={false} /></mesh>
+      {/* rotating segment ticks */}
+      <group ref={seg}>
+        {segs.map((a, i) => (
+          <mesh key={i} position={[Math.cos(a) * R * 1.06, 0, Math.sin(a) * R * 1.06]} rotation={[0, -a, 0]}>
+            <boxGeometry args={[0.11, 0.014, 0.02]} />
+            <meshBasicMaterial color="#66f9ff" transparent opacity={0.75} blending={THREE.AdditiveBlending} depthWrite={false} />
+          </mesh>
+        ))}
+      </group>
+    </group>
+  );
+}
+
+// 08 DATA POINTS — strategic nodes that PULSE (not blink); #00E6FF -> #66F9FF, glow + bloom
+function DataPoints() {
+  const grp = useRef<THREE.Group>(null);
+  const pts = useMemo(() => CITIES.map((c, i) => ({ pos: latLonToVec3(c.lat, c.lon, EARTH_R * 1.012), phase: i * 0.7 })), []);
+  useFrame(({ clock }) => {
+    if (!grp.current) return;
+    const t = clock.getElapsedTime();
+    grp.current.children.forEach((c, i) => {
+      const m = c as THREE.Mesh;
+      const p = 0.5 + 0.5 * Math.sin(t * 1.8 + pts[i].phase);  // smooth pulse, never a hard blink
+      m.scale.setScalar(0.7 + p * 0.7);
+      (m.material as THREE.MeshBasicMaterial).opacity = 0.35 + p * 0.55;
+    });
+  });
+  return (
+    <group ref={grp}>
+      {pts.map((pt, i) => (
+        <mesh key={i} position={pt.pos}>
+          <sphereGeometry args={[0.02, 12, 12]} />
+          <meshBasicMaterial color="#4df2ff" transparent opacity={0.8} blending={THREE.AdditiveBlending} depthWrite={false} />
+        </mesh>
+      ))}
     </group>
   );
 }
@@ -985,6 +1060,7 @@ function EarthScene({ audioIntensity = 0, capture = false, showPillars = true, c
         <TexturedEarth ai={audioIntensity} />
       </Suspense>
       <Atmosphere ai={audioIntensity} />
+      <BaseRing />
       <TopProjector />
       <LightBeam />
       <ReflectiveFloor />
