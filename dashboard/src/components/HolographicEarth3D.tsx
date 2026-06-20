@@ -538,7 +538,7 @@ function HexFloor({ ai = 0 }: { ai?: number }) {
 // hologram source. Dark metal revealed by internal lights, NOT a self-glowing blob. ---
 // --- Projector blueprint palette (exact spec from the reference cutaway) ---
 const TITANIUM = "#3a434f";       // OUTER HOUSING — machined gunmetal titanium (lifted so detail reads)
-const TITANIUM_DK = "#222933";    // recessed grooves / panel seams (darker than the plates)
+const TITANIUM_RIB = "#6c7888";   // raised machined panel ribs (lighter → catch the rim light)
 const C_COOLING = "#00e5ff";      // COOLING SYSTEM (vents)
 const C_POWER = "#2979ff";        // POWER CORE LIGHTS (energy conduits)
 const C_STABIL = "#9b5dff";       // STABILIZATION SYSTEM (gyroscopic ring)
@@ -575,15 +575,36 @@ function TopProjector() {
     }
     return out;
   }, [tiers]);
-  // engraved radial panel seams across the outer dome face
-  const seams = useMemo(() => Array.from({ length: 28 }, (_, i) => {
-    const a = (i / 28) * Math.PI * 2; const rm = 2.04;
-    return { a, x: Math.cos(a) * rm, y: Math.sin(a) * rm, z: -0.05, len: 0.62 };
-  }), []);
-  // bolt heads ringing the outer housing
-  const rivets = useMemo(() => Array.from({ length: 36 }, (_, i) => {
-    const a = (i / 36) * Math.PI * 2 + 0.04; return { a, x: Math.cos(a) * 2.33, y: Math.sin(a) * 2.33 };
-  }), []);
+  // ENGRAVED PANEL GRID — radial seam bars running along the slope of each dome wall,
+  // so every tier reads as machined plates divided by recessed grooves.
+  const panelSeams = useMemo(() => {
+    const up = new THREE.Vector3(0, 1, 0);
+    const out: { pos: [number, number, number]; quat: [number, number, number, number]; len: number }[] = [];
+    frusta.slice(0, 4).forEach((f) => {                 // the 4 largest, most-visible walls
+      const zTop = f.z + f.h / 2, zBot = f.z - f.h / 2;
+      const N = 18;                                     // fewer → larger, clearly-read panels
+      for (let i = 0; i < N; i++) {
+        const a = (i / N) * Math.PI * 2;
+        const k = 1.02;                                 // raised ridge proud of the wall (catches light)
+        const Pt = new THREE.Vector3(Math.cos(a) * f.rTop * k, Math.sin(a) * f.rTop * k, zTop);
+        const Pb = new THREE.Vector3(Math.cos(a) * f.rBot * k, Math.sin(a) * f.rBot * k, zBot);
+        const mid = Pt.clone().add(Pb).multiplyScalar(0.5);
+        const dir = Pt.clone().sub(Pb).normalize();
+        const q = new THREE.Quaternion().setFromUnitVectors(up, dir);
+        out.push({ pos: [mid.x, mid.y, mid.z], quat: [q.x, q.y, q.z, q.w], len: Pt.distanceTo(Pb) });
+      }
+    });
+    return out;
+  }, [frusta]);
+  // concentric raised rib rings (horizontal panel divisions) at each wall mid-line
+  const grooves = useMemo(() => frusta.map((f) => ({ r: (f.rTop + f.rBot) / 2 * 1.016, z: f.z })), [frusta]);
+  // bolt / rivet heads ringing several tiers
+  const rivets = useMemo(() => {
+    const out: { x: number; y: number; z: number }[] = [];
+    const bands = [{ r: 2.33, z: 0.02 }, { r: 2.0, z: -0.2 }, { r: 1.7, z: -0.42 }];
+    bands.forEach((b) => { const N = 40; for (let i = 0; i < N; i++) { const a = (i / N) * Math.PI * 2 + 0.04; out.push({ x: Math.cos(a) * b.r, y: Math.sin(a) * b.r, z: b.z }); } });
+    return out;
+  }, [frusta]);
   // ring helper: N segments around radius r
   const ring = (n: number, r: number) => Array.from({ length: n }, (_, i) => {
     const a = (i / n) * Math.PI * 2;
@@ -661,18 +682,26 @@ function TopProjector() {
             <meshStandardMaterial color={TITANIUM} metalness={0.62} roughness={0.42} side={THREE.DoubleSide} />
           </mesh>
         ))}
-        {/* radial PANEL SEAMS engraved across the dome face (recessed dark grooves) */}
-        {seams.map((s, i) => (
-          <mesh key={`sm${i}`} position={[s.x, s.y, s.z]} rotation={[0, 0, s.a]}>
-            <boxGeometry args={[s.len, 0.022, 0.06]} />
-            <meshStandardMaterial color={TITANIUM_DK} metalness={0.5} roughness={0.6} />
+        {/* RAISED radial PANEL RIBS running along every dome wall (machined plate dividers
+            that catch the rim light → the paneling clearly reads) */}
+        {panelSeams.map((s, i) => (
+          <mesh key={`ps${i}`} position={s.pos} quaternion={s.quat}>
+            <boxGeometry args={[0.04, s.len * 0.98, 0.07]} />
+            <meshStandardMaterial color={TITANIUM_RIB} metalness={0.85} roughness={0.3} />
           </mesh>
         ))}
-        {/* RIVET / bolt heads around the outer housing ring */}
+        {/* concentric raised RIB rings (horizontal panel divisions) */}
+        {grooves.map((g, i) => (
+          <mesh key={`gv${i}`} position={[0, 0, g.z]}>
+            <torusGeometry args={[g.r, 0.026, 8, 90]} />
+            <meshStandardMaterial color={TITANIUM_RIB} metalness={0.85} roughness={0.32} />
+          </mesh>
+        ))}
+        {/* RIVET / bolt heads ringing several tiers */}
         {rivets.map((p, i) => (
-          <mesh key={`rv${i}`} position={[p.x, p.y, 0.07]}>
-            <sphereGeometry args={[0.028, 10, 10]} />
-            <meshStandardMaterial color="#6a7686" metalness={0.85} roughness={0.32} />
+          <mesh key={`rv${i}`} position={[p.x, p.y, p.z + 0.05]}>
+            <sphereGeometry args={[0.024, 8, 8]} />
+            <meshStandardMaterial color="#7a8696" metalness={0.85} roughness={0.3} />
           </mesh>
         ))}
         {/* === DEEP tiered TITANIUM housing rings (raised machined lips on the walls) === */}
