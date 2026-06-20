@@ -529,13 +529,15 @@ function TopProjector() {
   const pupil = useRef<THREE.Mesh>(null);
   const coolRef = useRef<THREE.Group>(null);
 
-  // DEEP tiered titanium housing rings (outer → inner, descending toward the emitter)
+  // DEEP 7-tier titanium dome (outer → inner, strongly receding toward the emitter)
   const tiers = useMemo(() => ([
-    { r: 2.36, z: 0.0, w: 0.13 },    // OUTER HOUSING RING (armor)
-    { r: 2.06, z: -0.20, w: 0.07 },  // cooling-vent tier
-    { r: 1.74, z: -0.42, w: 0.09 },  // power-core / stabilization / mag-lock tier
-    { r: 1.42, z: -0.64, w: 0.06 },  // inner accent tier
-    { r: 1.06, z: -0.84, w: 0.05 },  // lens-array shoulder
+    { r: 2.40, z: 0.00, w: 0.12 },   // OUTER HOUSING RING (armor)
+    { r: 2.14, z: -0.16, w: 0.07 },  // cooling-vent tier
+    { r: 1.88, z: -0.34, w: 0.08 },  // upper structural tier
+    { r: 1.60, z: -0.54, w: 0.07 },  // power-core / stabilization / mag-lock tier
+    { r: 1.32, z: -0.76, w: 0.06 },  // diagnostic tier
+    { r: 1.04, z: -0.98, w: 0.05 },  // lens-array shoulder
+    { r: 0.78, z: -1.18, w: 0.05 },  // emitter throat
   ]), []);
   // ring helper: N segments around radius r
   const ring = (n: number, r: number) => Array.from({ length: n }, (_, i) => {
@@ -546,32 +548,43 @@ function TopProjector() {
   const bigPanels = useMemo(() => Array.from({ length: 16 }, (_, i) => {
     const a = (i / 16) * Math.PI * 2;
     const stab = i >= 3 && i <= 6;                       // contiguous gyroscopic-stabilization arc
-    return { a, x: Math.cos(a) * 2.14, y: Math.sin(a) * 2.14, stab };
+    return { a, x: Math.cos(a) * 2.18, y: Math.sin(a) * 2.18, stab };
   }), []);
   // COOLING VENTS — a 2-row cyan LED grid band
   const cooling = useMemo(() => {
     const out: { a: number; x: number; y: number; z: number }[] = [];
-    const N = 32;
+    const N = 34;
     for (let row = 0; row < 2; row++) {
-      const r = 1.99 - row * 0.11;
-      for (let i = 0; i < N; i++) { const a = (i / N) * Math.PI * 2 + row * 0.05; out.push({ a, x: Math.cos(a) * r, y: Math.sin(a) * r, z: -0.18 }); }
+      const r = 2.06 - row * 0.11;
+      for (let i = 0; i < N; i++) { const a = (i / N) * Math.PI * 2 + row * 0.05; out.push({ a, x: Math.cos(a) * r, y: Math.sin(a) * r, z: -0.15 }); }
     }
     return out;
   }, []);
+  // density: small indicator LEDs packed on the mid tiers (cyan + white status dots)
+  const indic = useMemo(() => {
+    const out: { a: number; x: number; y: number; z: number; white: boolean }[] = [];
+    const bands = [{ r: 1.88, z: -0.31 }, { r: 1.60, z: -0.51 }, { r: 1.32, z: -0.73 }];
+    bands.forEach((b, bi) => {
+      const N = 40;
+      for (let i = 0; i < N; i++) { const a = (i / N) * Math.PI * 2 + bi * 0.08; out.push({ a, x: Math.cos(a) * b.r, y: Math.sin(a) * b.r, z: b.z, white: i % 5 === 0 }); }
+    });
+    return out;
+  }, []);
   // POWER CORE CHANNELS (blue) with a contiguous STABILIZATION arc (purple)
-  const power = useMemo(() => Array.from({ length: 40 }, (_, i) => {
-    const a = (i / 40) * Math.PI * 2;
-    const stab = i >= 8 && i <= 14;                      // STABILIZATION purple arc
-    return { a, x: Math.cos(a) * 1.74, y: Math.sin(a) * 1.74, stab };
+  const power = useMemo(() => Array.from({ length: 44 }, (_, i) => {
+    const a = (i / 44) * Math.PI * 2;
+    const stab = i >= 9 && i <= 16;                      // STABILIZATION purple arc
+    return { a, x: Math.cos(a) * 1.60, y: Math.sin(a) * 1.60, stab };
   }), []);
   // MAGNETIC LOCKS — large amber 2x2 anchor grids at 6 cardinal positions
   const maglocks = useMemo(() => Array.from({ length: 6 }, (_, i) => {
-    const a = (i / 6) * Math.PI * 2 + 0.26; return { a, x: Math.cos(a) * 1.74, y: Math.sin(a) * 1.74 };
+    const a = (i / 6) * Math.PI * 2 + 0.26; return { a, x: Math.cos(a) * 1.60, y: Math.sin(a) * 1.60 };
   }), []);
   const mlCells = useMemo(() => [[-0.06, 0.08], [0.06, 0.08], [-0.06, -0.08], [0.06, -0.08]] as [number, number][], []);
   // INNER ACCENT / DIAGNOSTIC LEDs — indigo, bigger, sitting close to the lens
-  const accents = useMemo(() => ring(40, 1.24), []);
-  const lensRings = useMemo(() => [0.5, 0.66, 0.84, 1.02], []); // HOLOGRAPHIC LENS ARRAY
+  const accents = useMemo(() => ring(36, 1.10), []);
+  // HOLOGRAPHIC LENS ARRAY — deep multi-layer focusing spiral
+  const lensRings = useMemo(() => [0.40, 0.52, 0.64, 0.76, 0.88, 1.00, 1.12], []);
 
   useFrame(({ clock }) => {
     const t = clock.getElapsedTime();
@@ -585,10 +598,10 @@ function TopProjector() {
   });
 
   return (
-    <group position={[GLOBE_POS[0], GLOBE_POS[1] + 3.7, GLOBE_POS[2]]} rotation={[-Math.PI / 2, 0, 0]} scale={1.2}>
+    <group position={[GLOBE_POS[0], GLOBE_POS[1] + 3.92, GLOBE_POS[2]]} rotation={[-Math.PI / 2, 0, 0]} scale={1.05}>
       {/* internal lights that REVEAL the dark titanium (it is lit, not self-glowing) */}
-      <pointLight position={[0, 0, -0.9]} intensity={7} distance={6} decay={2} color={C_BEAM_CORE} />
-      <pointLight position={[0, 0, -0.25]} intensity={3} distance={4} decay={2} color={C_POWER} />
+      <pointLight position={[0, 0, -1.2]} intensity={8} distance={7} decay={2} color={C_BEAM_CORE} />
+      <pointLight position={[0, 0, -0.5]} intensity={3.5} distance={5} decay={2} color={C_POWER} />
       <group ref={grp}>
         {/* === DEEP tiered BLACK TITANIUM ALLOY housing rings === */}
         {tiers.map((rg, i) => (
@@ -620,17 +633,25 @@ function TopProjector() {
           ))}
         </group>
 
+        {/* density: small cyan/white indicator LEDs packed across the mid tiers */}
+        {indic.map((p, i) => (
+          <mesh key={`in${i}`} position={[p.x, p.y, p.z]} rotation={[0, 0, p.a]}>
+            <boxGeometry args={[0.035, 0.035, 0.025]} />
+            <meshStandardMaterial color="#000000" emissive={p.white ? C_EMITTER : C_COOLING} emissiveIntensity={p.white ? 2.6 : 1.8} toneMapped={false} />
+          </mesh>
+        ))}
+
         {/* POWER CORE CHANNELS (blue conduits) + STABILIZATION arc (purple) */}
         {power.map((p, i) => (
-          <mesh key={`pc${i}`} position={[p.x, p.y, -0.40]} rotation={[0, 0, p.a]}>
-            <boxGeometry args={[0.06, 0.24, 0.03]} />
+          <mesh key={`pc${i}`} position={[p.x, p.y, -0.54]} rotation={[0, 0, p.a]}>
+            <boxGeometry args={[0.06, 0.22, 0.03]} />
             <meshStandardMaterial color="#000000" emissive={p.stab ? C_STABIL : C_POWER} emissiveIntensity={2.7} toneMapped={false} />
           </mesh>
         ))}
 
         {/* MAGNETIC LOCKS — large amber 2x2 anchor grids (structural anchors) */}
         {maglocks.map((p, i) => (
-          <group key={`ml${i}`} position={[p.x, p.y, -0.40]} rotation={[0, 0, p.a]}>
+          <group key={`ml${i}`} position={[p.x, p.y, -0.54]} rotation={[0, 0, p.a]}>
             <mesh><boxGeometry args={[0.3, 0.42, 0.08]} /><meshStandardMaterial color="#1a1206" metalness={0.9} roughness={0.4} /></mesh>
             {mlCells.map(([cx, cy], j) => (
               <mesh key={j} position={[cx, cy, 0.05]}><boxGeometry args={[0.1, 0.13, 0.03]} /><meshStandardMaterial color="#000000" emissive={C_MAGLOCK} emissiveIntensity={2.9} toneMapped={false} /></mesh>
@@ -640,29 +661,31 @@ function TopProjector() {
 
         {/* INNER ACCENT / DIAGNOSTIC LEDs — indigo status dots (bigger, near the lens) */}
         {accents.map((p, i) => (
-          <mesh key={`ac${i}`} position={[p.x, p.y, -0.62]} rotation={[0, 0, p.a]}>
-            <boxGeometry args={[0.07, 0.07, 0.03]} />
+          <mesh key={`ac${i}`} position={[p.x, p.y, -0.92]} rotation={[0, 0, p.a]}>
+            <boxGeometry args={[0.06, 0.06, 0.03]} />
             <meshStandardMaterial color="#000000" emissive={C_ACCENT} emissiveIntensity={2.4} toneMapped={false} />
           </mesh>
         ))}
 
-        {/* thin lit seams between tiers */}
-        <mesh position={[0, 0, -0.31]}><torusGeometry args={[1.9, 0.01, 8, 90]} /><meshBasicMaterial color={C_POWER} transparent opacity={0.5} blending={THREE.AdditiveBlending} /></mesh>
-        <mesh position={[0, 0, -0.53]}><torusGeometry args={[1.55, 0.01, 8, 90]} /><meshBasicMaterial color={C_BEAM_VOL} transparent opacity={0.5} blending={THREE.AdditiveBlending} /></mesh>
+        {/* thin lit seams between tiers (read the dome depth) */}
+        <mesh position={[0, 0, -0.25]}><torusGeometry args={[2.0, 0.01, 8, 90]} /><meshBasicMaterial color={C_COOLING} transparent opacity={0.45} blending={THREE.AdditiveBlending} /></mesh>
+        <mesh position={[0, 0, -0.44]}><torusGeometry args={[1.74, 0.01, 8, 90]} /><meshBasicMaterial color={C_POWER} transparent opacity={0.5} blending={THREE.AdditiveBlending} /></mesh>
+        <mesh position={[0, 0, -0.66]}><torusGeometry args={[1.46, 0.01, 8, 90]} /><meshBasicMaterial color={C_BEAM_VOL} transparent opacity={0.5} blending={THREE.AdditiveBlending} /></mesh>
+        <mesh position={[0, 0, -0.88]}><torusGeometry args={[1.18, 0.01, 8, 90]} /><meshBasicMaterial color={C_BEAM_CORE} transparent opacity={0.55} blending={THREE.AdditiveBlending} /></mesh>
       </group>
 
-      {/* ===== HOLOGRAPHIC LENS ARRAY — multi-layer focusing optics (spinning) ===== */}
-      <group ref={lens} position={[0, 0, -0.88]}>
+      {/* ===== HOLOGRAPHIC LENS ARRAY — deep multi-layer focusing spiral (spinning) ===== */}
+      <group ref={lens} position={[0, 0, -1.12]}>
         {lensRings.map((r, i) => (
-          <mesh key={`ln${i}`} position={[0, 0, -i * 0.03]}>
-            <torusGeometry args={[r, 0.012 + i * 0.004, 8, 80]} />
-            <meshBasicMaterial color={C_LENS} transparent opacity={0.85 - i * 0.12} blending={THREE.AdditiveBlending} depthWrite={false} />
+          <mesh key={`ln${i}`} position={[0, 0, i * 0.045]}>
+            <torusGeometry args={[r, 0.01 + i * 0.003, 8, 80]} />
+            <meshBasicMaterial color={C_LENS} transparent opacity={0.9 - i * 0.1} blending={THREE.AdditiveBlending} depthWrite={false} />
           </mesh>
         ))}
       </group>
 
       {/* ===== PRIMARY EMITTER EYE — holographic projection source (intense white) ===== */}
-      <group position={[0, 0, -0.98]}>
+      <group position={[0, 0, -1.26]}>
         {/* lens housing ring (dark titanium) */}
         <mesh><torusGeometry args={[0.5, 0.12, 16, 48]} /><meshStandardMaterial color={TITANIUM} metalness={0.96} roughness={0.3} /></mesh>
         {/* soft cyan flare = the glowing mouth */}
