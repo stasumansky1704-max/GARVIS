@@ -198,7 +198,7 @@ function TexturedEarth({ ai = 0 }: { ai?: number }) {
 
             // 06 OCEAN DEPTH — dark navy (#001A33) deep → blue (#003366) shallow, by ocean luminance
             float oceanLum = clamp((rawDay.b * 0.6 + rawDay.g * 0.4) * 2.2, 0.0, 1.0);
-            vec3 oceanCol = mix(vec3(0.0, 0.085, 0.19), vec3(0.0, 0.26, 0.48), smoothstep(0.05, 0.5, oceanLum)); // deeper + richer blue
+            vec3 oceanCol = mix(vec3(0.0, 0.045, 0.11), vec3(0.0, 0.16, 0.32), smoothstep(0.05, 0.5, oceanLum)); // darker sea so land stands out
             // 04 SURFACE (DAY) — BOLD, 3D-relief land (emboss the continents from the albedo)
             float e = 0.0022;
             float hL = dot(texture2D(dayMap, vUv - vec2(e, 0.0)).rgb, vec3(0.33));
@@ -208,18 +208,21 @@ function TexturedEarth({ ai = 0 }: { ai?: number }) {
             float landMask = 1.0 - oceanMask;
             float relief = clamp((hR - hL) * 7.5 + (hU - hD) * 5.0, -0.32, 1.1); // sharper raised terrain
             // natural terrain tones from the albedo: richer greens (vegetation) + warm deserts + polar ice
-            vec3 baseLand = rawDay * 2.15;
+            vec3 baseLand = rawDay * 3.0;                            // MUCH brighter land so it stands out
             float greenish = clamp((rawDay.g - rawDay.b) * 3.5, 0.0, 1.0);
             float dryish = clamp((rawDay.r - rawDay.g) * 3.5, 0.0, 1.0);
-            baseLand = mix(baseLand, baseLand * vec3(0.68, 1.12, 0.6), greenish * 0.55);   // vegetation greens
-            baseLand = mix(baseLand, baseLand * vec3(1.15, 0.92, 0.62), dryish * 0.5);     // desert browns
+            baseLand = mix(baseLand, baseLand * vec3(0.82, 1.15, 0.72), greenish * 0.5);   // vegetation greens (lighter)
+            baseLand = mix(baseLand, baseLand * vec3(1.2, 1.0, 0.74), dryish * 0.5);       // desert browns (lighter)
             float ice = smoothstep(0.9, 0.99, abs(vUv.y - 0.5) * 2.0);                     // poles
-            baseLand = mix(baseLand, vec3(0.92, 0.96, 1.0), ice * 0.75);
-            vec3 landCol = baseLand + vec3(0.02, 0.03, 0.03);
-            landCol = (landCol - 0.5) * 1.34 + 0.5;                  // crisp contrast
+            baseLand = mix(baseLand, vec3(0.95, 0.98, 1.0), ice * 0.8);
+            vec3 landCol = baseLand + vec3(0.05, 0.06, 0.05);
+            landCol = (landCol - 0.5) * 1.32 + 0.5;                  // crisp contrast
             float lum = dot(landCol, vec3(0.299, 0.587, 0.114));
-            landCol = mix(vec3(lum), landCol, 1.22);                 // natural saturation
-            landCol *= (1.0 + relief * landMask * 0.85);            // 3D relief → continents pop (crisp edges)
+            landCol = mix(vec3(lum), landCol, 1.24);                 // natural saturation
+            landCol *= (1.0 + relief * landMask * 0.8);             // 3D relief → continents pop (crisp edges)
+            // bright COASTLINE rim where land meets sea → continents clearly outlined
+            float coast = (1.0 - smoothstep(0.0, 0.45, abs(oceanMask - 0.5))) ;
+            landCol += coast * landMask * vec3(0.06, 0.08, 0.06);
             vec3 day = mix(landCol, oceanCol, oceanMask);
 
             float d = dot(normalize(vNormalW), normalize(sunDir));
