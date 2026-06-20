@@ -184,8 +184,8 @@ function TexturedEarth({ ai = 0 }: { ai?: number }) {
             // clouds: locked to the surface UV → rotate WITH the Earth. Embedded by BLENDING
             // into the surface (not added on top), lit by the sun, sparse, mostly over oceans.
             float cloud = texture2D(cloudMap, vUv).r;
-            float cAmt = smoothstep(0.64, 0.97, cloud) * mix(0.12, 1.0, oceanMask) * (0.16 + 0.4 * mixf);
-            col = mix(col, vec3(0.95, 0.97, 1.0), cAmt * 0.33);        // fewer, whiter, embedded
+            float cAmt = smoothstep(0.7, 0.98, cloud) * mix(0.04, 1.0, oceanMask) * (0.13 + 0.34 * mixf);
+            col = mix(col, vec3(0.98, 0.99, 1.0), cAmt * 0.26);        // sparse, over oceans, white, sheer
             gl_FragColor = vec4(col, 1.0);
           }
         `,
@@ -484,12 +484,13 @@ function TopProjector() {
   });
   return (
     <group position={[GLOBE_POS[0], GLOBE_POS[1] + 3.7, GLOBE_POS[2]]} rotation={[-Math.PI / 2, 0, 0]}>
-      {/* SOLID black-metal housing — stacked metal tori forming a funnel, lit by the scene */}
+      {/* metal housing lit by its OWN beam light (point light at the emitter) → bright blue glow */}
+      <pointLight position={[0, 0, -1.0]} intensity={6} distance={4.5} decay={2} color="#5cc8ff" />
       <group ref={grp}>
         {rings.map((rg, i) => (
           <mesh key={i} position={[0, 0, rg.z]}>
             <torusGeometry args={[rg.r, rg.w, 18, 72]} />
-            <meshStandardMaterial color="#06080c" metalness={0.95} roughness={0.32} />
+            <meshStandardMaterial color="#0a1018" metalness={0.85} roughness={0.34} emissive="#0a3a64" emissiveIntensity={0.55} />
           </mesh>
         ))}
       </group>
@@ -583,21 +584,26 @@ function Card3DItem({ card, onSelect, active }: { card: Card3DData; onSelect?: (
         onPointerOver={(e) => { e.stopPropagation(); setHover(true); document.body.style.cursor = "pointer"; }}
         onPointerOut={() => { setHover(false); document.body.style.cursor = "auto"; }}
       >
+        {/* BLACK glass: near-black, see-through; the neon EDGES are what light it */}
         <meshStandardMaterial
-          color="#0a1626"
+          color="#020308"
           emissive={new THREE.Color(card.accent)}
-          emissiveIntensity={hover || active ? 0.85 : 0.4}
-          metalness={0.3}
-          roughness={0.25}
+          emissiveIntensity={hover || active ? 0.5 : 0.24}
+          metalness={0.2}
+          roughness={0.4}
           transparent
-          opacity={hover || active ? 0.58 : 0.4}
+          opacity={hover || active ? 0.62 : 0.46}
           depthWrite={false}
         />
       </mesh>
-      {/* glowing neon-LED edge (blooms into a bright strip) */}
+      {/* bright neon-LED edges (blooms hard → spills light onto the black glass) */}
       <lineSegments>
         <edgesGeometry args={[HEX_GEO]} />
         <lineBasicMaterial color={card.accent} transparent opacity={1} blending={THREE.AdditiveBlending} />
+      </lineSegments>
+      <lineSegments scale={1.012}>
+        <edgesGeometry args={[HEX_GEO]} />
+        <lineBasicMaterial color={card.accent} transparent opacity={0.7} blending={THREE.AdditiveBlending} />
       </lineSegments>
       <Text position={[0, 0.12, 0.26]} fontSize={0.12} maxWidth={1.15} textAlign="center" anchorX="center" anchorY="middle" color="#ffffff" outlineWidth={0.004} outlineColor={card.accent}>
         {card.title}
