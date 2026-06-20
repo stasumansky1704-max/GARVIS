@@ -970,8 +970,12 @@ function CardIcon3D({ id, color }: { id: string; color: string }) {
   const light = useRef<THREE.PointLight>(null);
   useFrame(({ clock }) => {
     const t = clock.getElapsedTime();
-    if (spin.current) { spin.current.rotation.y = Math.sin(t * 0.7) * 0.5; spin.current.rotation.x = -0.22; } // gentle 3D tumble
-    if (light.current) light.current.intensity = 1.6 + 0.9 * Math.abs(Math.sin(t * 2.6));                     // electric pulse
+    if (spin.current) {
+      if (id === "ops") { spin.current.rotation.x = -0.32; spin.current.rotation.z = t * 0.5; }        // a turning gear
+      else if (id === "revenue") { spin.current.rotation.x = -0.12; spin.current.rotation.y = t * 0.7; } // a flipping coin
+      else { spin.current.rotation.y = Math.sin(t * 0.7) * 0.5; spin.current.rotation.x = -0.22; }       // gentle 3D tumble
+    }
+    if (light.current) light.current.intensity = 1.6 + 0.9 * Math.abs(Math.sin(t * 2.6));                  // electric pulse
   });
   // solid 3D emissive metal (reads dimensional, not a flat decal)
   const solid = (ei = 2.2) => <meshStandardMaterial color="#05080f" emissive={color} emissiveIntensity={ei} metalness={0.5} roughness={0.3} toneMapped={false} />;
@@ -990,23 +994,32 @@ function CardIcon3D({ id, color }: { id: string; color: string }) {
         </group>
       );
       break;
-    case "market": { // three chunky 3D bars, rising
-      const bars: [number, number][] = [[-0.075, 0.08], [0, 0.13], [0.075, 0.18]];
+    case "market": { // chunky 3D bars on a baseline + a rising trend arrow
+      const bars: [number, number][] = [[-0.08, 0.07], [0, 0.12], [0.08, 0.18]];
       geom = (
         <group ref={spin}>
+          <mesh position={[0, -0.105, 0]}><boxGeometry args={[0.24, 0.014, 0.05]} />{solid(1.6)}</mesh>
           {bars.map(([x, h], i) => (
-            <mesh key={i} position={[x, -0.1 + h / 2, 0]}><boxGeometry args={[0.045, h, 0.045]} />{i === 2 ? power() : solid()}</mesh>
+            <mesh key={i} position={[x, -0.1 + h / 2, 0]}><boxGeometry args={[0.046, h, 0.046]} />{i === 2 ? power() : solid()}</mesh>
           ))}
+          <mesh position={[0.0, 0.12, 0.04]} rotation={[0, 0, -Math.PI / 4.5]}><boxGeometry args={[0.24, 0.014, 0.014]} />{power()}</mesh>
+          <mesh position={[0.12, 0.18, 0.04]} rotation={[0, 0, -Math.PI / 4]}><coneGeometry args={[0.03, 0.06, 4]} />{power()}</mesh>
         </group>
       );
       break;
     }
-    case "social": // one glowing radar ring (power) + center node + sweep blade
+    case "social": // 3D radar dish — two concentric tilted rings + node + sweep blade + blip
       geom = (
         <group ref={spin}>
-          <mesh rotation={[Math.PI / 2.3, 0, 0]}><torusGeometry args={[0.11, 0.013, 12, 40]} />{power()}</mesh>
-          <mesh><sphereGeometry args={[0.03, 16, 16]} />{solid(2.6)}</mesh>
-          <mesh position={[0.05, 0, 0]} rotation={[0, 0, Math.PI / 2]}><coneGeometry args={[0.03, 0.13, 4]} />{solid(2.0)}</mesh>
+          <group rotation={[Math.PI / 2.4, 0, 0]}>
+            <mesh><torusGeometry args={[0.12, 0.01, 10, 44]} />{power()}</mesh>
+            <mesh><torusGeometry args={[0.075, 0.007, 10, 36]} />{solid(1.8)}</mesh>
+            {/* sweep blade flat in the dish plane */}
+            <mesh position={[0.05, 0, 0]} rotation={[0, 0, -Math.PI / 2]}><coneGeometry args={[0.05, 0.12, 3]} />{solid(1.6)}</mesh>
+            {/* a contact blip on the ring */}
+            <mesh position={[0.085, 0.06, 0]}><sphereGeometry args={[0.018, 10, 10]} />{power()}</mesh>
+          </group>
+          <mesh><sphereGeometry args={[0.026, 16, 16]} />{solid(2.8)}</mesh>
         </group>
       );
       break;
@@ -1022,25 +1035,27 @@ function CardIcon3D({ id, color }: { id: string; color: string }) {
         </group>
       );
       break;
-    case "ops": { // chunky 3D gear — thick ring + deep teeth (power) + hub
-      const teeth = Array.from({ length: 8 }, (_, i) => (i / 8) * Math.PI * 2);
+    case "ops": { // coherent 3D cog (coplanar ring + teeth, rotates on Z) + inner ring + hub
+      const teeth = Array.from({ length: 9 }, (_, i) => (i / 9) * Math.PI * 2);
       geom = (
         <group ref={spin}>
-          <mesh rotation={[Math.PI / 2.6, 0, 0]}><torusGeometry args={[0.085, 0.028, 14, 28]} />{solid(2.2)}</mesh>
+          <mesh><torusGeometry args={[0.088, 0.022, 14, 32]} />{solid(2.2)}</mesh>
+          <mesh><torusGeometry args={[0.05, 0.011, 12, 26]} />{solid(1.7)}</mesh>
           {teeth.map((a, i) => (
-            <mesh key={i} position={[Math.cos(a) * 0.105, Math.sin(a) * 0.105, 0]} rotation={[0, 0, a]}><boxGeometry args={[0.04, 0.034, 0.05]} />{power()}</mesh>
+            <mesh key={i} position={[Math.cos(a) * 0.108, Math.sin(a) * 0.108, 0]} rotation={[0, 0, a]}><boxGeometry args={[0.04, 0.032, 0.055]} />{power()}</mesh>
           ))}
-          <mesh><sphereGeometry args={[0.032, 16, 16]} />{solid(2.4)}</mesh>
+          <mesh><sphereGeometry args={[0.03, 16, 16]} />{solid(2.4)}</mesh>
         </group>
       );
       break;
     }
-    default: // revenue — a 3D coin (rim = power light) with the currency mark on its face
+    default: // revenue — a 3D coin (rim = power light) with the currency mark on both faces
       geom = (
         <group ref={spin}>
-          <mesh rotation={[Math.PI / 2, 0, 0]}><cylinderGeometry args={[0.11, 0.11, 0.03, 32]} /><meshStandardMaterial color="#05080f" emissive={color} emissiveIntensity={0.5} metalness={0.6} roughness={0.3} /></mesh>
-          <mesh rotation={[Math.PI / 2, 0, 0]}><torusGeometry args={[0.11, 0.012, 12, 40]} />{power()}</mesh>
-          <Text position={[0, 0, 0.02]} fontSize={0.15} anchorX="center" anchorY="middle" color="#ffffff" outlineWidth={0.005} outlineColor={color}>$</Text>
+          <mesh rotation={[Math.PI / 2, 0, 0]}><cylinderGeometry args={[0.115, 0.115, 0.035, 36]} /><meshStandardMaterial color="#05080f" emissive={color} emissiveIntensity={0.5} metalness={0.6} roughness={0.3} /></mesh>
+          <mesh rotation={[Math.PI / 2, 0, 0]}><torusGeometry args={[0.115, 0.012, 12, 44]} />{power()}</mesh>
+          <Text position={[0, 0, 0.025]} fontSize={0.15} anchorX="center" anchorY="middle" color="#ffffff" outlineWidth={0.006} outlineColor={color}>$</Text>
+          <Text position={[0, 0, -0.025]} rotation={[0, Math.PI, 0]} fontSize={0.15} anchorX="center" anchorY="middle" color="#ffffff" outlineWidth={0.006} outlineColor={color}>$</Text>
         </group>
       );
   }
