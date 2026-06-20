@@ -184,8 +184,8 @@ function TexturedEarth({ ai = 0 }: { ai?: number }) {
             // clouds: locked to the surface UV → rotate WITH the Earth. Embedded by BLENDING
             // into the surface (not added on top), lit by the sun, sparse, mostly over oceans.
             float cloud = texture2D(cloudMap, vUv).r;
-            float cAmt = smoothstep(0.7, 0.98, cloud) * mix(0.04, 1.0, oceanMask) * (0.13 + 0.34 * mixf);
-            col = mix(col, vec3(0.98, 0.99, 1.0), cAmt * 0.26);        // sparse, over oceans, white, sheer
+            float cAmt = smoothstep(0.74, 0.99, cloud) * mix(0.02, 1.0, oceanMask) * (0.11 + 0.3 * mixf);
+            col = mix(col, vec3(0.99, 1.0, 1.0), cAmt * 0.22);        // very sparse, ocean-only, pure white, sheer
             gl_FragColor = vec4(col, 1.0);
           }
         `,
@@ -224,19 +224,19 @@ function TexturedEarth({ ai = 0 }: { ai?: number }) {
 // bright defined core. ---
 function LightBeam() {
   // Emitter at the projector's mouth; many THIN sharp neon rays fan down onto the globe.
-  const apex = useMemo(() => new THREE.Vector3(GLOBE_POS[0], GLOBE_POS[1] + 2.5, GLOBE_POS[2]), []);
+  const apex = useMemo(() => new THREE.Vector3(GLOBE_POS[0], GLOBE_POS[1] + 2.3, GLOBE_POS[2]), []);
 
   // oriented glowing beam shafts (soft halo + bright core) fanning onto the globe
   const beams = useMemo(() => {
     const up = new THREE.Vector3(0, 1, 0);
-    const N = 22;
+    const N = 30;
     const out: { pos: [number, number, number]; quat: [number, number, number, number]; h: number }[] = [];
     for (let i = 0; i < N; i++) {
       const a = (i / N) * Math.PI * 2;
-      const r = 1.45 + (i % 3) * 0.12;
+      const r = 1.7 + (i % 4) * 0.18;                 // wider spread → covers more of the globe
       const end = new THREE.Vector3(
         GLOBE_POS[0] + Math.cos(a) * r,
-        GLOBE_POS[1] + 0.9,
+        GLOBE_POS[1] + 0.35,                          // land lower → the beams cover the whole Earth
         GLOBE_POS[2] + Math.sin(a) * r
       );
       const mid = apex.clone().add(end).multiplyScalar(0.5);
@@ -463,46 +463,69 @@ function HexFloor({ ai = 0 }: { ai?: number }) {
   );
 }
 
-// --- Overhead projection ENGINE: a REAL solid black-metal housing (stacked metal tori, lit
-// by the scene) whose ONLY light is a glowing aperture/edge where the beams pour out. ---
+// --- Overhead projection ENGINE: a DEEP tiered black-metal housing with a big central beam
+// exit + a ring of smaller satellite projectors, all lit by their own emitter lights. ---
 function TopProjector() {
   const grp = useRef<THREE.Group>(null);
   const core = useRef<THREE.Mesh>(null);
+  // deeper tiered housing (more layers + more depth)
   const rings = useMemo(() => {
     const out: { r: number; z: number; w: number }[] = [];
-    const N = 9;
+    const N = 13;
     for (let i = 0; i < N; i++) {
       const f = i / (N - 1);
-      out.push({ r: 2.1 - f * 1.55, z: -f * 1.0, w: 0.13 - f * 0.06 });
+      out.push({ r: 2.2 - f * 1.6, z: -f * 1.05, w: 0.15 - f * 0.075 });
     }
+    return out;
+  }, []);
+  // satellite projectors arranged around the central exit
+  const sats = useMemo(() => {
+    const out: { x: number; y: number }[] = [];
+    const M = 8;
+    for (let i = 0; i < M; i++) { const a = (i / M) * Math.PI * 2; out.push({ x: Math.cos(a) * 1.18, y: Math.sin(a) * 1.18 }); }
     return out;
   }, []);
   useFrame(({ clock }) => {
     const t = clock.getElapsedTime();
     if (grp.current) grp.current.rotation.z = t * 0.05;
-    if (core.current) (core.current.material as THREE.MeshBasicMaterial).opacity = 0.8 + 0.2 * Math.sin(t * 3.0);
+    if (core.current) (core.current.material as THREE.MeshBasicMaterial).opacity = 0.82 + 0.18 * Math.sin(t * 3.0);
   });
   return (
-    <group position={[GLOBE_POS[0], GLOBE_POS[1] + 3.7, GLOBE_POS[2]]} rotation={[-Math.PI / 2, 0, 0]}>
-      {/* metal housing lit by its OWN beam light (point light at the emitter) → bright blue glow */}
-      <pointLight position={[0, 0, -1.0]} intensity={6} distance={4.5} decay={2} color="#5cc8ff" />
+    <group position={[GLOBE_POS[0], GLOBE_POS[1] + 3.15, GLOBE_POS[2]]} rotation={[-Math.PI / 2, 0, 0]}>
+      {/* emitter lights inside the housing → the metal is lit by its own beams */}
+      <pointLight position={[0, 0, -0.95]} intensity={7} distance={5.5} decay={2} color="#5cc8ff" />
+      <pointLight position={[0, 0, -0.4]} intensity={2.5} distance={4} decay={2} color="#7fb8ff" />
       <group ref={grp}>
         {rings.map((rg, i) => (
           <mesh key={i} position={[0, 0, rg.z]}>
             <torusGeometry args={[rg.r, rg.w, 18, 72]} />
-            <meshStandardMaterial color="#0a1018" metalness={0.85} roughness={0.34} emissive="#0a3a64" emissiveIntensity={0.55} />
+            <meshStandardMaterial color="#0a1018" metalness={0.85} roughness={0.34} emissive="#0a3a64" emissiveIntensity={0.5} />
+          </mesh>
+        ))}
+        {/* satellite projector housings (small metal tori) */}
+        {sats.map((s, i) => (
+          <mesh key={`s${i}`} position={[s.x, s.y, -0.7]}>
+            <torusGeometry args={[0.2, 0.06, 12, 36]} />
+            <meshStandardMaterial color="#0a1018" metalness={0.85} roughness={0.34} emissive="#0a3a64" emissiveIntensity={0.5} />
           </mesh>
         ))}
       </group>
-      {/* the ONLY glow: a thin neon edge at the aperture + the emitter core (beam source) */}
-      <mesh position={[0, 0, -1.04]}>
-        <ringGeometry args={[0.52, 0.6, 96]} />
+      {/* BIG central beam exit */}
+      <mesh position={[0, 0, -0.95]}>
+        <ringGeometry args={[0.6, 0.72, 96]} />
         <meshBasicMaterial color="#cdefff" transparent opacity={0.95} blending={THREE.AdditiveBlending} depthWrite={false} side={THREE.DoubleSide} />
       </mesh>
-      <mesh ref={core} position={[0, 0, -1.08]}>
-        <circleGeometry args={[0.46, 48]} />
+      <mesh ref={core} position={[0, 0, -0.99]}>
+        <circleGeometry args={[0.56, 48]} />
         <meshBasicMaterial color="#eaffff" transparent opacity={0.9} blending={THREE.AdditiveBlending} depthWrite={false} />
       </mesh>
+      {/* satellite emitter glows */}
+      {sats.map((s, i) => (
+        <mesh key={`g${i}`} position={[s.x, s.y, -0.75]}>
+          <circleGeometry args={[0.12, 24]} />
+          <meshBasicMaterial color="#bfeeff" transparent opacity={0.85} blending={THREE.AdditiveBlending} depthWrite={false} />
+        </mesh>
+      ))}
     </group>
   );
 }
@@ -584,15 +607,15 @@ function Card3DItem({ card, onSelect, active }: { card: Card3DData; onSelect?: (
         onPointerOver={(e) => { e.stopPropagation(); setHover(true); document.body.style.cursor = "pointer"; }}
         onPointerOut={() => { setHover(false); document.body.style.cursor = "auto"; }}
       >
-        {/* BLACK glass: near-black, see-through; the neon EDGES are what light it */}
+        {/* BLACK glass: pure-black, relatively transparent; only the neon EDGES light it */}
         <meshStandardMaterial
-          color="#020308"
+          color="#000000"
           emissive={new THREE.Color(card.accent)}
-          emissiveIntensity={hover || active ? 0.5 : 0.24}
+          emissiveIntensity={hover || active ? 0.32 : 0.1}
           metalness={0.2}
-          roughness={0.4}
+          roughness={0.45}
           transparent
-          opacity={hover || active ? 0.62 : 0.46}
+          opacity={hover || active ? 0.55 : 0.4}
           depthWrite={false}
         />
       </mesh>
