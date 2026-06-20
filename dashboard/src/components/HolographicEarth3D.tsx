@@ -182,6 +182,8 @@ function TexturedEarth({ ai = 0 }: { ai?: number }) {
           uniform float uTime;
           varying vec2 vUv;
           varying vec3 vNormalW;
+          // cheap per-pixel hash for the city-light twinkle
+          float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
           void main() {
             vec3 rawDay = texture2D(dayMap, vUv).rgb;
             vec3 night = texture2D(nightMap, vUv).rgb;
@@ -192,18 +194,30 @@ function TexturedEarth({ ai = 0 }: { ai?: number }) {
             // 06 OCEAN DEPTH — dark navy (#001A33) deep → blue (#003366) shallow, by ocean luminance
             float oceanLum = clamp((rawDay.b * 0.6 + rawDay.g * 0.4) * 2.2, 0.0, 1.0);
             vec3 oceanCol = mix(vec3(0.0, 0.102, 0.2), vec3(0.0, 0.2, 0.4), smoothstep(0.05, 0.5, oceanLum));
-            // 04 SURFACE (DAY) — realistic land albedo
-            vec3 landCol = rawDay * 1.6 + vec3(0.015, 0.02, 0.025);
+            // 04 SURFACE (DAY) — sharper: crisp contrast + boosted saturation
+            vec3 landCol = rawDay * 1.65 + vec3(0.015, 0.02, 0.025);
+            landCol = (landCol - 0.5) * 1.16 + 0.5;                  // crisp local contrast
+            float lum = dot(landCol, vec3(0.299, 0.587, 0.114));
+            landCol = mix(vec3(lum), landCol, 1.2);                  // richer, more alive color
             vec3 day = mix(landCol, oceanCol, oceanMask);
 
             float d = dot(normalize(vNormalW), normalize(sunDir));
-            float mixf = smoothstep(-0.28, 0.34, d);                 // wider lit hemisphere
+            float mixf = smoothstep(-0.25, 0.30, d);                 // day/night blend
 
-            // 05 CITY LIGHTS (NIGHT) — warm amber #FFD56A -> #FFA500, brightness variation + bloom
+            // 05 CITY LIGHTS (NIGHT) — warm amber, brighter + a living twinkle so the dark side feels alive
             float nb = max(night.r, max(night.g, night.b));
-            vec3 cityCol = mix(vec3(1.0, 0.835, 0.416), vec3(1.0, 0.647, 0.0), smoothstep(0.2, 0.85, nb));
-            vec3 cityLights = cityCol * nb * 3.4;
-            vec3 col = mix(cityLights, day, mixf);
+            float twinkle = 0.78 + 0.22 * sin(uTime * 2.2 + hash(vUv) * 42.0);
+            vec3 cityCol = mix(vec3(1.0, 0.835, 0.416), vec3(1.0, 0.6, 0.0), smoothstep(0.2, 0.85, nb));
+            vec3 cityLights = cityCol * nb * 4.6 * twinkle;          // bright glow → blooms hard
+
+            // dark side: faint continents stay visible in the shadow + bright living city lights
+            vec3 nightBase = day * 0.05;
+            vec3 nightSide = nightBase + cityLights;
+            vec3 col = mix(nightSide, day, mixf);
+
+            // warm terminator (sunset band) along the day/night boundary → life on the limb
+            float term = smoothstep(0.0, 0.32, mixf) * (1.0 - smoothstep(0.32, 0.72, mixf));
+            col += term * vec3(0.26, 0.12, 0.04);
 
             // 03 CLOUD LAYER — soft white clouds, lit by the sun (locked to surface UV → rotate WITH Earth)
             float cloud = texture2D(cloudMap, vUv).r;
