@@ -170,9 +170,11 @@ function TexturedEarth({ ai = 0 }: { ai?: number }) {
         vertexShader: `
           varying vec2 vUv;
           varying vec3 vNormalW;
+          varying vec3 vWorldPos;
           void main() {
             vUv = uv;
             vNormalW = normalize(mat3(modelMatrix) * normal);
+            vWorldPos = (modelMatrix * vec4(position, 1.0)).xyz;
             gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
           }
         `,
@@ -184,6 +186,7 @@ function TexturedEarth({ ai = 0 }: { ai?: number }) {
           uniform float uTime;
           varying vec2 vUv;
           varying vec3 vNormalW;
+          varying vec3 vWorldPos;
           // cheap per-pixel hash for the city-light twinkle
           float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
           void main() {
@@ -221,6 +224,12 @@ function TexturedEarth({ ai = 0 }: { ai?: number }) {
             // warm terminator (sunset band) along the day/night boundary → life on the limb
             float term = smoothstep(0.0, 0.32, mixf) * (1.0 - smoothstep(0.32, 0.72, mixf));
             col += term * vec3(0.26, 0.12, 0.04);
+
+            // OCEAN SUN-GLINT — specular highlight where the sun reflects off the sea (lit side only)
+            vec3 V = normalize(cameraPosition - vWorldPos);
+            vec3 H = normalize(V + normalize(sunDir));
+            float spec = pow(max(dot(normalize(vNormalW), H), 0.0), 70.0);
+            col += spec * oceanMask * smoothstep(0.1, 0.6, mixf) * vec3(0.55, 0.72, 0.95);
 
             // 03 CLOUD LAYER — SPARSE: only the thickest clouds, very sheer (~20%) so the land dominates (~80%)
             float cloud = texture2D(cloudMap, vUv).r;
@@ -1195,7 +1204,7 @@ function Card3DItem({ card, onSelect, active }: { card: Card3DData; onSelect?: (
         <mesh rotation={[Math.PI / 2, 0, 0]}><torusGeometry args={[0.19, 0.013, 10, 44]} /><meshBasicMaterial color={card.accent} transparent opacity={0.95} blending={THREE.AdditiveBlending} depthWrite={false} /></mesh>
         <mesh rotation={[Math.PI / 2, 0, 0]}><torusGeometry args={[0.155, 0.006, 10, 44]} /><meshBasicMaterial color={card.accent} transparent opacity={0.5} blending={THREE.AdditiveBlending} depthWrite={false} /></mesh>
       </group>
-      <group position={[0, 0.46, 0.27]}>
+      <group position={[0, 0.47, 0.27]} scale={0.82}>
         <CardIcon3D id={card.id} color={card.accent} />
       </group>
 
