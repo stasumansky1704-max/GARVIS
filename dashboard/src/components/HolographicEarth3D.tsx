@@ -206,16 +206,16 @@ function TexturedEarth({ ai = 0 }: { ai?: number }) {
             float hD = dot(texture2D(dayMap, vUv - vec2(0.0, e)).rgb, vec3(0.33));
             float hU = dot(texture2D(dayMap, vUv + vec2(0.0, e)).rgb, vec3(0.33));
             float landMask = 1.0 - oceanMask;
-            float relief = clamp((hR - hL) * 6.0 + (hU - hD) * 4.0, -0.7, 0.9); // raised terrain / coastlines
-            vec3 landCol = rawDay * 1.95 + vec3(0.02, 0.025, 0.03);
-            landCol = (landCol - 0.5) * 1.24 + 0.5;                  // crisper contrast
+            float relief = clamp((hR - hL) * 6.0 + (hU - hD) * 4.0, -0.32, 0.95); // mostly highlight, little shadow
+            vec3 landCol = rawDay * 2.35 + vec3(0.04, 0.05, 0.05);   // BRIGHT land so continents read
+            landCol = (landCol - 0.5) * 1.22 + 0.5;                  // crisp contrast
             float lum = dot(landCol, vec3(0.299, 0.587, 0.114));
-            landCol = mix(vec3(lum), landCol, 1.28);                 // richer color
-            landCol *= (1.0 + relief * landMask * 0.95);            // 3D relief → continents pop out
+            landCol = mix(vec3(lum), landCol, 1.3);                  // richer color
+            landCol *= (1.0 + relief * landMask * 0.7);             // 3D relief → continents pop (without darkening)
             vec3 day = mix(landCol, oceanCol, oceanMask);
 
             float d = dot(normalize(vNormalW), normalize(sunDir));
-            float mixf = smoothstep(-0.1, 0.16, d);                  // TIGHT terminator → clear day vs night
+            float mixf = smoothstep(-0.28, 0.26, d);                 // wider day side → continents clearly visible
 
             // 05 CITY LIGHTS (NIGHT) — warm amber, BRIGHT + a living twinkle so the dark side is full of life
             float nb = max(night.r, max(night.g, night.b));
@@ -223,11 +223,11 @@ function TexturedEarth({ ai = 0 }: { ai?: number }) {
             vec3 cityCol = mix(vec3(1.0, 0.835, 0.416), vec3(1.0, 0.58, 0.0), smoothstep(0.2, 0.85, nb));
             vec3 cityLights = cityCol * pow(nb, 0.78) * 7.5 * twinkle; // brighter, livelier lights of life → bloom
 
-            // dark side: very dark continents in shadow + bright living city lights (clear NIGHT)
-            vec3 nightBase = day * 0.03;
+            // dark side: continents still faintly readable in shadow + bright living city lights
+            vec3 nightBase = day * 0.08;
             vec3 nightSide = nightBase + cityLights;
             // brighter DAY side so the two hemispheres clearly differ
-            vec3 col = mix(nightSide, day * 1.12, smoothstep(0.0, 0.6, mixf));
+            vec3 col = mix(nightSide, day * 1.2, smoothstep(0.0, 0.55, mixf));
 
             // warm terminator (sunset band) along the day/night boundary → life on the limb
             float term = smoothstep(0.0, 0.32, mixf) * (1.0 - smoothstep(0.32, 0.72, mixf));
@@ -239,10 +239,10 @@ function TexturedEarth({ ai = 0 }: { ai?: number }) {
             float spec = pow(max(dot(normalize(vNormalW), H), 0.0), 70.0);
             col += spec * oceanMask * smoothstep(0.1, 0.6, mixf) * vec3(0.55, 0.72, 0.95);
 
-            // 03 CLOUD LAYER — almost NONE: only the very thickest wisps, barely visible
+            // 03 CLOUD LAYER — sparse but PURE BRIGHT WHITE where present
             float cloud = texture2D(cloudMap, vUv).r;
-            float cAmt = smoothstep(0.88, 0.999, cloud) * (0.1 + 0.2 * mixf);
-            col = mix(col, vec3(1.0), cAmt * 0.18);
+            float cAmt = smoothstep(0.84, 0.999, cloud) * (0.25 + 0.5 * mixf);
+            col = mix(col, vec3(1.15, 1.15, 1.18), cAmt * 0.6);
             gl_FragColor = vec4(col, 1.0);
           }
         `,
