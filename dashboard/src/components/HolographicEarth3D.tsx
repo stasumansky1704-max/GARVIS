@@ -184,8 +184,8 @@ function TexturedEarth({ ai = 0 }: { ai?: number }) {
             // clouds: locked to the surface UV → rotate WITH the Earth. Embedded by BLENDING
             // into the surface (not added on top), lit by the sun, sparse, mostly over oceans.
             float cloud = texture2D(cloudMap, vUv).r;
-            float cAmt = smoothstep(0.55, 0.95, cloud) * mix(0.18, 1.0, oceanMask) * (0.22 + 0.5 * mixf);
-            col = mix(col, vec3(0.88, 0.93, 1.0), cAmt * 0.42);        // blended into the surface
+            float cAmt = smoothstep(0.64, 0.97, cloud) * mix(0.12, 1.0, oceanMask) * (0.16 + 0.4 * mixf);
+            col = mix(col, vec3(0.95, 0.97, 1.0), cAmt * 0.33);        // fewer, whiter, embedded
             gl_FragColor = vec4(col, 1.0);
           }
         `,
@@ -463,66 +463,44 @@ function HexFloor({ ai = 0 }: { ai?: number }) {
   );
 }
 
-// --- Overhead projection ENGINE (reference 2): a dense iris of concentric rings forming a
-// tunnel that narrows to a brilliant emitter core — the source the beams pour out of. ---
+// --- Overhead projection ENGINE: a REAL solid black-metal housing (stacked metal tori, lit
+// by the scene) whose ONLY light is a glowing aperture/edge where the beams pour out. ---
 function TopProjector() {
   const grp = useRef<THREE.Group>(null);
-  const grp2 = useRef<THREE.Group>(null);
   const core = useRef<THREE.Mesh>(null);
   const rings = useMemo(() => {
-    const out: { r: number; z: number; op: number; w: number }[] = [];
-    const N = 16;
+    const out: { r: number; z: number; w: number }[] = [];
+    const N = 9;
     for (let i = 0; i < N; i++) {
-      const f = i / (N - 1);                 // 0 outer → 1 inner
-      out.push({ r: 2.35 - f * 2.0, z: -f * 1.15, op: 0.4 + f * 0.55, w: 0.02 + f * 0.045 });
+      const f = i / (N - 1);
+      out.push({ r: 2.1 - f * 1.55, z: -f * 1.0, w: 0.13 - f * 0.06 });
     }
     return out;
   }, []);
   useFrame(({ clock }) => {
     const t = clock.getElapsedTime();
-    if (grp.current) grp.current.rotation.z = t * 0.12;
-    if (grp2.current) grp2.current.rotation.z = -t * 0.3; // counter-spin
-    if (core.current) (core.current.material as THREE.MeshBasicMaterial).opacity = 0.78 + 0.22 * Math.sin(t * 3.0);
+    if (grp.current) grp.current.rotation.z = t * 0.05;
+    if (core.current) (core.current.material as THREE.MeshBasicMaterial).opacity = 0.8 + 0.2 * Math.sin(t * 3.0);
   });
   return (
     <group position={[GLOBE_POS[0], GLOBE_POS[1] + 3.7, GLOBE_POS[2]]} rotation={[-Math.PI / 2, 0, 0]}>
-      {/* soft glow halo behind the whole fixture */}
-      <mesh position={[0, 0, -1.0]}>
-        <circleGeometry args={[2.6, 64]} />
-        <meshBasicMaterial color="#1c6fd0" transparent opacity={0.22} blending={THREE.AdditiveBlending} depthWrite={false} />
-      </mesh>
-      {/* dense concentric ring iris (tunnel narrowing toward the emitter) */}
+      {/* SOLID black-metal housing — stacked metal tori forming a funnel, lit by the scene */}
       <group ref={grp}>
         {rings.map((rg, i) => (
           <mesh key={i} position={[0, 0, rg.z]}>
-            <ringGeometry args={[rg.r, rg.r + rg.w, 128]} />
-            <meshBasicMaterial color="#8fe0ff" transparent opacity={rg.op} blending={THREE.AdditiveBlending} depthWrite={false} side={THREE.DoubleSide} />
+            <torusGeometry args={[rg.r, rg.w, 18, 72]} />
+            <meshStandardMaterial color="#06080c" metalness={0.95} roughness={0.32} />
           </mesh>
         ))}
       </group>
-      {/* counter-rotating bright accent ring + colored rings = life & color */}
-      <group ref={grp2}>
-        <mesh position={[0, 0, -0.95]}>
-          <ringGeometry args={[0.78, 0.86, 96]} />
-          <meshBasicMaterial color="#e6fbff" transparent opacity={0.8} blending={THREE.AdditiveBlending} depthWrite={false} side={THREE.DoubleSide} />
-        </mesh>
-        <mesh position={[0, 0, -0.6]}>
-          <ringGeometry args={[1.18, 1.24, 96]} />
-          <meshBasicMaterial color="#19e6c0" transparent opacity={0.5} blending={THREE.AdditiveBlending} depthWrite={false} side={THREE.DoubleSide} />
-        </mesh>
-        <mesh position={[0, 0, -0.3]}>
-          <ringGeometry args={[1.6, 1.65, 96]} />
-          <meshBasicMaterial color="#8b6bff" transparent opacity={0.4} blending={THREE.AdditiveBlending} depthWrite={false} side={THREE.DoubleSide} />
-        </mesh>
-      </group>
-      {/* brilliant emitter core — the beam source (faces up toward the globe) */}
-      <mesh position={[0, 0, -1.18]}>
-        <circleGeometry args={[0.95, 48]} />
-        <meshBasicMaterial color="#bfeaff" transparent opacity={0.45} blending={THREE.AdditiveBlending} depthWrite={false} />
+      {/* the ONLY glow: a thin neon edge at the aperture + the emitter core (beam source) */}
+      <mesh position={[0, 0, -1.04]}>
+        <ringGeometry args={[0.52, 0.6, 96]} />
+        <meshBasicMaterial color="#cdefff" transparent opacity={0.95} blending={THREE.AdditiveBlending} depthWrite={false} side={THREE.DoubleSide} />
       </mesh>
-      <mesh ref={core} position={[0, 0, -1.2]}>
-        <circleGeometry args={[0.5, 48]} />
-        <meshBasicMaterial color="#ffffff" transparent opacity={0.95} blending={THREE.AdditiveBlending} depthWrite={false} />
+      <mesh ref={core} position={[0, 0, -1.08]}>
+        <circleGeometry args={[0.46, 48]} />
+        <meshBasicMaterial color="#eaffff" transparent opacity={0.9} blending={THREE.AdditiveBlending} depthWrite={false} />
       </mesh>
     </group>
   );
@@ -608,14 +586,18 @@ function Card3DItem({ card, onSelect, active }: { card: Card3DData; onSelect?: (
         <meshStandardMaterial
           color="#0a1626"
           emissive={new THREE.Color(card.accent)}
-          emissiveIntensity={hover || active ? 0.95 : 0.5}
-          metalness={0.55}
-          roughness={0.38}
+          emissiveIntensity={hover || active ? 0.85 : 0.4}
+          metalness={0.3}
+          roughness={0.25}
+          transparent
+          opacity={hover || active ? 0.58 : 0.4}
+          depthWrite={false}
         />
       </mesh>
+      {/* glowing neon-LED edge (blooms into a bright strip) */}
       <lineSegments>
         <edgesGeometry args={[HEX_GEO]} />
-        <lineBasicMaterial color={card.accent} transparent opacity={0.9} />
+        <lineBasicMaterial color={card.accent} transparent opacity={1} blending={THREE.AdditiveBlending} />
       </lineSegments>
       <Text position={[0, 0.12, 0.26]} fontSize={0.12} maxWidth={1.15} textAlign="center" anchorX="center" anchorY="middle" color="#ffffff" outlineWidth={0.004} outlineColor={card.accent}>
         {card.title}
