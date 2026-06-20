@@ -980,12 +980,13 @@ function CardIcon3D({ id, color }: { id: string; color: string }) {
 
   let geom: JSX.Element;
   switch (id) {
-    case "world": // solid 3D globe + one glowing orbit ring (power light)
+    case "world": // clean 3D globe — solid body + bright lat/long wireframe (the power lines)
       geom = (
         <group ref={spin}>
-          <mesh><sphereGeometry args={[0.085, 24, 24]} /><meshStandardMaterial color="#03060d" emissive={color} emissiveIntensity={0.7} metalness={0.4} roughness={0.4} /></mesh>
-          <mesh scale={1.02}><sphereGeometry args={[0.085, 14, 9]} /><meshBasicMaterial color={color} wireframe transparent opacity={0.7} blending={THREE.AdditiveBlending} depthWrite={false} /></mesh>
-          <mesh rotation={[Math.PI / 2.2, 0, 0]}><torusGeometry args={[0.12, 0.012, 12, 40]} />{power()}</mesh>
+          <mesh><sphereGeometry args={[0.105, 28, 28]} /><meshStandardMaterial color="#03060d" emissive={color} emissiveIntensity={0.45} metalness={0.4} roughness={0.4} /></mesh>
+          <mesh scale={1.015}><sphereGeometry args={[0.105, 16, 10]} /><meshBasicMaterial color={color} wireframe transparent opacity={0.9} blending={THREE.AdditiveBlending} depthWrite={false} /></mesh>
+          {/* one bright equator band as the outer power light */}
+          <mesh rotation={[Math.PI / 2, 0, 0]}><torusGeometry args={[0.106, 0.01, 10, 44]} />{power()}</mesh>
         </group>
       );
       break;
@@ -1009,12 +1010,15 @@ function CardIcon3D({ id, color }: { id: string; color: string }) {
         </group>
       );
       break;
-    case "tech": // 3D atom — nucleus + two thick tilted orbit rings (power lights)
+    case "tech": // crisp 3D atom — small nucleus + two thin crossed orbits + electrons
       geom = (
         <group ref={spin}>
-          <mesh><sphereGeometry args={[0.035, 16, 16]} />{solid(2.8)}</mesh>
-          <mesh rotation={[Math.PI / 2.4, 0, 0]}><torusGeometry args={[0.12, 0.012, 12, 44]} />{power()}</mesh>
-          <mesh rotation={[Math.PI / 2.4, Math.PI / 2.2, 0]}><torusGeometry args={[0.12, 0.012, 12, 44]} />{power()}</mesh>
+          <mesh><sphereGeometry args={[0.03, 16, 16]} />{solid(2.8)}</mesh>
+          <mesh rotation={[Math.PI / 2.5, 0, 0]}><torusGeometry args={[0.125, 0.007, 10, 52]} />{power()}</mesh>
+          <mesh rotation={[Math.PI / 2.5, Math.PI / 2.1, 0]}><torusGeometry args={[0.125, 0.007, 10, 52]} />{power()}</mesh>
+          {/* electrons riding the orbits */}
+          <mesh position={[0.118, 0.03, 0]}><sphereGeometry args={[0.022, 12, 12]} />{solid(3.2)}</mesh>
+          <mesh position={[-0.06, -0.04, 0.09]}><sphereGeometry args={[0.02, 12, 12]} />{solid(3.2)}</mesh>
         </group>
       );
       break;
