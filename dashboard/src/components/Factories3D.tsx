@@ -33,7 +33,7 @@ function rrShape(w: number, h: number, r: number) {
 }
 const rrLine = (w: number, h: number, r: number) => new THREE.BufferGeometry().setFromPoints(rrShape(w, h, r).getPoints(6));
 const rrFill = (w: number, h: number, r: number) => new THREE.ShapeGeometry(rrShape(w, h, r));
-const FRAME_GEO = rrLine(CW, CH, 0.13);
+const FRAME_GEO = rrLine(CW, CH, 0.12); // matches the card-body radius exactly
 const PANEL_FILL = rrFill(CW - 0.22, CH - 0.28, 0.1);
 const PANEL_LINE = rrLine(CW - 0.22, CH - 0.28, 0.1);
 const PILL_FILL = rrFill(0.96, 0.26, 0.13);
@@ -239,9 +239,9 @@ function FactoryCard({ factory, x }: { factory: Factory; x: number }) {
         <RoundedBox args={[CW, CH, 0.44]} radius={0.12} smoothness={6}>
           <meshPhysicalMaterial color="#0a0c13" emissive={new THREE.Color(accent)} emissiveIntensity={0.05} metalness={0.5} roughness={0.34} clearcoat={1} clearcoatRoughness={0.16} reflectivity={0.7} />
         </RoundedBox>
-        {/* FRONT neon frame — flat rounded-rect outline (white core + accent glow), single & crisp */}
-        <lineLoop geometry={FRAME_GEO} position={[0, 0, 0.228]}><lineBasicMaterial color="#ffffff" transparent opacity={0.9} blending={THREE.AdditiveBlending} /></lineLoop>
-        <lineLoop geometry={FRAME_GEO} scale={1.012} position={[0, 0, 0.224]}><lineBasicMaterial color={accent} transparent opacity={1} blending={THREE.AdditiveBlending} /></lineLoop>
+        {/* FRONT neon frame — single crisp outline coincident with the card edge (accent + white core) */}
+        <lineLoop geometry={FRAME_GEO} position={[0, 0, 0.221]}><lineBasicMaterial color={accent} transparent opacity={1} blending={THREE.AdditiveBlending} /></lineLoop>
+        <lineLoop geometry={FRAME_GEO} position={[0, 0, 0.223]}><lineBasicMaterial color="#ffffff" transparent opacity={0.85} blending={THREE.AdditiveBlending} /></lineLoop>
         {/* top-edge light line */}
         <mesh position={[0, CH / 2 - 0.06, 0.232]}><boxGeometry args={[CW * 0.82, 0.018, 0.005]} /><meshBasicMaterial color={accent} transparent opacity={0.85} blending={THREE.AdditiveBlending} depthWrite={false} /></mesh>
 
