@@ -18,6 +18,29 @@ const STATUS_COLOR: Record<string, string> = {
 };
 const HOLO = "#00e6ff";   // factory-model holographic blue
 
+// flat rounded-rect helpers (avoid RoundedBox ballooning when radius > depth/2)
+const CW = 1.5, CH = 2.96;
+function rrShape(w: number, h: number, r: number) {
+  const s = new THREE.Shape();
+  const x = -w / 2, y = -h / 2;
+  s.moveTo(x + r, y);
+  s.lineTo(x + w - r, y); s.absarc(x + w - r, y + r, r, -Math.PI / 2, 0, false);
+  s.lineTo(x + w, y + h - r); s.absarc(x + w - r, y + h - r, r, 0, Math.PI / 2, false);
+  s.lineTo(x + r, y + h); s.absarc(x + r, y + h - r, r, Math.PI / 2, Math.PI, false);
+  s.lineTo(x, y + r); s.absarc(x + r, y + r, r, Math.PI, Math.PI * 1.5, false);
+  s.closePath();
+  return s;
+}
+const rrLine = (w: number, h: number, r: number) => new THREE.BufferGeometry().setFromPoints(rrShape(w, h, r).getPoints(6));
+const rrFill = (w: number, h: number, r: number) => new THREE.ShapeGeometry(rrShape(w, h, r));
+const FRAME_GEO = rrLine(CW, CH, 0.13);
+const PANEL_FILL = rrFill(CW - 0.22, CH - 0.28, 0.1);
+const PANEL_LINE = rrLine(CW - 0.22, CH - 0.28, 0.1);
+const PILL_FILL = rrFill(0.96, 0.26, 0.13);
+const PILL_LINE = rrLine(0.96, 0.26, 0.13);
+const BTN_FILL = rrFill(1.42, 0.42, 0.1);
+const BTN_LINE = rrLine(1.42, 0.42, 0.1);
+
 // =================== per-factory glowing 3D logo ===================
 function FactoryIcon({ id, color }: { id: string; color: string }) {
   const g = useRef<THREE.Group>(null);
@@ -123,7 +146,7 @@ function FactoryModel() {
   const metal = (e = 0.45) => <meshStandardMaterial color="#06182a" emissive={HOLO} emissiveIntensity={e} metalness={0.7} roughness={0.38} />;
   // tilt so we look at the rooftops/front (architectural), not the underside; gentle spin inside
   return (
-    <group position={[0, 2.75, -0.2]} rotation={[0.62, 0, 0]} scale={1.32}>
+    <group position={[0, 2.55, -0.6]} rotation={[0.6, 0, 0]} scale={0.82}>
       <group ref={grp}>
         {/* platform with holographic edge + grid */}
         <mesh position={[0, -0.06, 0]}><boxGeometry args={[3.2, 0.13, 2.3]} />{metal(0.35)}<Edges threshold={15} color={HOLO} /></mesh>
@@ -192,7 +215,6 @@ function Pedestal({ color }: { color: string }) {
 // =================== 8-layer holographic card ===================
 function FactoryCard({ factory, x }: { factory: Factory; x: number }) {
   const grp = useRef<THREE.Group>(null);
-  const glow = useRef<THREE.MeshBasicMaterial>(null);
   const dot = useRef<THREE.Mesh>(null);
   const [hover, setHover] = useState(false);
   const accent = ACCENT[factory.id] ?? HOLO;
@@ -205,74 +227,55 @@ function FactoryCard({ factory, x }: { factory: Factory; x: number }) {
       const s = grp.current.scale.x + ((hover ? 1.05 : 1.0) - grp.current.scale.x) * 0.15;
       grp.current.scale.set(s, s, s);
     }
-    if (glow.current) glow.current.opacity += ((hover ? 0.26 : 0.12) - glow.current.opacity) * 0.1;     // ambient glow
     if (dot.current) (dot.current.material as THREE.MeshBasicMaterial).opacity = 0.45 + 0.55 * (0.5 + 0.5 * Math.sin(t * 2.3 + phase));
   });
-  const W = 1.5, H = 2.96;
   return (
-    <group position={[x, 0.2, 0]}>
+    <group position={[x, 0.2, -Math.abs(x) * 0.12]} rotation={[0, -x * 0.1, 0]}>
       <group ref={grp}
         onPointerOver={(e) => { e.stopPropagation(); setHover(true); document.body.style.cursor = "pointer"; }}
         onPointerOut={() => { setHover(false); document.body.style.cursor = "auto"; }}
       >
-        {/* ambient glow (behind) */}
-        <mesh position={[0, 0, -0.24]}><planeGeometry args={[W * 1.5, H * 1.2]} /><meshBasicMaterial ref={glow} color={accent} transparent opacity={0.12} blending={THREE.AdditiveBlending} depthWrite={false} /></mesh>
-        {/* dark backing plate for depth — NO bright frame (avoids the ghost double-frame) */}
-        <RoundedBox args={[W + 0.07, H + 0.07, 0.34]} radius={0.12} smoothness={5} position={[0, 0, -0.1]}>
-          <meshStandardMaterial color="#080b12" metalness={0.88} roughness={0.45} />
+        {/* SOLID 3D card body — thick dark (depth 0.44 > 2*radius → valid RoundedBox) */}
+        <RoundedBox args={[CW, CH, 0.44]} radius={0.12} smoothness={6}>
+          <meshPhysicalMaterial color="#0a0c13" emissive={new THREE.Color(accent)} emissiveIntensity={0.05} metalness={0.5} roughness={0.34} clearcoat={1} clearcoatRoughness={0.16} reflectivity={0.7} />
         </RoundedBox>
+        {/* FRONT neon frame — flat rounded-rect outline (white core + accent glow), single & crisp */}
+        <lineLoop geometry={FRAME_GEO} position={[0, 0, 0.228]}><lineBasicMaterial color="#ffffff" transparent opacity={0.9} blending={THREE.AdditiveBlending} /></lineLoop>
+        <lineLoop geometry={FRAME_GEO} scale={1.012} position={[0, 0, 0.224]}><lineBasicMaterial color={accent} transparent opacity={1} blending={THREE.AdditiveBlending} /></lineLoop>
+        {/* top-edge light line */}
+        <mesh position={[0, CH / 2 - 0.06, 0.232]}><boxGeometry args={[CW * 0.82, 0.018, 0.005]} /><meshBasicMaterial color={accent} transparent opacity={0.85} blending={THREE.AdditiveBlending} depthWrite={false} /></mesh>
 
-        {/* GLASS CAPSULE — dark tinted glass + ONE white edge core */}
-        <RoundedBox args={[W, H, 0.3]} radius={0.11} smoothness={5}>
-          <meshPhysicalMaterial color="#060608" emissive={new THREE.Color(accent)} emissiveIntensity={0.06} metalness={0.2} roughness={0.28} transparent opacity={hover ? 0.5 : 0.44} clearcoat={1} clearcoatRoughness={0.2} reflectivity={0.6} depthWrite={false} />
-          <Edges threshold={15} color="#ffffff" />
-        </RoundedBox>
-        {/* ONE clean accent neon frame on the same rounded shape */}
-        <RoundedBox args={[W, H, 0.3]} radius={0.11} smoothness={5}>
-          <meshBasicMaterial transparent opacity={0} depthWrite={false} />
-          <Edges threshold={15} color={accent} />
-        </RoundedBox>
-        {/* glass diagonal reflection sheen */}
-        <mesh position={[0, 0, 0.16]}><planeGeometry args={[W * 0.94, H * 0.96]} /><meshBasicMaterial color="#ffffff" transparent opacity={0.05} blending={THREE.AdditiveBlending} depthWrite={false} /></mesh>
+        {/* 4. INNER PANEL — flat dark recessed content area */}
+        <mesh geometry={PANEL_FILL} position={[0, -0.18, 0.225]}><meshBasicMaterial color="#04060c" transparent opacity={0.5} depthWrite={false} /></mesh>
+        <lineLoop geometry={PANEL_LINE} position={[0, -0.18, 0.232]}><lineBasicMaterial color={accent} transparent opacity={0.4} blending={THREE.AdditiveBlending} /></lineLoop>
 
-        {/* 4. INNER PANEL — dark content area */}
-        <RoundedBox args={[W - 0.2, H - 0.24, 0.06]} radius={0.08} smoothness={4} position={[0, -0.18, 0.15]}>
-          <meshStandardMaterial color="#04060c" metalness={0.3} roughness={0.6} transparent opacity={0.78} depthWrite={false} />
-          <Edges threshold={15} color={accent} />
-        </RoundedBox>
-
-        {/* 5. HOLOGRAPHIC ICON (glow 80%) */}
-        <group position={[0, 1.04, 0.32]}><FactoryIcon id={factory.id} color={accent} /></group>
-        <pointLight position={[0, 1.04, 0.8]} color={accent} intensity={1.8} distance={2.6} decay={2} />
-        {/* icon base ring */}
-        <mesh position={[0, 0.66, 0.22]} rotation={[Math.PI / 2.1, 0, 0]}><torusGeometry args={[0.4, 0.012, 10, 48]} /><meshBasicMaterial color={accent} transparent opacity={0.6} blending={THREE.AdditiveBlending} depthWrite={false} /></mesh>
+        {/* 5. HOLOGRAPHIC ICON */}
+        <group position={[0, 1.0, 0.36]}><FactoryIcon id={factory.id} color={accent} /></group>
+        <pointLight position={[0, 1.0, 0.85]} color={accent} intensity={1.9} distance={2.6} decay={2} />
+        <mesh position={[0, 0.62, 0.25]} rotation={[Math.PI / 2.1, 0, 0]}><torusGeometry args={[0.4, 0.012, 10, 48]} /><meshBasicMaterial color={accent} transparent opacity={0.6} blending={THREE.AdditiveBlending} depthWrite={false} /></mesh>
 
         {/* 6. TYPOGRAPHY */}
-        <Text position={[0, 0.18, 0.23]} fontSize={0.155} maxWidth={1.5} lineHeight={1.04} letterSpacing={0.02} textAlign="center" anchorX="center" anchorY="middle" color="#ffffff" outlineWidth={0.005} outlineColor="#000000">
+        <Text position={[0, 0.16, 0.25]} fontSize={0.135} maxWidth={1.3} lineHeight={1.05} letterSpacing={0.02} textAlign="center" anchorX="center" anchorY="middle" color="#ffffff" outlineWidth={0.004} outlineColor="#000000">
           {factory.name.toUpperCase()}
         </Text>
-        <Text position={[0, -0.28, 0.23]} fontSize={0.078} maxWidth={1.45} lineHeight={1.34} textAlign="center" anchorX="center" anchorY="middle" color="#b5b5b5">
+        <Text position={[0, -0.26, 0.25]} fontSize={0.07} maxWidth={1.26} lineHeight={1.35} textAlign="center" anchorX="center" anchorY="middle" color="#b5b5b5">
           {factory.summary}
         </Text>
 
-        {/* 7. STATUS LAYER — pill (dark bg + accent border + light text) */}
-        <group position={[0, -0.86, 0.23]}>
-          <RoundedBox args={[0.95, 0.26, 0.04]} radius={0.13} smoothness={4}>
-            <meshStandardMaterial color="#150a26" emissive={new THREE.Color(statusCol)} emissiveIntensity={0.25} metalness={0.2} roughness={0.5} transparent opacity={0.92} />
-            <Edges threshold={15} color={statusCol} />
-          </RoundedBox>
-          <mesh ref={dot} position={[-0.32, 0, 0.04]}><circleGeometry args={[0.03, 16]} /><meshBasicMaterial color={statusCol} transparent blending={THREE.AdditiveBlending} depthWrite={false} /></mesh>
-          <Text position={[0.04, 0, 0.05]} fontSize={0.07} letterSpacing={0.1} anchorX="center" anchorY="middle" color={statusCol}>{factory.status.toUpperCase()}</Text>
+        {/* 7. STATUS LAYER — flat pill */}
+        <group position={[0, -0.84, 0.25]}>
+          <mesh geometry={PILL_FILL}><meshBasicMaterial color="#140a22" transparent opacity={0.9} depthWrite={false} /></mesh>
+          <lineLoop geometry={PILL_LINE}><lineBasicMaterial color={statusCol} transparent opacity={0.95} blending={THREE.AdditiveBlending} /></lineLoop>
+          <mesh ref={dot} position={[-0.33, 0, 0.01]}><circleGeometry args={[0.03, 16]} /><meshBasicMaterial color={statusCol} transparent blending={THREE.AdditiveBlending} depthWrite={false} /></mesh>
+          <Text position={[0.04, 0, 0.02]} fontSize={0.07} letterSpacing={0.1} anchorX="center" anchorY="middle" color={statusCol}>{factory.status.toUpperCase()}</Text>
         </group>
 
-        {/* 6b. ACTION BUTTON — OPEN FACTORY (bg #0A0A0A + accent border, hover glow+lift) */}
-        <group position={[0, -1.28, 0.2]}>
-          <RoundedBox args={[1.42, 0.4, 0.1]} radius={0.09} smoothness={4}>
-            <meshStandardMaterial color="#0a0a0a" emissive={new THREE.Color(accent)} emissiveIntensity={hover ? 0.7 : 0.32} metalness={0.3} roughness={0.4} />
-            <Edges threshold={15} color={accent} />
-          </RoundedBox>
-          <Text position={[-0.08, 0, 0.08]} fontSize={0.11} letterSpacing={0.16} anchorX="center" anchorY="middle" color="#ffffff">OPEN FACTORY</Text>
-          <mesh position={[0.56, 0, 0.08]} rotation={[0, 0, -Math.PI / 2]}><coneGeometry args={[0.055, 0.1, 3]} /><meshBasicMaterial color={accent} /></mesh>
+        {/* 6b. ACTION BUTTON — OPEN FACTORY (flat, accent border, hover glow) */}
+        <group position={[0, -1.24, 0.25]}>
+          <mesh geometry={BTN_FILL}><meshStandardMaterial color="#0a0a0a" emissive={new THREE.Color(accent)} emissiveIntensity={hover ? 0.55 : 0.26} metalness={0.3} roughness={0.45} /></mesh>
+          <lineLoop geometry={BTN_LINE} position={[0, 0, 0.01]}><lineBasicMaterial color={accent} transparent opacity={1} blending={THREE.AdditiveBlending} /></lineLoop>
+          <Text position={[-0.08, 0, 0.02]} fontSize={0.105} letterSpacing={0.16} anchorX="center" anchorY="middle" color="#ffffff">OPEN FACTORY</Text>
+          <mesh position={[0.56, 0, 0.02]} rotation={[0, 0, -Math.PI / 2]}><coneGeometry args={[0.05, 0.09, 3]} /><meshBasicMaterial color={accent} /></mesh>
         </group>
       </group>
       {/* 8. PEDESTAL BASE */}
