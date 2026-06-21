@@ -78,49 +78,89 @@ function Particles({ count = 260, color = HOLO }: { count?: number; color?: stri
   return <points ref={ref} geometry={geo}><pointsMaterial color={color} size={0.03} sizeAttenuation transparent opacity={0.5} blending={THREE.AdditiveBlending} depthWrite={false} /></points>;
 }
 
-// =================== holographic factory model (above the cards) ===================
+// =================== holographic factory model (architectural 3/4 view) ===================
 function FactoryModel() {
   const grp = useRef<THREE.Group>(null);
   const nav = useRef<THREE.Group>(null);
-  const buildings = useMemo(() => {
-    const out: { x: number; z: number; w: number; d: number; h: number }[] = [];
-    const rnd = (s: number) => (Math.sin(s * 12.9898) * 43758.5453) % 1;
-    for (let i = 0; i < 11; i++) {
-      const x = (i % 4 - 1.5) * 0.62 + (i >= 4 ? 0.0 : 0.0);
-      const z = (Math.floor(i / 4) - 1) * 0.62;
-      out.push({ x, z, w: 0.34 + Math.abs(rnd(i + 1)) * 0.16, d: 0.34, h: 0.4 + Math.abs(rnd(i + 7)) * 0.9 });
-    }
+  const smoke = useRef<THREE.Group>(null);
+  // modular industrial blocks (x, z, w, d, h)
+  const buildings = useMemo(() => ([
+    { x: -0.95, z: -0.55, w: 0.52, d: 0.5, h: 0.62 },
+    { x: -0.3, z: -0.55, w: 0.5, d: 0.5, h: 0.95 },
+    { x: 0.4, z: -0.55, w: 0.55, d: 0.5, h: 0.5 },
+    { x: -0.95, z: 0.25, w: 0.46, d: 0.5, h: 0.8 },
+    { x: -0.25, z: 0.3, w: 0.62, d: 0.55, h: 0.55 },
+    { x: 0.55, z: 0.3, w: 0.5, d: 0.5, h: 0.7 },
+    { x: 1.0, z: -0.15, w: 0.4, d: 0.4, h: 0.45 },
+    { x: -1.45, z: -0.1, w: 0.36, d: 0.4, h: 0.4 },
+  ]), []);
+  // tall thin towers (x, z, h)
+  const towers = useMemo(() => [[-0.55, -0.1, 2.05], [0.65, -0.35, 2.45], [0.15, 0.55, 1.7], [-1.1, 0.6, 1.4]] as [number, number, number][], []);
+  // emissive windows on the front + side faces
+  const windows = useMemo(() => {
+    const out: [number, number, number, number][] = []; // x,y,z, faceRot(0 front /1 side)
+    buildings.forEach((b) => {
+      const rows = Math.max(1, Math.floor(b.h / 0.2));
+      const cols = b.w > 0.5 ? 2 : 1;
+      for (let r = 0; r < rows; r++) {
+        const wy = 0.14 + r * 0.2;
+        for (let c = 0; c < cols; c++) {
+          const ox = cols === 1 ? 0 : (c - 0.5) * b.w * 0.46;
+          out.push([b.x + ox, wy, b.z + b.d / 2 + 0.006, 0]);
+        }
+        out.push([b.x + b.w / 2 + 0.006, wy, b.z, 1]);
+      }
+    });
     return out;
-  }, []);
-  const stacks = useMemo(() => [[-0.95, -0.3, 1.5], [0.95, 0.4, 1.9], [-0.2, 0.7, 1.3]] as [number, number, number][], []);
-  const navDots = useMemo(() => Array.from({ length: 7 }, (_, i) => [(i % 4 - 1.5) * 0.6, 1.0 + (i % 3) * 0.5, (Math.floor(i / 4) - 0.5) * 0.6] as [number, number, number]), []);
+  }, [buildings]);
+  const navDots = useMemo(() => towers.map(([x, z, h]) => [x, h + 0.06, z] as [number, number, number]).concat([[0, 1.3, 0], [1.0, 0.6, -0.15]]), [towers]);
   useFrame(({ clock }) => {
     const t = clock.getElapsedTime();
-    if (grp.current) grp.current.rotation.y = t * 0.12;
-    if (nav.current) nav.current.children.forEach((c, i) => { (((c as THREE.Mesh).material) as THREE.MeshBasicMaterial).opacity = 0.4 + 0.6 * (0.5 + 0.5 * Math.sin(t * 2.5 + i)); });
+    if (grp.current) grp.current.rotation.y = t * 0.1;
+    if (nav.current) nav.current.children.forEach((c, i) => { ((c as THREE.Mesh).material as THREE.MeshBasicMaterial).opacity = 0.35 + 0.65 * Math.pow(0.5 + 0.5 * Math.sin(t * 2.2 + i * 1.3), 2); });
+    if (smoke.current) smoke.current.children.forEach((c, i) => { const m = c as THREE.Mesh; m.position.y = (m.userData.base ?? 0) + ((t * 0.4 + i) % 1) * 0.5; (m.material as THREE.MeshBasicMaterial).opacity = 0.25 * (1 - ((t * 0.4 + i) % 1)); });
   });
-  const holoMetal = <meshStandardMaterial color="#071a2c" emissive={HOLO} emissiveIntensity={0.5} metalness={0.6} roughness={0.4} />;
+  const metal = (e = 0.45) => <meshStandardMaterial color="#06182a" emissive={HOLO} emissiveIntensity={e} metalness={0.7} roughness={0.38} />;
+  // tilt so we look at the rooftops/front (architectural), not the underside; gentle spin inside
   return (
-    <group ref={grp} position={[0, 3.25, -1]} scale={1.28}>
-      {/* platform base */}
-      <mesh position={[0, -0.05, 0]}><boxGeometry args={[3.0, 0.12, 2.2]} />{holoMetal}<Edges threshold={15} color={HOLO} /></mesh>
-      <mesh position={[0, 0.02, 0]} rotation={[-Math.PI / 2, 0, 0]}><planeGeometry args={[2.9, 2.1]} /><meshBasicMaterial color={HOLO} transparent opacity={0.08} blending={THREE.AdditiveBlending} /></mesh>
-      {/* buildings */}
-      {buildings.map((b, i) => (
-        <mesh key={i} position={[b.x, b.h / 2 + 0.02, b.z]}><boxGeometry args={[b.w, b.h, b.d]} />{holoMetal}<Edges threshold={15} color={HOLO} /></mesh>
-      ))}
-      {/* smokestacks */}
-      {stacks.map(([x, z, h], i) => (
-        <group key={`s${i}`} position={[x, 0, z]}>
-          <mesh position={[0, h / 2, 0]}><cylinderGeometry args={[0.09, 0.12, h, 16]} />{holoMetal}<Edges threshold={15} color={HOLO} /></mesh>
-          <mesh position={[0, h + 0.12, 0]}><cylinderGeometry args={[0.06, 0.09, 0.4, 12, 1, true]} /><meshBasicMaterial color={HOLO} transparent opacity={0.25} blending={THREE.AdditiveBlending} side={THREE.DoubleSide} depthWrite={false} /></mesh>
+    <group position={[0, 2.75, -0.2]} rotation={[0.62, 0, 0]} scale={1.32}>
+      <group ref={grp}>
+        {/* platform with holographic edge + grid */}
+        <mesh position={[0, -0.06, 0]}><boxGeometry args={[3.2, 0.13, 2.3]} />{metal(0.35)}<Edges threshold={15} color={HOLO} /></mesh>
+        <mesh position={[0, 0.012, 0]} rotation={[-Math.PI / 2, 0, 0]}><planeGeometry args={[3.05, 2.15]} /><meshBasicMaterial color={HOLO} transparent opacity={0.09} blending={THREE.AdditiveBlending} /></mesh>
+        <mesh position={[0, 0.013, 0]} rotation={[-Math.PI / 2, 0, 0]}><planeGeometry args={[3.05, 2.15, 12, 8]} /><meshBasicMaterial color={HOLO} wireframe transparent opacity={0.12} blending={THREE.AdditiveBlending} /></mesh>
+
+        {/* modular buildings */}
+        {buildings.map((b, i) => (
+          <mesh key={i} position={[b.x, b.h / 2 + 0.005, b.z]}><boxGeometry args={[b.w, b.h, b.d]} />{metal()}<Edges threshold={15} color={HOLO} /></mesh>
+        ))}
+        {/* tall towers + tapered tops */}
+        {towers.map(([x, z, h], i) => (
+          <group key={`t${i}`} position={[x, 0, z]}>
+            <mesh position={[0, h / 2, 0]}><boxGeometry args={[0.2, h, 0.2]} />{metal(0.5)}<Edges threshold={15} color={HOLO} /></mesh>
+            <mesh position={[0, h + 0.12, 0]}><coneGeometry args={[0.14, 0.26, 4]} />{metal(0.7)}</mesh>
+          </group>
+        ))}
+        {/* emissive windows (rooms) */}
+        {windows.map((w, i) => (
+          <mesh key={`w${i}`} position={[w[0], w[1], w[2]]} rotation={[0, w[3] ? Math.PI / 2 : 0, 0]}>
+            <boxGeometry args={[0.045, 0.055, 0.01]} />
+            <meshStandardMaterial color="#000000" emissive="#9fe8ff" emissiveIntensity={2.2} toneMapped={false} />
+          </mesh>
+        ))}
+        {/* steam/smoke rising from a couple of towers */}
+        <group ref={smoke}>
+          {[[0.65, 2.55, -0.35], [-0.55, 2.15, -0.1]].map((p, i) => (
+            <mesh key={i} position={[p[0], p[1], p[2]]} userData={{ base: p[1] }}><sphereGeometry args={[0.12, 8, 8]} /><meshBasicMaterial color="#bfe6ff" transparent opacity={0.2} blending={THREE.AdditiveBlending} depthWrite={false} /></mesh>
+          ))}
         </group>
-      ))}
-      {/* blinking nav lights */}
-      <group ref={nav}>
-        {navDots.map((p, i) => <mesh key={i} position={p}><sphereGeometry args={[0.035, 8, 8]} /><meshBasicMaterial color="#bfefff" transparent opacity={0.8} blending={THREE.AdditiveBlending} depthWrite={false} /></mesh>)}
+        {/* blinking navigation lights on the tower tops */}
+        <group ref={nav}>
+          {navDots.map((p, i) => <mesh key={i} position={p}><sphereGeometry args={[0.04, 8, 8]} /><meshBasicMaterial color="#d6f6ff" transparent opacity={0.8} blending={THREE.AdditiveBlending} depthWrite={false} /></mesh>)}
+        </group>
+        <pointLight position={[0, 1.6, 0.8]} intensity={3.2} distance={6} decay={2} color={HOLO} />
+        <pointLight position={[0, 0.4, 0]} intensity={1.4} distance={3} decay={2} color="#2979ff" />
       </group>
-      <pointLight position={[0, 1.5, 1]} intensity={3} distance={6} decay={2} color={HOLO} />
     </group>
   );
 }
@@ -153,7 +193,6 @@ function Pedestal({ color }: { color: string }) {
 function FactoryCard({ factory, x }: { factory: Factory; x: number }) {
   const grp = useRef<THREE.Group>(null);
   const glow = useRef<THREE.MeshBasicMaterial>(null);
-  const frame = useRef<THREE.LineBasicMaterial>(null);
   const dot = useRef<THREE.Mesh>(null);
   const [hover, setHover] = useState(false);
   const accent = ACCENT[factory.id] ?? HOLO;
@@ -167,35 +206,34 @@ function FactoryCard({ factory, x }: { factory: Factory; x: number }) {
       grp.current.scale.set(s, s, s);
     }
     if (glow.current) glow.current.opacity += ((hover ? 0.26 : 0.12) - glow.current.opacity) * 0.1;     // ambient glow
-    if (frame.current) frame.current.opacity = 0.85 + 0.15 * Math.sin(t * 1.5 + phase);                 // outer neon flicker (slow)
     if (dot.current) (dot.current.material as THREE.MeshBasicMaterial).opacity = 0.45 + 0.55 * (0.5 + 0.5 * Math.sin(t * 2.3 + phase));
   });
-  const W = 1.74, H = 3.5;
+  const W = 1.5, H = 2.96;
   return (
     <group position={[x, 0.2, 0]}>
       <group ref={grp}
         onPointerOver={(e) => { e.stopPropagation(); setHover(true); document.body.style.cursor = "pointer"; }}
         onPointerOut={() => { setHover(false); document.body.style.cursor = "auto"; }}
       >
-        {/* Ambient glow (Layer behind, 20%) */}
-        <mesh position={[0, 0, -0.28]}><planeGeometry args={[W * 1.5, H * 1.25]} /><meshBasicMaterial ref={glow} color={accent} transparent opacity={0.12} blending={THREE.AdditiveBlending} depthWrite={false} /></mesh>
+        {/* ambient glow (behind) */}
+        <mesh position={[0, 0, -0.24]}><planeGeometry args={[W * 1.5, H * 1.2]} /><meshBasicMaterial ref={glow} color={accent} transparent opacity={0.12} blending={THREE.AdditiveBlending} depthWrite={false} /></mesh>
+        {/* dark backing plate for depth — NO bright frame (avoids the ghost double-frame) */}
+        <RoundedBox args={[W + 0.07, H + 0.07, 0.34]} radius={0.12} smoothness={5} position={[0, 0, -0.1]}>
+          <meshStandardMaterial color="#080b12" metalness={0.88} roughness={0.45} />
+        </RoundedBox>
 
-        {/* 2. SECONDARY FRAME — depth & structure (brushed metal) */}
-        <RoundedBox args={[W + 0.16, H + 0.16, 0.4]} radius={0.14} smoothness={5} position={[0, 0, -0.1]}>
-          <meshStandardMaterial color="#0a0e16" metalness={0.9} roughness={0.42} />
+        {/* GLASS CAPSULE — dark tinted glass + ONE white edge core */}
+        <RoundedBox args={[W, H, 0.3]} radius={0.11} smoothness={5}>
+          <meshPhysicalMaterial color="#060608" emissive={new THREE.Color(accent)} emissiveIntensity={0.06} metalness={0.2} roughness={0.28} transparent opacity={hover ? 0.5 : 0.44} clearcoat={1} clearcoatRoughness={0.2} reflectivity={0.6} depthWrite={false} />
+          <Edges threshold={15} color="#ffffff" />
+        </RoundedBox>
+        {/* ONE clean accent neon frame on the same rounded shape */}
+        <RoundedBox args={[W, H, 0.3]} radius={0.11} smoothness={5}>
+          <meshBasicMaterial transparent opacity={0} depthWrite={false} />
           <Edges threshold={15} color={accent} />
         </RoundedBox>
-
-        {/* 3. GLASS CAPSULE — dark tinted glass (you can see the inner glow through it) */}
-        <RoundedBox args={[W, H, 0.32]} radius={0.11} smoothness={5}>
-          <meshPhysicalMaterial color="#060608" emissive={new THREE.Color(accent)} emissiveIntensity={0.06} metalness={0.2} roughness={0.28} transparent opacity={hover ? 0.5 : 0.44} clearcoat={1} clearcoatRoughness={0.2} reflectivity={0.6} depthWrite={false} />
-        </RoundedBox>
         {/* glass diagonal reflection sheen */}
-        <mesh position={[0, 0, 0.17]}><planeGeometry args={[W * 0.94, H * 0.96]} /><meshBasicMaterial color="#ffffff" transparent opacity={0.05} blending={THREE.AdditiveBlending} depthWrite={false} /></mesh>
-
-        {/* 1. OUTER NEON FRAME — primary glow border (100%) */}
-        <lineSegments scale={1.0}><edgesGeometry args={[new THREE.BoxGeometry(W, H, 0.32)]} /><lineBasicMaterial ref={frame} color={accent} transparent opacity={1} blending={THREE.AdditiveBlending} /></lineSegments>
-        <RoundedBox args={[W, H, 0.32]} radius={0.11} smoothness={5}><meshBasicMaterial transparent opacity={0} depthWrite={false} /><Edges threshold={15} color="#ffffff" /></RoundedBox>
+        <mesh position={[0, 0, 0.16]}><planeGeometry args={[W * 0.94, H * 0.96]} /><meshBasicMaterial color="#ffffff" transparent opacity={0.05} blending={THREE.AdditiveBlending} depthWrite={false} /></mesh>
 
         {/* 4. INNER PANEL — dark content area */}
         <RoundedBox args={[W - 0.2, H - 0.24, 0.06]} radius={0.08} smoothness={4} position={[0, -0.18, 0.15]}>
