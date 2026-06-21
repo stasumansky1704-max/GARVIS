@@ -1,7 +1,7 @@
 import { useRef, useMemo, useState, useEffect } from "react";
 import { Canvas, useFrame } from "@react-three/fiber";
-import { Text, MeshReflectorMaterial, RoundedBox, Edges } from "@react-three/drei";
-import { EffectComposer, Bloom, SMAA, Vignette } from "@react-three/postprocessing";
+import { Text, MeshReflectorMaterial, RoundedBox, Edges, Environment, Lightformer } from "@react-three/drei";
+import { EffectComposer, Bloom, SMAA, Vignette, SSAO, HueSaturation, BrightnessContrast } from "@react-three/postprocessing";
 import * as THREE from "three";
 import type { Factory } from "../data/missionControl";
 
@@ -33,7 +33,8 @@ function rrShape(w: number, h: number, r: number) {
 }
 const rrLine = (w: number, h: number, r: number) => new THREE.BufferGeometry().setFromPoints(rrShape(w, h, r).getPoints(6));
 const rrFill = (w: number, h: number, r: number) => new THREE.ShapeGeometry(rrShape(w, h, r));
-const FRAME_GEO = rrLine(CW, CH, 0.12); // matches the card-body radius exactly
+const FRAME_GEO = rrLine(CW, CH, 0.12);            // 1. outer neon frame (matches body radius)
+const SECONDARY_GEO = rrLine(CW - 0.14, CH - 0.14, 0.1); // 2. secondary inset frame (depth)
 const PANEL_FILL = rrFill(CW - 0.22, CH - 0.28, 0.1);
 const PANEL_LINE = rrLine(CW - 0.22, CH - 0.28, 0.1);
 const PILL_FILL = rrFill(0.96, 0.26, 0.13);
@@ -239,9 +240,13 @@ function FactoryCard({ factory, x }: { factory: Factory; x: number }) {
         <RoundedBox args={[CW, CH, 0.44]} radius={0.12} smoothness={6}>
           <meshPhysicalMaterial color="#0a0c13" emissive={new THREE.Color(accent)} emissiveIntensity={0.05} metalness={0.5} roughness={0.34} clearcoat={1} clearcoatRoughness={0.16} reflectivity={0.7} />
         </RoundedBox>
-        {/* FRONT neon frame — single crisp outline coincident with the card edge (accent + white core) */}
+        {/* 1. OUTER NEON FRAME — coincident with the card edge (accent + white core) — glow 100% */}
         <lineLoop geometry={FRAME_GEO} position={[0, 0, 0.221]}><lineBasicMaterial color={accent} transparent opacity={1} blending={THREE.AdditiveBlending} /></lineLoop>
         <lineLoop geometry={FRAME_GEO} position={[0, 0, 0.223]}><lineBasicMaterial color="#ffffff" transparent opacity={0.85} blending={THREE.AdditiveBlending} /></lineLoop>
+        {/* 2. SECONDARY inset frame — depth & structure (medium 60%) */}
+        <lineLoop geometry={SECONDARY_GEO} position={[0, 0, 0.222]}><lineBasicMaterial color={accent} transparent opacity={0.55} blending={THREE.AdditiveBlending} /></lineLoop>
+        {/* inner accent glow (medium) — soft wash inside the glass behind the content */}
+        <mesh position={[0, 0.1, 0.04]}><planeGeometry args={[CW * 0.78, CH * 0.78]} /><meshBasicMaterial color={accent} transparent opacity={0.06} blending={THREE.AdditiveBlending} depthWrite={false} /></mesh>
         {/* top-edge light line */}
         <mesh position={[0, CH / 2 - 0.06, 0.232]}><boxGeometry args={[CW * 0.82, 0.018, 0.005]} /><meshBasicMaterial color={accent} transparent opacity={0.85} blending={THREE.AdditiveBlending} depthWrite={false} /></mesh>
 
@@ -296,6 +301,14 @@ function Scene({ factories }: { factories: Factory[] }) {
       <pointLight position={[11, 3, 6]} intensity={0.8} color="#7fb6ff" />
       <fogExp2 attach="fog" args={["#03060e", 0.016]} />
 
+      {/* in-engine environment (no network HDR) → real reflections on glass + metal */}
+      <Environment resolution={64} frames={1}>
+        <Lightformer intensity={1.6} color="#cfe2ff" position={[0, 4, 4]} scale={[8, 4, 1]} />
+        <Lightformer intensity={1.0} color="#5a9bff" position={[-6, 1, 2]} scale={[3, 6, 1]} />
+        <Lightformer intensity={1.0} color="#5a9bff" position={[6, 1, 2]} scale={[3, 6, 1]} />
+        <Lightformer intensity={0.6} color="#1a3a6a" position={[0, -3, -4]} scale={[10, 4, 1]} />
+      </Environment>
+
       <FactoryModel />
       <Particles />
       {factories.map((f, i) => <FactoryCard key={f.id} factory={f} x={x0 + i * spacing} />)}
@@ -305,10 +318,14 @@ function Scene({ factories }: { factories: Factory[] }) {
         <MeshReflectorMaterial resolution={1024} mirror={0.5} mixBlur={1.6} mixStrength={1.3} blur={[500, 160]} roughness={0.8} metalness={0.5} color="#04080f" depthScale={1.1} minDepthThreshold={0.4} maxDepthThreshold={1.2} />
       </mesh>
 
+      {/* cinematic post chain: SMAA -> SSAO (contact depth) -> Bloom -> color grade -> Vignette */}
       <EffectComposer multisampling={0} frameBufferType={THREE.HalfFloatType}>
         <SMAA />
-        <Bloom intensity={1.35} luminanceThreshold={0.4} luminanceSmoothing={0.9} radius={0.74} mipmapBlur />
-        <Vignette offset={0.28} darkness={0.72} />
+        <SSAO samples={24} radius={0.12} intensity={18} luminanceInfluence={0.5} color={new THREE.Color("#000000")} worldDistanceThreshold={1} worldDistanceFalloff={1} worldProximityThreshold={1} worldProximityFalloff={1} />
+        <Bloom intensity={1.3} luminanceThreshold={0.42} luminanceSmoothing={0.9} radius={0.74} mipmapBlur />
+        <HueSaturation saturation={0.12} />
+        <BrightnessContrast brightness={0.0} contrast={0.12} />
+        <Vignette offset={0.28} darkness={0.74} />
       </EffectComposer>
     </>
   );
