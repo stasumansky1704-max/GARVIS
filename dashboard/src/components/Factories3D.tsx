@@ -107,6 +107,7 @@ function FactoryModel() {
   const grp = useRef<THREE.Group>(null);
   const nav = useRef<THREE.Group>(null);
   const smoke = useRef<THREE.Group>(null);
+  const scan = useRef<THREE.Mesh>(null);
   // modular industrial blocks (x, z, w, d, h)
   const buildings = useMemo(() => ([
     { x: -0.95, z: -0.55, w: 0.52, d: 0.5, h: 0.62 },
@@ -143,8 +144,11 @@ function FactoryModel() {
     if (grp.current) grp.current.rotation.y = t * 0.1;
     if (nav.current) nav.current.children.forEach((c, i) => { ((c as THREE.Mesh).material as THREE.MeshBasicMaterial).opacity = 0.35 + 0.65 * Math.pow(0.5 + 0.5 * Math.sin(t * 2.2 + i * 1.3), 2); });
     if (smoke.current) smoke.current.children.forEach((c, i) => { const m = c as THREE.Mesh; m.position.y = (m.userData.base ?? 0) + ((t * 0.4 + i) % 1) * 0.5; (m.material as THREE.MeshBasicMaterial).opacity = 0.25 * (1 - ((t * 0.4 + i) % 1)); });
+    if (scan.current) { scan.current.position.y = ((t * 0.35) % 1) * 2.6; (scan.current.material as THREE.MeshBasicMaterial).opacity = 0.22 * Math.sin(((t * 0.35) % 1) * Math.PI); } // holographic scan sweep
   });
-  const metal = (e = 0.45) => <meshStandardMaterial color="#06182a" emissive={HOLO} emissiveIntensity={e} metalness={0.7} roughness={0.38} />;
+  // HOLOGRAM faces: transparent glowing surfaces (you see through them) — the bright Edges are
+  // the real structure. The factory is made of light, not a solid block.
+  const metal = (e = 0.45) => <meshBasicMaterial color={HOLO} transparent opacity={0.05 + e * 0.1} blending={THREE.AdditiveBlending} depthWrite={false} side={THREE.DoubleSide} />;
   // tilt so we look at the rooftops/front (architectural), not the underside; gentle spin inside
   return (
     <group position={[0, 2.55, -0.6]} rotation={[0.6, 0, 0]} scale={0.82}>
@@ -182,8 +186,10 @@ function FactoryModel() {
         <group ref={nav}>
           {navDots.map((p, i) => <mesh key={i} position={p}><sphereGeometry args={[0.04, 8, 8]} /><meshBasicMaterial color="#d6f6ff" transparent opacity={0.8} blending={THREE.AdditiveBlending} depthWrite={false} /></mesh>)}
         </group>
-        <pointLight position={[0, 1.6, 0.8]} intensity={3.2} distance={6} decay={2} color={HOLO} />
-        <pointLight position={[0, 0.4, 0]} intensity={1.4} distance={3} decay={2} color="#2979ff" />
+        {/* horizontal holographic scan slice sweeping up through the projection */}
+        <mesh ref={scan} position={[0, 0, 0]} rotation={[-Math.PI / 2, 0, 0]}><planeGeometry args={[3.3, 2.4]} /><meshBasicMaterial color="#bfeeff" transparent opacity={0.2} blending={THREE.AdditiveBlending} depthWrite={false} side={THREE.DoubleSide} /></mesh>
+        {/* projector base glow (the hologram emits from the platform) */}
+        <mesh position={[0, 0.02, 0]} rotation={[-Math.PI / 2, 0, 0]}><circleGeometry args={[1.4, 48]} /><meshBasicMaterial color={HOLO} transparent opacity={0.16} blending={THREE.AdditiveBlending} depthWrite={false} /></mesh>
       </group>
     </group>
   );
