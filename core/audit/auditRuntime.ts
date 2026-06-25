@@ -11,6 +11,7 @@
 // THROWS — callers on gated/security-relevant paths must treat that as a hard denial.
 
 import { looksSecretLike } from "../contracts/contractRegistry.ts";
+import { redactText } from "../redaction/redactText.ts";
 
 export class AuditError extends Error {
   constructor(reason: string) {
@@ -60,15 +61,8 @@ function isNonEmptyString(v: unknown): v is string {
   return typeof v === "string" && v.length > 0;
 }
 
-// Redact a free-text summary BEFORE storage: mask the value after any secret-like key
-// (e.g. "apiKey=...", "password: ...") and bearer tokens. Conservative, not exhaustive.
-function redactSummary(summary: string): string {
-  return summary
-    .replace(/\bBearer\s+\S+/gi, "Bearer ***")
-    .replace(/([A-Za-z0-9_]+)(\s*[:=]\s*)(\S+)/g, (match, key: string, sep: string) =>
-      looksSecretLike(key) ? `${key}${sep}***` : match,
-    );
-}
+// Summary redaction-before-storage uses the SINGLE shared transform (core/redaction) so the
+// audit log and the Memory authority redact identically and can never drift.
 
 export class AuditRuntime implements Audit {
   #records: AuditRecord[] = [];
@@ -108,7 +102,7 @@ export class AuditRuntime implements Audit {
       status: input.status,
       riskClass: input.riskClass,
       redactionStatus: "redacted",
-      redactedSummary: redactSummary(input.summary ?? ""),
+      redactedSummary: redactText(input.summary ?? ""),
     });
     this.#records.push(record);
     return record;
