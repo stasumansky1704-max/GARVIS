@@ -1,18 +1,21 @@
-// GARVIS — Approval Gate Runtime (S0–S2 skeleton)
+// GARVIS — Approval Gate Runtime (S0–S3 skeleton)
 //
 // PURE, in-memory, side-effect-free slice of the Approval Gate (governed by
 // APPROVAL_GATE_SPEC.md). It upholds these invariants:
 //   1. No action executes without an approved action.
 //   2. An approval token is single-use; replay is rejected.
 //   3. An unknown / unclassifiable action fails closed (no token is ever issued).
-//   4. An invalid approval request is rejected BEFORE classification or token creation
-//      (contract validation, fail closed) — added in S1/S2.
+//   4. An invalid approval request is rejected BEFORE classification or token creation.
+//   5. Execution requires BOTH a valid single-use approval token AND the action's
+//      permission scope — permission is not approval, approval is not permission (S2/S3).
 //
-// Still NOT the full gate: no permissions, audit, queue, expiration, revocation, or real
-// classification taxonomy yet. No I/O, no network, no filesystem. State lives only in
+// Still NOT the full gate: no audit, queue, expiration of tokens, revocation of tokens, or
+// real classification taxonomy yet. No I/O, no network, no filesystem. State lives only in
 // memory inside an ApprovalGate instance.
 
 import { ContractRegistry, defaultContractRegistry } from "../contracts/contractRegistry.ts";
+import { PermissionRuntime } from "../permissions/permissionRuntime.ts";
+import type { PermissionScope } from "../permissions/permissionRuntime.ts";
 
 export type Disposition = "auto" | "gated" | "forbidden";
 
@@ -57,9 +60,24 @@ const DISPOSITIONS: ReadonlyMap<string, Disposition> = new Map([
   ["informational", "auto"],
   ["local.read", "auto"],
   ["local.write", "gated"],
+  ["external.read", "gated"],
   ["external.write", "gated"],
+  ["execution.command", "gated"],
   ["destructive", "gated"],
   ["credential", "forbidden"],
+]);
+
+// Known action kinds → the permission scope they require. The gate derives this
+// authoritatively from the action type (it does not trust a proposer-declared field).
+// `informational` requires no scope.
+const REQUIRED_SCOPE: ReadonlyMap<string, PermissionScope> = new Map([
+  ["local.read", "local:read"],
+  ["local.write", "local:write"],
+  ["external.read", "external:read"],
+  ["external.write", "external:write"],
+  ["execution.command", "execution:command"],
+  ["destructive", "destructive"],
+  ["credential", "credential:sensitive"],
 ]);
 
 /**
@@ -72,21 +90,27 @@ export function classify(action: ProposedAction): Disposition | "unknown" {
 
 export class ApprovalGate {
   #registry: ContractRegistry;
+  #permissions: PermissionRuntime;
   /** Issued, not-yet-consumed tokens, keyed by tokenId. */
   #live = new Map<string, ApprovalToken>();
   /** TokenIds that have already been consumed once (used to reject replay). */
   #consumed = new Set<string>();
   #seq = 0;
 
-  constructor(registry: ContractRegistry = defaultContractRegistry()) {
+  constructor(
+    registry: ContractRegistry = defaultContractRegistry(),
+    permissions: PermissionRuntime = new PermissionRuntime(),
+  ) {
     this.#registry = registry;
+    this.#permissions = permissions;
   }
 
   /**
    * Request a single-use approval for an action described by an approval-request payload.
-   * The request is validated against the approvalRequest@1 contract FIRST; an invalid
-   * request fails closed (no classification, no token). A `forbidden` or `unknown`
-   * classification also fails closed. Only `auto`/`gated` valid requests mint a token.
+   * Approval is INDEPENDENT of permission (you can obtain a token without holding the
+   * permission — permission is checked at execution). The request is validated against the
+   * approvalRequest@1 contract FIRST; an invalid request fails closed. A `forbidden` or
+   * `unknown` classification also fails closed. Only valid `auto`/`gated` requests mint a token.
    */
   requestApproval(request: unknown): ApprovalToken | null {
     // (4) Contract validation BEFORE classification / token creation — fail closed.
@@ -112,11 +136,14 @@ export class ApprovalGate {
   }
 
   /**
-   * The ONLY path to execution. Requires a valid, unconsumed token bound to this exact
-   * action. No token => not allowed. A consumed token (replay) => rejected. On success
-   * the token is consumed (single-use).
+   * The ONLY path to execution. Requires BOTH:
+   *   (a) a valid, unconsumed token bound to this exact action (approval), and
+   *   (b) the action's required permission scope to be currently granted (permission).
+   * Missing either blocks execution. The token is consumed ONLY on a fully-authorized
+   * (allowed) execution; a permission failure does not waste the approval.
    */
   authorizeExecution(action: ProposedAction, token?: ApprovalToken | null): AuthorizationResult {
+    // (a) approval (token) checks first
     if (!token) {
       return { allowed: false, reason: "no-approved-action" };
     }
@@ -127,7 +154,18 @@ export class ApprovalGate {
     if (!live || live.actionId !== action.id) {
       return { allowed: false, reason: "invalid-or-unbound-token" };
     }
-    // consume the single-use token
+
+    // (b) permission check — separate authority from approval, fail closed.
+    const requiredScope = REQUIRED_SCOPE.get(action.type);
+    if (requiredScope !== undefined) {
+      const permission = this.#permissions.check({ scope: requiredScope });
+      if (!permission.allowed) {
+        // Do NOT consume the token on a permission failure.
+        return { allowed: false, reason: `permission-denied:${permission.reason}` };
+      }
+    }
+
+    // Both halves satisfied → consume the single-use token and allow.
     this.#live.delete(token.tokenId);
     this.#consumed.add(token.tokenId);
     return { allowed: true, reason: "approved" };
