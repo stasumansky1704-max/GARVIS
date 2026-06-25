@@ -1,14 +1,18 @@
-// GARVIS — Approval Gate Runtime (S0/S1 skeleton)
+// GARVIS — Approval Gate Runtime (S0–S2 skeleton)
 //
-// Smallest possible, PURE, in-memory, side-effect-free slice of the Approval Gate
-// (governed by APPROVAL_GATE_SPEC.md). It exists only to uphold three invariants:
+// PURE, in-memory, side-effect-free slice of the Approval Gate (governed by
+// APPROVAL_GATE_SPEC.md). It upholds these invariants:
 //   1. No action executes without an approved action.
 //   2. An approval token is single-use; replay is rejected.
 //   3. An unknown / unclassifiable action fails closed (no token is ever issued).
+//   4. An invalid approval request is rejected BEFORE classification or token creation
+//      (contract validation, fail closed) — added in S1/S2.
 //
-// This is NOT the full gate: no permissions, contracts, audit, queue, expiration,
-// revocation, or real classification taxonomy yet. No I/O, no network, no filesystem.
-// Token state lives only in memory inside an ApprovalGate instance.
+// Still NOT the full gate: no permissions, audit, queue, expiration, revocation, or real
+// classification taxonomy yet. No I/O, no network, no filesystem. State lives only in
+// memory inside an ApprovalGate instance.
+
+import { ContractRegistry, defaultContractRegistry } from "../contracts/contractRegistry.ts";
 
 export type Disposition = "auto" | "gated" | "forbidden";
 
@@ -17,6 +21,22 @@ export interface ProposedAction {
   readonly id: string;
   /** The action kind; only known kinds are classifiable (otherwise fail closed). */
   readonly type: string;
+}
+
+/**
+ * The validated approval-request shape the gate accepts. `requestApproval` takes
+ * `unknown` and validates against the registered approvalRequest@1 contract; this
+ * interface documents the expected fields. Secrets are never embedded (handles only).
+ */
+export interface ApprovalRequest {
+  readonly actionId: string;
+  readonly actionType: string;
+  readonly riskClass: string;
+  readonly redactionStatus: "redacted";
+  readonly correlationId: string;
+  readonly idempotencyKey?: string;
+  readonly summary?: string;
+  readonly targetResource?: string;
 }
 
 export interface ApprovalToken {
@@ -31,8 +51,8 @@ export interface AuthorizationResult {
   readonly reason: string;
 }
 
-// Known action kinds → disposition. Anything NOT listed here is UNKNOWN and must
-// fail closed. This stub list is deliberately tiny; the real taxonomy is future work.
+// Known action kinds → disposition. Anything NOT listed here is UNKNOWN and must fail
+// closed. This stub list is deliberately tiny; the real taxonomy is future work.
 const DISPOSITIONS: ReadonlyMap<string, Disposition> = new Map([
   ["informational", "auto"],
   ["local.read", "auto"],
@@ -51,22 +71,38 @@ export function classify(action: ProposedAction): Disposition | "unknown" {
 }
 
 export class ApprovalGate {
+  #registry: ContractRegistry;
   /** Issued, not-yet-consumed tokens, keyed by tokenId. */
   #live = new Map<string, ApprovalToken>();
   /** TokenIds that have already been consumed once (used to reject replay). */
   #consumed = new Set<string>();
   #seq = 0;
 
+  constructor(registry: ContractRegistry = defaultContractRegistry()) {
+    this.#registry = registry;
+  }
+
   /**
-   * Request a single-use approval for an action. An `auto` action is auto-approved;
-   * a `gated` action represents a human decision (driven by the caller in tests).
-   * A `forbidden` or `unknown` action FAILS CLOSED: no token is ever issued.
+   * Request a single-use approval for an action described by an approval-request payload.
+   * The request is validated against the approvalRequest@1 contract FIRST; an invalid
+   * request fails closed (no classification, no token). A `forbidden` or `unknown`
+   * classification also fails closed. Only `auto`/`gated` valid requests mint a token.
    */
-  requestApproval(action: ProposedAction): ApprovalToken | null {
+  requestApproval(request: unknown): ApprovalToken | null {
+    // (4) Contract validation BEFORE classification / token creation — fail closed.
+    const validation = this.#registry.validate("approvalRequest", "1", request);
+    if (!validation.valid) {
+      return null;
+    }
+    const req = request as ApprovalRequest;
+    const action: ProposedAction = { id: req.actionId, type: req.actionType };
+
+    // (3) Classification fail-closed for forbidden / unknown.
     const disposition = classify(action);
     if (disposition === "forbidden" || disposition === "unknown") {
-      return null; // fail closed — never mint a token for what we cannot safely classify
+      return null;
     }
+
     const token: ApprovalToken = {
       tokenId: `tok-${++this.#seq}`,
       actionId: action.id,
