@@ -17,11 +17,36 @@
 import type { SummaryAgent } from "../agents/summaryAgent.ts";
 import type { PlanningAgent } from "../agents/planningAgent.ts";
 import type { WorkflowDefinition } from "./workflowTypes.ts";
+import type { WorkflowManifest } from "./workflowManifest.ts";
+
+export const PROJECT_DAILY_BRIEF_ID = "project-daily-brief";
 
 export interface DailyBriefDeps {
   readonly summarizer: SummaryAgent;
   readonly planner: PlanningAgent;
   readonly briefPath?: string;
+}
+
+/** Library manifest for the Daily Brief: a GATED workflow (it writes a file behind approval). */
+export function projectDailyBriefManifest(): WorkflowManifest {
+  return {
+    workflowId: PROJECT_DAILY_BRIEF_ID,
+    name: "Project Daily Brief",
+    category: "project",
+    description: "Reads status, summarizes, and writes an approved daily brief (gated write).",
+    riskClass: "gated",
+    requiredPermissions: ["local:read", "local:write"],
+    requiresApproval: true,
+    steps: [
+      { name: "read-project", effect: "read" },
+      { name: "summarize", effect: "agent" },
+      { name: "propose-write-and-pause", effect: "control" },
+      { name: "write-brief", effect: "write" },
+    ],
+    version: "1",
+    status: "active",
+    tags: ["project", "brief", "gated"],
+  };
 }
 
 export function projectDailyBriefWorkflow(deps: DailyBriefDeps): WorkflowDefinition {
