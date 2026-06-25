@@ -1,0 +1,16 @@
+
+=== before.png (1280x720) ===
+CORE_CENTER  { lum: 27, max: 248, brightPct: 1.9, cyanPct: 2 }
+PORTAL_RING  { lum: 25, max: 248, brightPct: 1.5, cyanPct: 1.5 }
+LEFT_WALL    { lum: 22, max: 248, brightPct: 0.9, cyanPct: 3 }
+RIGHT_WALL   { lum: 18, max: 22, brightPct: 0, cyanPct: 0 }
+FLOOR_REFL   { lum: 20, max: 161, brightPct: 0.9, cyanPct: 2.2 }
+FULL         { lum: 19, max: 248, brightPct: 0.6, cyanPct: 1.3 }
+
+=== after2.png (1280x720) ===
+CORE_CENTER  { lum: 174, max: 248, brightPct: 80, cyanPct: 99.3 }
+PORTAL_RING  { lum: 135, max: 248, brightPct: 46.9, cyanPct: 99.3 }
+LEFT_WALL    { lum: 41, max: 248, brightPct: 1.2, cyanPct: 27.2 }
+RIGHT_WALL   { lum: 39, max: 170, brightPct: 0.2, cyanPct: 28.1 }
+FLOOR_REFL   { lum: 72, max: 226, brightPct: 12.1, cyanPct: 61.6 }
+FULL         { lum: 62, max: 255, brightPct: 12.9, cyanPct: 45.4 }

@@ -1,0 +1,8 @@
+MISS three
+MISS @react-three/fiber
+MISS @react-three/drei
+MISS @react-three/postprocessing
+MISS postprocessing
+MISS @tailwindcss/vite
+MISS tailwindcss
+OK  vite

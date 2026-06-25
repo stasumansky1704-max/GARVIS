@@ -1,0 +1,10 @@
+src/App.tsx:5: * GARVIS HOME — Living AI Core Chamber.
+src/hud/Hud.tsx:55:            <div className="hud-label hud-glow text-sm text-sky-50">GARVIS</div>
+src/hud/Hud.tsx:126:        GARVIS&nbsp;CORE
+src/hud/Hud.tsx:150:          {focused ? "Listening…" : "GARVIS standing by"}
+src/hud/Hud.tsx:230:          <div className="hud-label hud-glow text-xs text-sky-50">GARVIS is Active</div>
+index.html:6:    <title>GARVIS // AI OPERATING ENVIRONMENT</title>
+README.md:1:# GARVIS HOME — Living AI Core Chamber
+README.md:29:top status bar (wordmark · live clock · SYSTEM/COMPUTE/LINK), left presence panel ("GARVIS is active / I'm listening"),
+README.md:30:right telemetry, center "GARVIS CORE / ONLINE" caption, command input with listening cue, quick-action bar
+README.md:57:The master visual target is `../concept art/garvis core.png`. It is reference only — the scene is

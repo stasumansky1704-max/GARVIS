@@ -1,0 +1,16 @@
+import { chromium } from "playwright";
+const b = await chromium.launch({ args:["--use-gl=angle","--use-angle=swiftshader","--enable-unsafe-swiftshader"] });
+const p = await b.newPage({ viewport:{width:1600,height:900} });
+const calls=[]; p.on("response",r=>{ if(r.url().includes("/runtime/command")) calls.push(r.status()+""); });
+await p.goto("http://localhost:3000/",{waitUntil:"networkidle",timeout:60000});
+await p.waitForTimeout(4000);
+const inp = await p.waitForSelector('input', {timeout:10000});
+await inp.click(); await inp.type("Reply with the single word: OK");
+await p.keyboard.press("Enter");
+await p.waitForTimeout(15000);
+const body = await p.evaluate(()=>document.body.innerText);
+const reply = body.match(/OK|response|failed|thinking/i) ? body.replace(/\s+/g," ").slice(-200) : "(no reply text)";
+console.log("COMMAND_CALLS:", calls.join(",")||"NONE");
+console.log("TAIL:", reply);
+await p.screenshot({path:"command_test.png"});
+await b.close();

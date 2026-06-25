@@ -1,0 +1,11 @@
+import { chromium } from "playwright";
+const b = await chromium.launch({ args:["--use-gl=angle","--use-angle=swiftshader","--enable-unsafe-swiftshader"] });
+const p = await b.newPage({ viewport:{width:1600,height:900} });
+await p.goto("http://localhost:3000/",{waitUntil:"networkidle",timeout:60000});
+await p.waitForTimeout(4000);
+await p.screenshot({path:"integration_home.png"});
+const inputs = await p.$$eval("input", els=>els.map(e=>e.placeholder||e.type));
+const txt = await p.evaluate(()=>document.body.innerText.replace(/\s+/g," ").slice(0,300));
+console.log("INPUTS:", JSON.stringify(inputs));
+console.log("BODYTEXT:", txt);
+await b.close();
