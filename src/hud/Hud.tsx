@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { startSpeaking, stopSpeaking } from "../scene/voiceLevel";
+import { LeftIntelRail, RightIntelRail } from "../intel/IntelHub";
 
 const QUICK_ACTIONS = [
   "Tell Me",
@@ -142,25 +143,6 @@ function TopHud() {
   );
 }
 
-function Telemetry() {
-  return (
-    <div className="space-y-4 text-right">
-      <BigReadout label="Focus" value="100%" color="#34d399" />
-      <BigReadout label="Cognition" value="Online" color="#38bdf8" />
-      <BigReadout label="Status" value="Ready" color="#34d399" />
-    </div>
-  );
-}
-
-function BigReadout({ label, value, color }: { label: string; value: string; color: string }) {
-  return (
-    <div>
-      <div className="hud-label text-[9px] text-sky-300/45">{label}</div>
-      <div className="hud-label hud-glow text-sm" style={{ color }}>{value}</div>
-    </div>
-  );
-}
-
 function CommandBar() {
   const [focused, setFocused] = useState(false);
   const [value, setValue] = useState("");
@@ -271,16 +253,9 @@ export default function Hud() {
       <div className="scanlines pointer-events-none absolute inset-0 z-0" />
 
       <TopHud />
-      {/* left: presence (floating text, no box — like the reference) */}
-      <div className="pointer-events-none absolute left-8 top-1/2 z-20 hidden -translate-y-1/2 lg:block">
-        <div className="hud-label hud-glow text-sm text-sky-50">JARVIS is Active</div>
-        <div className="listening hud-label mt-1 text-[10px] text-sky-300/70">I'm listening</div>
-        <div className="mt-4 h-px w-10 bg-sky-400/40" />
-      </div>
-      {/* right: focus / cognition / status (floating) */}
-      <div className="pointer-events-none absolute right-8 top-1/2 z-20 hidden -translate-y-1/2 lg:block">
-        <Telemetry />
-      </div>
+      {/* Intel Hub readout rails — diegetic HUD framing the living core (display only) */}
+      <LeftIntelRail />
+      <RightIntelRail />
 
       {/* bottom stack: command bar + corner footer, never overlapping */}
       <div className="absolute inset-x-0 bottom-0 z-20 pb-5">
