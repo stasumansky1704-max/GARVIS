@@ -1,6 +1,6 @@
 # ADR-0003: Memory Authority
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-06-25
 - Owner: GARVIS Architecture
 

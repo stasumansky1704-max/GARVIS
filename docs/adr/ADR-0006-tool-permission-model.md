@@ -1,6 +1,6 @@
 # ADR-0006: Tool Permission Model
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-06-25
 - Owner: GARVIS Architecture
 

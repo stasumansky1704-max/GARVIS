@@ -1,6 +1,6 @@
 # ADR-0001: Testing and Verification Strategy
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-06-25
 - Owner: GARVIS Architecture
 

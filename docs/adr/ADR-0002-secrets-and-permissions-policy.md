@@ -1,6 +1,6 @@
 # ADR-0002: Secrets and Permissions Policy
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-06-25
 - Owner: GARVIS Architecture
 
