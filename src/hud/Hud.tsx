@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { startSpeaking, stopSpeaking } from "../scene/voiceLevel";
 import { LeftIntelRail, RightIntelRail } from "../intel/IntelHub";
+import { MeshyAssetStrip } from "../intel/MeshyIntelAssets";
 
 const QUICK_ACTIONS = [
   "Tell Me",
@@ -259,6 +260,7 @@ export default function Hud() {
 
       {/* bottom stack: command bar + corner footer, never overlapping */}
       <div className="absolute inset-x-0 bottom-0 z-20 pb-5">
+        <MeshyAssetStrip />
         <div className="pointer-events-auto">
           <CommandBar />
         </div>

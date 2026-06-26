@@ -73,3 +73,10 @@ desktop.ini
 *.sln
 *.sw?
 *.local
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Intel Hub Meshy assets — RAW heavy GLB inputs are LOCAL-ONLY (~559 MB total) and
+# must never be committed. Only the optimized outputs and thumbnails are deployable.
+# ─────────────────────────────────────────────────────────────────────────────
+public/assets/intel-hub/meshy/*.glb
+# (public/assets/intel-hub/meshy-optimized/ and meshy-thumbnails/ are NOT ignored — they ARE tracked)
